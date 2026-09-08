@@ -1,0 +1,248 @@
+// --- Sécurité (6) --- data-model.md §3
+
+model AppUser {
+  userId        Int      @id @default(autoincrement()) @map("user_id")
+  username      String   @unique @db.VarChar(400)
+  firstName     String   @map("first_name") @db.VarChar(50)
+  lastName      String   @map("last_name") @db.VarChar(50)
+  // full_name is a STORED generated column added in raw SQL; exposed read-only here.
+  fullName      String?  @map("full_name") @db.VarChar(101)
+  email         String?  @db.VarChar(200)
+  phone         String?  @db.VarChar(50)
+  passwordHash  String?  @map("password_hash") @db.VarChar(256) // bcrypt (FR-034)
+  mustChangePwd Boolean  @default(false) @map("must_change_pwd")
+  serviceId     Int?     @map("service_id")
+  matricule     String?  @db.VarChar(50)
+  isDisabled    Boolean  @default(false) @map("is_disabled")
+  isAdmin       Boolean  @default(false) @map("is_admin") // admin bypasses ACL (D-17)
+  roleId        Int?     @map("role_id") // RBAC d'accès aux menus de la sidebar (null = aucun menu hormis l'accueil)
+  /// Habilitation de l'utilisateur : rang minimal qu'il peut consulter. `null` = aucune
+  /// habilitation, donc aucun document porteur d'un niveau.
+  confidentialiteId Int?  @map("confidentialite_id")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  userGroups      AppUserGroup[]
+  role            Role?            @relation(fields: [roleId], references: [roleId])
+  settings        UserSetting[]
+  confidentialite Confidentialite? @relation(fields: [confidentialiteId], references: [confidentialiteId])
+
+  @@map("app_user")
+}
+
+// --- RBAC menus : un rôle = un ensemble de menus visibles (orthogonal aux groupes/ACL documentaire) ---
+
+model Role {
+  roleId         Int      @id @default(autoincrement()) @map("role_id")
+  name           String   @db.VarChar(200)
+  description    String?  @db.VarChar(400)
+  isActive       Boolean  @default(true) @map("is_active")
+  isSystem       Boolean  @default(false) @map("is_system") // rôle système par défaut : toutes les permissions, non supprimable
+  organigrammeId Int?     @map("organigramme_id") // « RoleOrganigramme » (§02.15) : nœud organisationnel assigné au rôle
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  users               AppUser[]
+  menus               RoleMenuPermission[]
+  organigramme        Organigramme?        @relation(fields: [organigrammeId], references: [organigrammeId])
+  // Courriers adressés au rôle (§05) : les utilisateurs qui le portent en sont les destinataires.
+  mailsAsDestinataire Mail[]               @relation("MailDestinataireRole")
+  // Droits documentaires accordés au rôle entier (« Sécurité type document par rôle »).
+  typePermissions     DocumentTypePermission[]
+
+  @@index([organigrammeId])
+  @@map("role")
+}
+
+model RoleMenuPermission {
+  roleMenuPermissionId Int    @id @default(autoincrement()) @map("role_menu_permission_id")
+  roleId               Int    @map("role_id")
+  menuKey              String @map("menu_key") @db.VarChar(200) // clé de route du menu (ex. /admin/users)
+
+  role Role @relation(fields: [roleId], references: [roleId], onDelete: Cascade)
+
+  @@unique([roleId, menuKey])
+  @@index([roleId])
+  @@map("role_menu_permission")
+}
+
+model AppGroup {
+  groupId  Int     @id @default(autoincrement()) @map("group_id")
+  name     String  @db.VarChar(200)
+  isActive Boolean @default(true) @map("is_active")
+
+  userGroups          AppUserGroup[]
+  documentPermissions DocumentPermission[] // droits accordés au PROFIL entier sur un document
+
+  @@map("app_group")
+}
+
+model AppUserGroup {
+  userGroupId Int     @id @default(autoincrement()) @map("user_group_id")
+  userId      Int     @map("user_id")
+  groupId     Int     @map("group_id")
+  isDefault   Boolean @default(true) @map("is_default")
+
+  user  AppUser  @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  group AppGroup @relation(fields: [groupId], references: [groupId])
+
+  batchesScanned      AcquisitionBatch[]       @relation("BatchScannedBy")
+  documentsCreated    Document[]               @relation("DocCreatedBy")
+  documentsModified   Document[]               @relation("DocModifiedBy")
+  documentsValidated  Document[]               @relation("DocValidatedBy")
+  versionsCreated     DocumentVersion[]        @relation("VersionCreatedBy")
+  typePermissions     DocumentTypePermission[]
+  documentPermissions DocumentPermission[]
+  accessInquiries     DocumentAccessInquiry[] // demandes d'accès document SOUMISES par l'acteur
+  navigationAudits    NavigationAudit[]
+  dataChangeAudits    DataChangeAudit[]
+
+  // Docu-Courriers (acteur effectif des courriers, imputations, commentaires, audit)
+  mailsAsDestinataire     Mail[]                @relation("MailDestinataire")
+  mailsCreated            Mail[]                @relation("MailCreatedBy")
+  mailsModified           Mail[]                @relation("MailModifiedBy")
+  mailInputationsAssigned MailInputation[]      @relation("MailInputationUser")
+  mailInputationsCreated  MailInputation[]      @relation("MailInputationCreatedBy")
+  mailComments            MailComment[]         @relation("MailCommentUser")
+  mailDocumentsCreated    MailDocument[]        @relation("MailDocumentCreatedBy")
+  mailScannedDocsCreated  MailScannedDocument[] @relation("MailScannedDocCreatedBy")
+  mailActionLogs          MailActionLog[]       @relation("MailActionLogActor")
+  mailPermissions         MailPermission[]      @relation("MailPermissionGrantee")
+  notifications           Notification[]        @relation("NotificationRecipient")
+
+  // Docu-Archives (bénéficiaire d'un prêt, auteur d'un prêt / d'un commentaire / d'un cycle de vie)
+  lendingsReceived   LendingDocument[]        @relation("LendingBeneficiary")
+  lendingsCreated    LendingDocument[]        @relation("LendingCreatedBy")
+  lendingComments    LendingDocumentComment[] @relation("LendingCommentAuthor")
+  documentLifeCycles DocumentLifeCycle[]      @relation("DocLifeCycleCreatedBy")
+
+  @@unique([userId, groupId])
+  @@index([userId])
+  @@index([groupId])
+  @@map("app_user_group")
+}
+
+model PermissionLevel {
+  permissionLevelId Int    @id @map("permission_level_id") // domain values, not autoincrement
+  name              String @db.VarChar(50)
+
+  typePermissions     DocumentTypePermission[]
+  documentPermissions DocumentPermission[]
+  mailPermissions     MailPermission[]
+  accessInquiries     DocumentAccessInquiry[]
+
+  @@map("permission_level")
+}
+
+model DocumentTypePermission {
+  documentTypePermissionId Int       @id @default(autoincrement()) @map("document_type_permission_id")
+  documentTypeId           Int       @map("document_type_id")
+  permissionLevelId        Int       @map("permission_level_id")
+  /// Bénéficiaire collectif : le RÔLE, pas le profil (`app_group`) — 2026-08-06. Les droits par
+  /// type sont accordés à la même population que celle qui porte les menus, seule notion de
+  /// « groupe d'utilisateurs » exposée par l'administration. `document_permission` (droits sur UN
+  /// document) garde son axe profil, qui reste modélisé séparément.
+  roleId                   Int?      @map("role_id")
+  userGroupId              Int?      @map("user_group_id")
+  /// Période de validité du droit (menu « Sécurité Documentaire », §02 legacy `DateDebut`/`DateFin`).
+  /// `null` = sans limite. Purement déclaratif comme le reste de l'ACL (override D-17) : rien ne
+  /// filtre encore sur ces dates.
+  startDate                DateTime? @map("start_date") @db.Timestamptz(0)
+  endDate                  DateTime? @map("end_date") @db.Timestamptz(0)
+
+  documentType    DocumentType    @relation(fields: [documentTypeId], references: [documentTypeId], onDelete: Cascade)
+  permissionLevel PermissionLevel @relation(fields: [permissionLevelId], references: [permissionLevelId])
+  role            Role?           @relation(fields: [roleId], references: [roleId])
+  userGroup       AppUserGroup?   @relation(fields: [userGroupId], references: [userGroupId])
+
+  // CHECK ((role_id IS NULL) <> (user_group_id IS NULL)) added in raw SQL
+  @@index([documentTypeId])
+  @@index([roleId])
+  @@map("document_type_permission")
+}
+
+/// Demande d'accès à UN document, soumise par un utilisateur qui le consulte sans y avoir de droit
+/// explicite (menu « Sécurité Documentaire » — legacy `DocumentAccessInquiry`).
+///
+/// `status` remplace le simple booléen `Treated` du legacy, qui ne distinguait pas accepté/refusé
+/// une fois la demande traitée : 0 en attente, 1 acceptée, 2 refusée (CHECK en raw SQL, même
+/// patron que `acquisition_batch.status`/`document.document_state`).
+///
+/// L'acceptation crée/actualise un `DocumentPermission` nominatif sur le document (même effet que
+/// le legacy) — c'est `AccessInquiriesService.decide` qui le fait, en réutilisant
+/// `DocumentTabsService.grantPermission` plutôt qu'en dupliquant l'upsert.
+model DocumentAccessInquiry {
+  documentAccessInquiryId Int       @id @default(autoincrement()) @map("document_access_inquiry_id")
+  documentId               Int       @map("document_id")
+  /// Demandeur — « acteur effectif » (convention app_user_group du reste du schéma).
+  userGroupId               Int       @map("user_group_id")
+  permissionLevelId         Int       @map("permission_level_id")
+  motive                    String    @db.Text
+  startDate                 DateTime? @map("start_date") @db.Timestamptz(0)
+  endDate                   DateTime? @map("end_date") @db.Timestamptz(0)
+  status                    Int       @default(0) @db.SmallInt // 0=en attente,1=acceptée,2=refusée (CHECK raw SQL)
+  decidedBy                 Int?      @map("decided_by") // no FK (même convention que document_permission.granted_by)
+  decidedAt                 DateTime? @map("decided_at") @db.Timestamptz(0)
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  document        Document        @relation(fields: [documentId], references: [documentId], onDelete: Cascade)
+  userGroup       AppUserGroup    @relation(fields: [userGroupId], references: [userGroupId])
+  permissionLevel PermissionLevel @relation(fields: [permissionLevelId], references: [permissionLevelId])
+
+  @@index([documentId])
+  @@index([status])
+  @@map("document_access_inquiry")
+}
+
+/// Préférences utilisateur en clé-valeur JSON — équivalent du `SettingManager` d'ABP (table
+/// `AbpSettings`), sans la dimension tenant puisque V6 est mono-tenant.
+///
+/// Volontairement GÉNÉRIQUE : aucune table ne modélise les widgets ni leurs positions. Le
+/// tableau de bord personnalisable y range son agencement sous une clé unique, et toute autre
+/// fonctionnalité peut s'en servir sans migration. La résolution « valeur utilisateur, sinon
+/// défaut du code » est faite en applicatif.
+model UserSetting {
+  userSettingId Int      @id @default(autoincrement()) @map("user_setting_id")
+  userId        Int      @map("user_id")
+  /// Clé de réglage, façon ABP (ex. « dashboard.courriers.layout »).
+  settingKey    String   @map("setting_key") @db.VarChar(200)
+  /// Charge utile libre. `jsonb` : indexable et interrogeable, contrairement à du texte.
+  value         Json     @db.JsonB
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  user AppUser @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([userId, settingKey])
+  @@index([userId])
+  @@map("user_setting")
+}
+
+/// Droit explicite sur UN document, accordé soit à un acteur nommé (`user_group_id`), soit à un
+/// PROFIL entier (`group_id`) — les deux onglets « Accès par Utilisateur » et « Accès par Profil ».
+/// Exactement un des deux est renseigné (CHECK `ck_dp_grantee` en raw SQL, même règle que
+/// `document_type_permission`).
+model DocumentPermission {
+  documentPermissionId Int      @id @default(autoincrement()) @map("document_permission_id")
+  documentId           Int      @map("document_id")
+  permissionLevelId    Int      @map("permission_level_id")
+  userGroupId          Int?     @map("user_group_id")
+  groupId              Int?     @map("group_id")
+  grantedBy            Int?     @map("granted_by") // no FK (PRD)
+  grantedAt            DateTime @default(now()) @map("granted_at") @db.Timestamptz(0)
+  /// Fenêtre de validité du droit, comme `document_type_permission` (même règle). `null` des deux
+  /// côtés = sans limite ; en dehors de `[startDate, endDate]`, le droit n'est plus effectif.
+  startDate            DateTime? @map("start_date") @db.Timestamptz(0)
+  endDate              DateTime? @map("end_date") @db.Timestamptz(0)
+
+  document        Document        @relation(fields: [documentId], references: [documentId], onDelete: Cascade)
+  permissionLevel PermissionLevel @relation(fields: [permissionLevelId], references: [permissionLevelId])
+  userGroup       AppUserGroup?   @relation(fields: [userGroupId], references: [userGroupId])
+  group           AppGroup?       @relation(fields: [groupId], references: [groupId])
+
+  /// Reste un index unique PLEIN : `user_group_id` étant désormais nullable, Postgres considère
+  /// les lignes « profil » (user_group_id NULL) comme toutes distinctes — elles ne s'y heurtent
+  /// donc jamais. Leur unicité à elles est portée par un index PARTIEL sur `group_id` (raw SQL),
+  /// que Prisma ne sait pas déclarer.
+  @@unique([documentId, userGroupId, permissionLevelId])
+  @@index([documentId, userGroupId])
+  @@index([documentId, groupId])
+  @@map("document_permission")
+}

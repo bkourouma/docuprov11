@@ -1,0 +1,11 @@
+// Prisma multi-file schema (GA in Prisma 6). Datasource + generator here;
+// models split by category under ./models/*.prisma.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

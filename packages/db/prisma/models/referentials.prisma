@@ -1,0 +1,140 @@
+// --- Référentiel / Paramétrage (8) --- data-model.md §2
+
+model DocumentType {
+  documentTypeId Int     @id @default(autoincrement()) @map("document_type_id")
+  label          String  @db.VarChar(500)
+  code           String? @db.VarChar(50)
+  isActive       Boolean @default(true) @map("is_active") // partial unique on label WHERE is_active in raw SQL
+
+  documents       Document[]
+  batches         AcquisitionBatch[] // lots ouverts pour ce type (classement décidé en amont)
+  typePermissions DocumentTypePermission[]
+  // Docu-Archives : paramétrage d'archivage, règle de cycle de vie et métadonnées du type.
+  setting         DocumentTypeSetting?
+  lifeCycle       DocumentTypeLifeCycle?
+  metaDatas       MetaDataDocumentType[]
+
+  @@map("document_type")
+}
+
+/// Niveau de confidentialité — référentiel ORDONNÉ, contrairement à `mail_confidentialite` qui
+/// n'est qu'un libellé. C'est le rang qui porte la règle d'accès du module source : l'habilitation
+/// de l'utilisateur (`app_user.confidentialite_id`) doit être de rang SUPÉRIEUR OU ÉGAL à celui du
+/// document. Sans rang, « Confidentiel » et « Secret » seraient incomparables.
+///
+/// `rank` est unique parmi les niveaux actifs (index partiel en raw SQL) : deux niveaux de même
+/// rang rendraient la comparaison ambiguë.
+model Confidentialite {
+  confidentialiteId Int     @id @default(autoincrement()) @map("confidentialite_id")
+  label             String  @db.VarChar(200)
+  /// 0 = le moins restrictif. Un document sans niveau est ouvert à tous les habilités.
+  rank              Int
+  isActive          Boolean @default(true) @map("is_active")
+
+  documents     Document[]
+  users         AppUser[]
+  typeSettings  DocumentTypeSetting[] // confidentialité par défaut d'un type de document
+  batches       AcquisitionBatch[] // confidentialité choisie à l'ouverture du lot (écrase le défaut du type)
+
+  @@map("confidentialite")
+}
+
+model ClassificationPlan {
+  planId   Int     @id @default(autoincrement()) @map("plan_id")
+  parentId Int?    @map("parent_id")
+  label    String  @db.Text
+  code     String? @db.VarChar(50)
+  isPublic Boolean @default(false) @map("is_public")
+  depth    Int     @default(0)
+  path     String  @db.VarChar(900)
+  isActive Boolean @default(true) @map("is_active")
+
+  parent       ClassificationPlan?   @relation("PlanTree", fields: [parentId], references: [planId])
+  children     ClassificationPlan[]  @relation("PlanTree")
+  documents    Document[]
+  typeSettings DocumentTypeSetting[]
+  batches      AcquisitionBatch[] // lots ouverts avec ce plan choisi manuellement (écrase le paramétrage du type)
+
+  @@index([parentId])
+  @@index([path])
+  @@map("classification_plan")
+}
+
+model Location {
+  locationId Int     @id @default(autoincrement()) @map("location_id")
+  parentId   Int?    @map("parent_id")
+  label      String  @db.VarChar(500)
+  code       String? @db.VarChar(50)
+  depth      Int     @default(0)
+  path       String  @db.VarChar(900)
+  isActive   Boolean @default(true) @map("is_active")
+
+  parent    Location?  @relation("LocationTree", fields: [parentId], references: [locationId])
+  children  Location[] @relation("LocationTree")
+  documents Document[]
+
+  @@index([parentId])
+  @@index([path])
+  @@map("location")
+}
+
+/// Un dossier n'a NI localisation NI catégorie : les deux champs ont été retirés de l'écran
+/// « Dossiers » et de la base (migration 20260731160000_drop_dossier_location_category).
+/// `DossierCategory` n'existait que pour ce rattachement, la table a donc été supprimée avec lui.
+/// `Location` SURVIT en revanche : elle reste rattachée au document (`document.location_id`), à la
+/// recherche, aux exports, aux tableaux de bord, aux intercalaires QR et au paramétrage des types.
+model Dossier {
+  dossierId         Int      @id @default(autoincrement()) @map("dossier_id")
+  parentId          Int?     @map("parent_id")
+  label             String   @db.VarChar(500)
+  code              String?  @db.VarChar(50)
+  serviceCodeSuffix String?  @map("service_code_suffix") @db.VarChar(50)
+  depth             Int      @default(0)
+  path              String   @db.VarChar(900)
+  isActive          Boolean  @default(true) @map("is_active") // partial unique on label WHERE is_active in raw SQL
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  parent       Dossier?              @relation("DossierTree", fields: [parentId], references: [dossierId])
+  children     Dossier[]             @relation("DossierTree")
+  documents    Document[]
+  batches      AcquisitionBatch[]
+  typeSettings DocumentTypeSetting[]
+
+  @@index([parentId])
+  @@index([path])
+  @@map("dossier")
+}
+
+model DossierExitMotive {
+  exitMotiveId Int     @id @default(autoincrement()) @map("exit_motive_id")
+  label        String  @db.VarChar(150)
+  isActive     Boolean @default(true) @map("is_active")
+
+  @@map("dossier_exit_motive")
+}
+
+model FileType {
+  fileTypeId   Int     @id @default(autoincrement()) @map("file_type_id")
+  extension    String  @unique @db.VarChar(16)
+  friendlyName String  @map("friendly_name") @db.VarChar(100)
+  maxSizeBytes BigInt  @default(0) @map("max_size_bytes")
+  icon         String  @default("") @db.VarChar(100)
+  isMedia      Boolean @default(false) @map("is_media")
+  isActive     Boolean @default(true) @map("is_active")
+
+  files DocumentFile[]
+
+  @@map("file_type")
+}
+
+model IntercalaireCategory {
+  intercalaireCategoryId Int     @id @default(autoincrement()) @map("intercalaire_category_id")
+  categoryCode           String  @unique @map("category_code") @db.VarChar(20)
+  targetTable            String? @map("target_table") @db.VarChar(128)
+  targetColumn           String? @map("target_column") @db.VarChar(64)
+  isBlank                Boolean @default(false) @map("is_blank")
+  isIngestHandled        Boolean @default(true) @map("is_ingest_handled")
+  label                  String  @db.VarChar(100)
+
+  @@map("intercalaire_category")
+}

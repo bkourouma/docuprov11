@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@archivage/web",
+        "run",
+        "dev"
+      ],
+      "port": 5000
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@archivage/api",
+        "exec",
+        "nest",
+        "start",
+        "--watch"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "worker",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@archivage/worker",
+        "exec",
+        "tsx",
+        "watch",
+        "src/index.ts"
+      ]
+    }
+  ]
+}

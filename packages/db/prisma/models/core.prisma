@@ -1,0 +1,186 @@
+// --- Cœur métier (4) --- data-model.md §1
+
+model AcquisitionBatch {
+  batchId          Int      @id @default(autoincrement()) @map("batch_id")
+  batchGuid        String   @unique @default(dbgenerated("gen_random_uuid()")) @map("batch_guid") @db.Uuid
+  dossierId        Int?     @map("dossier_id")
+  /// Plan de classement choisi À L'OUVERTURE du lot, en écrasement du plan par défaut du type
+  /// (`document_type_setting`). `null` = pas de choix manuel, le worker retombe sur le paramétrage
+  /// du type. En mode « avec intercalaires », un intercalaire « Plan » garde priorité sur ce champ.
+  planId           Int?     @map("plan_id")
+  /// Type de document choisi À L'OUVERTURE du lot : c'est LUI qui classe les documents produits
+  /// (dossier + plan issus de `document_type_setting`, sauf `planId` ci-dessus) et qui fixe les
+  /// métadonnées à saisir. En mode « avec intercalaires », il ne sert que de repli pour les
+  /// documents que le QR n'a pas typés — le worker n'écrase jamais un type lu sur un intercalaire.
+  documentTypeId   Int?     @map("document_type_id")
+  /// Confidentialité choisie À L'OUVERTURE du lot, en écrasement du niveau par défaut du type
+  /// (`document_type_setting`). `null` = pas de choix manuel, le worker retombe sur le paramétrage
+  /// du type — mêmes règles que `planId` ci-dessus.
+  confidentialiteId Int?    @map("confidentialite_id")
+  scannedBy        Int?     @map("scanned_by")
+  scanDate         DateTime @default(now()) @map("scan_date") @db.Timestamptz(0)
+  sourceLabel      String?  @map("source_label") @db.VarChar(255)
+  fileCount        Int      @default(0) @map("file_count")
+  documentCount    Int      @default(0) @map("document_count")
+  processedFiles   Int      @default(0) @map("processed_files") // fichiers déjà traités (barre de progression)
+  useIntercalaires Boolean  @default(false) @map("use_intercalaires") // true = ancien système QR + OCR (multi-documents)
+  status           Int      @default(0) @db.SmallInt // 0=ouvert,1=terminé,2=échec (CHECK in raw SQL)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  dossier         Dossier?            @relation(fields: [dossierId], references: [dossierId])
+  plan            ClassificationPlan? @relation(fields: [planId], references: [planId])
+  documentType    DocumentType?       @relation(fields: [documentTypeId], references: [documentTypeId])
+  confidentialite Confidentialite?    @relation(fields: [confidentialiteId], references: [confidentialiteId])
+  scannedByUser   AppUserGroup?       @relation("BatchScannedBy", fields: [scannedBy], references: [userGroupId])
+  documents       Document[]
+
+  @@index([dossierId])
+  @@index([planId])
+  @@index([confidentialiteId])
+  @@index([scanDate])
+  @@map("acquisition_batch")
+}
+
+model Document {
+  documentId         Int       @id @default(autoincrement()) @map("document_id")
+  label              String    @db.VarChar(500)
+  documentTypeId     Int?      @map("document_type_id")
+  planId             Int?      @map("plan_id")
+  locationId         Int?      @map("location_id")
+  dossierId          Int?      @map("dossier_id")
+  /// Niveau de confidentialité exigé pour ce document. `null` = aucun niveau requis.
+  confidentialiteId  Int?      @map("confidentialite_id")
+  batchId            Int?      @map("batch_id")
+  cote               String?   @db.VarChar(50)
+  documentDate       DateTime? @map("document_date") @db.Date // date métier (FR-036)
+  archiveYear        Int?      @map("archive_year")
+  isArchived         Boolean   @default(false) @map("is_archived") // false=en attente QA, true=validé
+  isFrozen           Boolean   @default(false) @map("is_frozen")
+  /// État documentaire du portage Docu-Archives (source `DocumentStates`) :
+  /// 0 NonArchivé, 1 Archivé, 2 Restreint, 3 Épuré (DUA expirée), 4 Vidéo-codage. CHECK raw SQL.
+  ///
+  /// Vit À CÔTÉ de `is_archived`/`is_frozen`, qui restent la vérité pour l'acquisition et la
+  /// recherche : seule l'épuration (3, écran « DUA Expirés ») écrit ici, pour ne rien changer aux
+  /// écrans existants. La valeur par défaut de la colonne est calculée depuis `is_archived` à la
+  /// migration.
+  documentState      Int       @default(0) @map("document_state") @db.SmallInt
+  overview           String?   @db.Text
+  validatedBy        Int?      @map("validated_by")
+  validatedAt        DateTime? @map("validated_at") @db.Timestamptz(0)
+  workflowInstanceId Int?      @map("workflow_instance_id")
+  workflowTaskId     Int?      @map("workflow_task_id")
+  createdBy          Int?      @map("created_by")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  modifiedBy         Int?      @map("modified_by")
+  modifiedAt         DateTime? @map("modified_at") @db.Timestamptz(0)
+  /// Dernière vérification d'intégrité (onglet « Sécurité et conformité ») et son verdict.
+  /// `integrityOk` à `null` = jamais vérifié ; le verdict porte sur TOUS les fichiers de la
+  /// version courante (présence sur le coffre + empreinte conforme).
+  dateLastVerified   DateTime? @map("date_last_verified") @db.Timestamptz(0)
+  integrityOk        Boolean?  @map("integrity_ok")
+
+  documentType     DocumentType?           @relation(fields: [documentTypeId], references: [documentTypeId])
+  plan             ClassificationPlan?     @relation(fields: [planId], references: [planId])
+  location         Location?               @relation(fields: [locationId], references: [locationId])
+  dossier          Dossier?                @relation(fields: [dossierId], references: [dossierId])
+  confidentialite  Confidentialite?        @relation(fields: [confidentialiteId], references: [confidentialiteId])
+  batch            AcquisitionBatch?       @relation(fields: [batchId], references: [batchId])
+  createdByUser    AppUserGroup?           @relation("DocCreatedBy", fields: [createdBy], references: [userGroupId])
+  modifiedByUser   AppUserGroup?           @relation("DocModifiedBy", fields: [modifiedBy], references: [userGroupId])
+  validatedByUser  AppUserGroup?           @relation("DocValidatedBy", fields: [validatedBy], references: [userGroupId])
+  versions         DocumentVersion[]
+  permissions      DocumentPermission[]
+  mailLinks        MailDocument[] // Docu-Courriers : liaisons courrier ↔ document
+  mailScannedLinks MailScannedDocument[] // Docu-Courriers : documents scannés enregistrés
+  seal             DocumentSeal? // Cachet serveur : signature Ed25519 + horodatage
+  lifeCycle        DocumentLifeCycle? // Docu-Archives : échéances DUA/conformité propres au document
+  lendingDetails   LendingDocumentDetail[] // Docu-Archives : prêts / communications
+  metadataValues   DocumentMetadataValue[] // Docu-Archives : valeurs saisies des métadonnées du type
+  accessInquiries  DocumentAccessInquiry[] // Sécurité Documentaire : demandes d'accès sur ce document
+
+  @@index([dossierId])
+  @@index([documentTypeId])
+  @@index([planId])
+  @@index([locationId])
+  @@index([documentDate])
+  @@index([batchId])
+  @@index([isArchived, isFrozen])
+  @@index([documentState])
+  @@map("document")
+}
+
+/// Cachet serveur d'un document : signature électronique Ed25519 + horodatage, apposés par
+/// l'installation (onglet « Sécurité et conformité »).
+///
+/// L'horodatage (`sealedAt`) est INCLUS dans la charge signée : le modifier après coup invalide
+/// la signature. C'est ce qui en fait un horodatage et non une simple date en base.
+///
+/// `payload` conserve la charge EXACTE qui a été signée (empreintes des binaires au moment du
+/// scellement). Deux contrôles distincts en découlent, et l'écran les distingue :
+///  - la signature est-elle authentique (produite par la clé de cette installation) ;
+///  - le contenu actuel correspond-il encore à ce qui a été scellé.
+/// Un seul champ « valide/invalide » confondrait « on a falsifié le cachet » et « le document a
+/// légitimement changé depuis ».
+model DocumentSeal {
+  documentSealId Int      @id @default(autoincrement()) @map("document_seal_id")
+  documentId     Int      @unique @map("document_id")
+  /// Algorithme de signature — figé à `Ed25519`, nommé pour rester vérifiable après rotation.
+  algorithm      String   @db.VarChar(32)
+  /// Empreinte SHA-256 de la clé PUBLIQUE ayant signé : dit quelle clé vérifier.
+  keyFingerprint String   @map("key_fingerprint") @db.VarChar(64)
+  payload        String   @db.Text
+  signature      String   @db.Text
+  sealedAt       DateTime @map("sealed_at") @db.Timestamptz(0)
+  sealedBy       Int?     @map("sealed_by")
+
+  document Document @relation(fields: [documentId], references: [documentId], onDelete: Cascade)
+
+  @@map("document_seal")
+}
+
+model DocumentVersion {
+  documentVersionId Int      @id @default(autoincrement()) @map("document_version_id")
+  documentId        Int      @map("document_id")
+  versionNumber     Int      @default(1) @map("version_number")
+  isCurrent         Boolean  @default(true) @map("is_current") // single current enforced via raw-SQL partial unique
+  isValidated       Boolean  @default(false) @map("is_validated")
+  comment           String?  @db.Text
+  createdBy         Int?     @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  document      Document       @relation(fields: [documentId], references: [documentId], onDelete: Cascade)
+  createdByUser AppUserGroup?  @relation("VersionCreatedBy", fields: [createdBy], references: [userGroupId])
+  files         DocumentFile[]
+
+  @@unique([documentId, versionNumber])
+  @@index([documentId])
+  @@map("document_version")
+}
+
+model DocumentFile {
+  fileId            Int      @id @default(autoincrement()) @map("file_id")
+  documentVersionId Int      @map("document_version_id")
+  fileTypeId        Int      @map("file_type_id")
+  originalName      String?  @map("original_name") @db.VarChar(500)
+  fileExtension     String   @map("file_extension") @db.VarChar(16)
+  byteLength        BigInt?  @map("byte_length")
+  pageCount         Int?     @map("page_count")
+  ocrText           String?  @map("ocr_text") @db.Text // full-text P3 (tsvector/GIN in raw SQL)
+  redaction         String?  @db.Text
+  pdfOwner          String?  @map("pdf_owner") @db.VarChar(256)
+  pdfPassword       String?  @map("pdf_password") @db.VarChar(256)
+  sortOrder         Int      @default(0) @map("sort_order")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+  /// Empreinte SHA-256 (hexadécimal) du binaire — EMPREINTE DE RÉFÉRENCE de l'onglet « Sécurité
+  /// et conformité ». Portée par le fichier et non par le document : c'est le binaire qui a une
+  /// empreinte, et un document peut en compter plusieurs. `null` tant qu'aucune vérification n'a
+  /// été lancée (fonds antérieurs) — la première la pose.
+  hash              String?  @db.VarChar(64)
+  hashComputedAt    DateTime? @map("hash_computed_at") @db.Timestamptz(0)
+
+  version  DocumentVersion @relation(fields: [documentVersionId], references: [documentVersionId], onDelete: Cascade)
+  fileType FileType        @relation(fields: [fileTypeId], references: [fileTypeId])
+
+  @@index([documentVersionId])
+  @@map("document_file")
+}

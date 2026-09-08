@@ -1,0 +1,50 @@
+// --- Audit / Journal (3) --- data-model.md §4
+
+model AuditAction {
+  auditActionId Int    @id @default(autoincrement()) @map("audit_action_id")
+  description   String @db.VarChar(500)
+
+  dataChanges DataChangeAudit[]
+
+  @@map("audit_action")
+}
+
+model NavigationAudit {
+  auditId       BigInt   @id @default(autoincrement()) @map("audit_id")
+  userGroupId   Int?     @map("user_group_id")
+  activity      String?  @db.Text
+  url           String?  @db.VarChar(2000)
+  menuId        Int?     @map("menu_id")
+  activityAt    DateTime @default(now()) @map("activity_at") @db.Timestamptz(0)
+  actorFullName String?  @map("actor_full_name") @db.VarChar(200)
+  actorRole     String?  @map("actor_role") @db.VarChar(200)
+  actorService  String?  @map("actor_service") @db.VarChar(400)
+  ipAddress     String?  @map("ip_address") @db.VarChar(64)
+  machineName   String?  @map("machine_name") @db.VarChar(128)
+
+  userGroup AppUserGroup? @relation(fields: [userGroupId], references: [userGroupId])
+
+  @@index([userGroupId, activityAt])
+  @@index([activityAt])
+  @@map("navigation_audit")
+}
+
+model DataChangeAudit {
+  dataChangeAuditId BigInt   @id @default(autoincrement()) @map("data_change_audit_id")
+  userGroupId       Int?     @map("user_group_id")
+  auditActionId     Int?     @map("audit_action_id")
+  changedAt         DateTime @default(now()) @map("changed_at") @db.Timestamptz(0)
+  objectRef         String?  @map("object_ref") @db.VarChar(256)
+  oldValue          String?  @map("old_value") @db.Text
+  newValue          String?  @map("new_value") @db.Text
+  /// Nom de l'acteur FIGÉ à l'écriture : `userGroupId` est nullable et le compte peut changer
+  /// de groupe (ou disparaître) — un journal doit garder l'identité du moment du fait.
+  actorFullName     String?  @map("actor_full_name") @db.VarChar(200)
+
+  userGroup   AppUserGroup? @relation(fields: [userGroupId], references: [userGroupId])
+  auditAction AuditAction?  @relation(fields: [auditActionId], references: [auditActionId])
+
+  @@index([userGroupId, changedAt])
+  @@index([objectRef])
+  @@map("data_change_audit")
+}

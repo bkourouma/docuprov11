@@ -1,0 +1,28 @@
+{
+  "name": "@archivage/exports",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "P3 exports: xlsx (ExcelJS), docx, csv (fast-csv), pdf (PDFKit).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "jest"
+  },
+  "dependencies": {
+    "dejavu-fonts-ttf": "^2.37.3",
+    "docx": "^9.1.0",
+    "exceljs": "^4.4.0",
+    "fast-csv": "^5.0.2",
+    "jszip": "^3.10.1",
+    "pdfkit": "^0.15.1"
+  },
+  "devDependencies": {
+    "@archivage/config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "@types/pdfkit": "^0.13.5",
+    "typescript": "^5.7.2"
+  }
+}

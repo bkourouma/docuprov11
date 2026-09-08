@@ -1,0 +1,42 @@
+{
+  "name": "@archivage/db",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Prisma schema (multi-file), migrations, seed and typed client for PostgreSQL.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "echo \"(@archivage/db) no tests yet\"",
+    "db:seed:demo": "tsx prisma/seed-demo.ts",
+    "db:seed:correspondants": "tsx prisma/seed-correspondants.ts",
+    "db:seed:types": "tsx prisma/seed-document-types.ts",
+    "db:seed:dossiers": "tsx prisma/seed-dossiers.ts",
+    "db:seed:plan": "tsx prisma/seed-classification-plan.ts",
+    "db:seed:type-settings": "tsx prisma/seed-type-settings.ts",
+    "db:seed:metadata": "tsx prisma/seed-metadata.ts",
+    "db:seed:life-cycles": "tsx prisma/seed-life-cycles.ts",
+    "db:seed:confidentialites": "tsx prisma/seed-confidentialites.ts",
+    "db:migrate:permission-levels": "tsx prisma/migrate-permission-levels.ts",
+    "db:seed:dashboard": "tsx prisma/seed-dashboard-demo.ts",
+    "db:grant:dashboard": "tsx prisma/grant-dashboard-menu.ts"
+  },
+  "prisma": {
+    "schema": "prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0"
+  },
+  "devDependencies": {
+    "@archivage/config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "prisma": "^6.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

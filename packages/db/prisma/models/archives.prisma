@@ -1,0 +1,297 @@
+// --- Docu-Archives : cycle de vie, métadonnées et prêts (12) ---
+// docs/DOCUMENTATION_MENUS_DOCU_ARCHIVES.md
+//
+// Portage métier des menus « Paramétrage Docu-Archives » et « Docu-Archives » (source ASP.NET
+// Zero / ABP) sur la stack V6. Conventions appliquées, identiques au portage Docu-Courriers :
+//  - Mono-tenant : aucune colonne TenantId (les entités source étaient IMayHaveTenant).
+//  - Pas de socle FullAuditedEntity : `is_active` (désactivation) sur les référentiels, et
+//    created_by/created_at seulement là où la traçabilité est métier (prêts).
+//  - Pas d'énumération Prisma : les états sont des `Int @db.SmallInt` + CHECK (raw SQL).
+//      DataType (metadata.data_type) : 0 Null, 1 Texte, 2 Entier, 3 Date, 4 Texte long,
+//                                      5 Booléen, 6 Liste                        (§8)
+//  - Acteurs métier (bénéficiaire d'un prêt, auteur) → app_user_group (acteur effectif V6),
+//    et non app_user : c'est la convention posée par Docu-Courriers et l'audit.
+//  - Libellé = `label` (convention V6), là où le source disait `Name`.
+//  - `Dossiers` du source EXISTE DÉJÀ en V6 (`dossier`, menu /admin/dossiers) : non redéfini ici.
+//
+// Écarts assumés par rapport au source, faute d'équivalent V6 :
+//  - `ParametrageTypedocuments.WorkflowId` : V6 n'a pas de table Workflows → non porté.
+//  - `ParametrageTypedocuments.ConfidentialitesId` : la seule table de confidentialité de V6
+//    (`mail_confidentialite`) appartient à Docu-Courriers et le `document` V6 ne porte aucune
+//    confidentialité → non porté (rien ne pourrait consommer ce défaut).
+//  - `ParametrageTypedocuments.DocumentCategoryId` : déjà obsolète côté source → non porté.
+//  - `location_id` est AJOUTÉ au paramétrage : en V6 la localisation est une propriété de premier
+//    plan du document (colonne `document.location_id`), au même titre que dossier et classement.
+
+// ===========================================================================
+// Référentiels plats du cycle de vie (menus §4, §5, §6)
+// ===========================================================================
+
+/// Mode de destruction appliqué en fin de cycle de vie (§4 — source `DestructionModes`).
+model DestructionMode {
+  destructionModeId Int     @id @default(autoincrement()) @map("destruction_mode_id")
+  label             String  @db.VarChar(500)
+  isActive          Boolean @default(true) @map("is_active") // unique partiel sur label WHERE is_active (raw SQL)
+
+  typeLifeCycles     DocumentTypeLifeCycle[]
+  documentLifeCycles DocumentLifeCycle[]
+
+  @@map("destruction_mode")
+}
+
+/// Sort final d'un document en fin de cycle de vie (§5 — source `FinalFates`).
+model FinalFate {
+  finalFateId Int     @id @default(autoincrement()) @map("final_fate_id")
+  label       String  @db.VarChar(500)
+  isActive    Boolean @default(true) @map("is_active")
+
+  typeLifeCycles     DocumentTypeLifeCycle[]
+  documentLifeCycles DocumentLifeCycle[]
+
+  @@map("final_fate")
+}
+
+/// Motif invoqué lors d'une communication / d'un prêt de document (§6 — source `LendingMotives`).
+model LendingMotive {
+  lendingMotiveId Int     @id @default(autoincrement()) @map("lending_motive_id")
+  label           String  @db.VarChar(500)
+  isActive        Boolean @default(true) @map("is_active")
+
+  lendings LendingDocument[]
+
+  @@map("lending_motive")
+}
+
+// ===========================================================================
+// Paramétrage par type de document (menus §1, §3)
+// ===========================================================================
+
+/// Rangement par défaut d'un type de document (§1 — source `ParametrageTypedocuments`) :
+/// où la pièce va (`dossier`) et de quoi elle relève (`classification_plan`). Pré-remplit le
+/// formulaire d'indexation quand un type est choisi.
+///
+/// `document_type_id` est UNIQUE : le source autorisait plusieurs lignes par type sans dire
+/// laquelle gagne, ce qui rendait le pré-remplissage non déterministe. Un paramétrage = un type.
+///
+/// RÉDUIT aux deux axes de rangement (migration 20260731180000). Les colonnes techniques du
+/// source — localisation par défaut, OCR, cryptage, taux de compression, profil de scanner,
+/// routines — ont été retirées : elles décrivaient une chaîne de numérisation que V6 ne pilote
+/// pas depuis ce paramétrage, et aucune n'était renseignée.
+model DocumentTypeSetting {
+  documentTypeSettingId Int  @id @default(autoincrement()) @map("document_type_setting_id")
+  documentTypeId        Int  @unique @map("document_type_id")
+  dossierId             Int? @map("dossier_id")
+  planId                Int? @map("plan_id")
+  /// Confidentialité par défaut des documents de ce type, posée à leur CRÉATION (worker), comme
+  /// le dossier et le plan. `null` = document non classifié, comme aujourd'hui.
+  confidentialiteId     Int? @map("confidentialite_id")
+
+  /// --- Consigne de numérisation (onglet « Paramétrage de numérisation ») ---
+  ///
+  /// DOCUMENTAIRE, et non exécutable : V6 ne pilote aucun scanner. L'OCR effectif d'un lot dépend
+  /// de son mode d'acquisition (`acquisition_batch.use_intercalaires`), pas de ces champs. Ils
+  /// consignent la consigne de numérisation d'un type — ce que l'opérateur doit appliquer — pour
+  /// que l'écran de consultation puisse la rappeler à côté de ce qui a réellement été fait.
+  /// Les confondre avec un pilotage ferait croire à un automatisme qui n'existe pas.
+  ocr                   Boolean  @default(false)
+  cryptage              Boolean  @default(false)
+  /// Taux de compression visé, en pourcentage (1..100). CHECK en raw SQL.
+  tauxCompression       Int?     @map("taux_compression")
+  profilScanner         String?  @map("profil_scanner") @db.VarChar(200)
+  routines              String?  @db.VarChar(500)
+
+  documentType    DocumentType        @relation(fields: [documentTypeId], references: [documentTypeId], onDelete: Cascade)
+  dossier         Dossier?            @relation(fields: [dossierId], references: [dossierId])
+  plan            ClassificationPlan? @relation(fields: [planId], references: [planId])
+  confidentialite Confidentialite?    @relation(fields: [confidentialiteId], references: [confidentialiteId])
+
+  @@map("document_type_setting")
+}
+
+/// Règle de conservation d'un type de document (§3 — source `DocumentTypeLifeCyCles`) : durée
+/// d'utilité administrative (DUA), durée de conformité, sort final et mode de destruction.
+///
+/// Stockées en MOIS (colonne inchangée) et comptées depuis la date métier du document
+/// (`document.document_date`, à défaut `document.created_at`) — cf. `domain/dua.ts`, dont le
+/// calcul d'échéance (`addMonths`, SQL `make_interval(months => …)`) reste en mois. Seul l'écran
+/// de paramétrage (`/admin/archives/cycles-de-vie`) affiche et saisit ces durées en ANNÉES,
+/// convertissant à la frontière (`×12` à l'enregistrement, `÷12` à l'affichage) — migration
+/// 20260731190000. Ne pas renommer la colonne ni changer son unité sans adapter ce calcul.
+///
+/// `observations` RETIRÉ (même migration) : confirmé vide sur toutes les lignes existantes.
+/// `document_type_id` est UNIQUE, pour la même raison que `document_type_setting`.
+model DocumentTypeLifeCycle {
+  documentTypeLifeCycleId Int  @id @default(autoincrement()) @map("document_type_life_cycle_id")
+  documentTypeId          Int  @unique @map("document_type_id")
+  usefulnessLifespan      Int  @map("usefulness_lifespan") // DUA, en mois (>= 0, CHECK raw SQL)
+  complianceLifespan      Int  @map("compliance_lifespan") // durée de conformité, en mois
+  finalFateId             Int? @map("final_fate_id")
+  destructionModeId       Int? @map("destruction_mode_id")
+
+  documentType    DocumentType     @relation(fields: [documentTypeId], references: [documentTypeId], onDelete: Cascade)
+  finalFate       FinalFate?       @relation(fields: [finalFateId], references: [finalFateId])
+  destructionMode DestructionMode? @relation(fields: [destructionModeId], references: [destructionModeId])
+
+  @@map("document_type_life_cycle")
+}
+
+/// Cycle de vie effectivement appliqué à UN document (source `DocumentLifeCycles`), qui l'emporte
+/// sur la règle de son type. Les deux durées sont ici des DATES d'échéance, pas des durées : le
+/// source les stocke déjà calculées, et une échéance saisie à la main doit pouvoir s'écarter de
+/// la règle générale.
+model DocumentLifeCycle {
+  documentLifeCycleId Int       @id @default(autoincrement()) @map("document_life_cycle_id")
+  documentId          Int       @unique @map("document_id")
+  usefulnessLifespan  DateTime  @map("usefulness_lifespan") @db.Date // échéance DUA
+  complianceLifespan  DateTime  @map("compliance_lifespan") @db.Date // échéance de conformité
+  observations        String?   @db.Text
+  finalFateId         Int?      @map("final_fate_id")
+  destructionModeId   Int?      @map("destruction_mode_id")
+  createdBy           Int?      @map("created_by")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  modifiedAt          DateTime? @map("modified_at") @db.Timestamptz(0)
+
+  document        Document         @relation(fields: [documentId], references: [documentId], onDelete: Cascade)
+  finalFate       FinalFate?       @relation(fields: [finalFateId], references: [finalFateId])
+  destructionMode DestructionMode? @relation(fields: [destructionModeId], references: [destructionModeId])
+  createdByUser   AppUserGroup?    @relation("DocLifeCycleCreatedBy", fields: [createdBy], references: [userGroupId])
+
+  @@index([usefulnessLifespan])
+  @@map("document_life_cycle")
+}
+
+// ===========================================================================
+// Métadonnées dynamiques (menus §7, §8, §9)
+// ===========================================================================
+
+/// Champ de métadonnée réutilisable (§8 — source `MetaDatas`). `dataType` porte le type de saisie
+/// du formulaire dynamique ; à `6` (Liste), les valeurs proposées viennent de `metadata_list_item`.
+model MetaData {
+  metaDataId Int     @id @default(autoincrement()) @map("metadata_id")
+  label      String  @db.VarChar(500)
+  dataType   Int     @default(0) @map("data_type") @db.SmallInt // 0..6 (CHECK raw SQL)
+  isActive   Boolean @default(true) @map("is_active")
+
+  listItems      MetaDataListItem[]
+  documentTypes  MetaDataDocumentType[]
+  documentValues DocumentMetadataValue[]
+
+  @@map("metadata")
+}
+
+/// Valeur possible d'une métadonnée de type Liste (§9 — source `MetaDatListItems`).
+model MetaDataListItem {
+  metaDataListItemId Int     @id @default(autoincrement()) @map("metadata_list_item_id")
+  metaDataId         Int     @map("metadata_id")
+  label              String  @db.VarChar(500)
+  isActive           Boolean @default(true) @map("is_active")
+
+  metaData       MetaData                @relation(fields: [metaDataId], references: [metaDataId], onDelete: Cascade)
+  documentValues DocumentMetadataValue[]
+
+  @@index([metaDataId])
+  @@map("metadata_list_item")
+}
+
+/// Association métadonnée ↔ type de document (§7 — source `MetaDataDocumentTypes`) : détermine
+/// les champs du formulaire dynamique d'indexation pour un type donné.
+model MetaDataDocumentType {
+  metaDataDocumentTypeId Int @id @default(autoincrement()) @map("metadata_document_type_id")
+  documentTypeId         Int @map("document_type_id")
+  metaDataId             Int @map("metadata_id")
+
+  documentType DocumentType @relation(fields: [documentTypeId], references: [documentTypeId], onDelete: Cascade)
+  metaData     MetaData     @relation(fields: [metaDataId], references: [metaDataId], onDelete: Cascade)
+
+  @@unique([documentTypeId, metaDataId])
+  @@index([metaDataId])
+  @@map("metadata_document_type")
+}
+
+/// VALEUR saisie d'une métadonnée sur UN document — le pendant « données » de
+/// `metadata_document_type`, qui n'est que de la configuration (quels champs pour quel type).
+///
+/// Une seule colonne texte porte toutes les saisies, normalisées selon le `dataType` de la
+/// métadonnée (entier en base 10, date ISO `AAAA-MM-JJ`, booléen `true`/`false`) : typer par
+/// colonne n'apporterait rien tant qu'aucun écran ne trie ni ne filtre sur ces valeurs.
+/// Exception, les métadonnées de type Liste (`dataType = 6`), qui pointent l'élément choisi par
+/// clé étrangère — seul cas où un libellé recopié pourrait diverger du référentiel.
+///
+/// Un champ vidé SUPPRIME sa ligne (CHECK raw SQL : `value` ou `metadata_list_item_id` renseigné),
+/// pour qu'« absent » et « vide » ne soient pas deux états distincts à traiter côté écran.
+model DocumentMetadataValue {
+  documentMetadataValueId Int     @id @default(autoincrement()) @map("document_metadata_value_id")
+  documentId              Int     @map("document_id")
+  metaDataId              Int     @map("metadata_id")
+  value                   String? @db.Text
+  metaDataListItemId      Int?    @map("metadata_list_item_id")
+
+  document         Document          @relation(fields: [documentId], references: [documentId], onDelete: Cascade)
+  metaData         MetaData          @relation(fields: [metaDataId], references: [metaDataId], onDelete: Cascade)
+  metaDataListItem MetaDataListItem? @relation(fields: [metaDataListItemId], references: [metaDataListItemId])
+
+  @@unique([documentId, metaDataId])
+  @@index([metaDataId])
+  @@map("document_metadata_value")
+}
+
+// ===========================================================================
+// Prêt / communication de documents (menus Docu-Archives §3 à §6)
+// ===========================================================================
+
+/// Entête de prêt : un bénéficiaire, un motif, des dates (source `LendingDocuments`).
+model LendingDocument {
+  lendingDocumentId   Int       @id @default(autoincrement()) @map("lending_document_id")
+  startDate           DateTime  @map("start_date") @db.Date
+  projectedReturnDate DateTime? @map("projected_return_date") @db.Date
+  /// Retour de l'ENTÊTE : posé automatiquement quand le dernier détail est retourné.
+  returnedDate        DateTime? @map("returned_date") @db.Timestamptz(0)
+  lendingMotiveId     Int?      @map("lending_motive_id")
+  /// Bénéficiaire du prêt (acteur effectif V6).
+  userGroupId         Int       @map("user_group_id")
+  createdBy           Int?      @map("created_by")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  motive        LendingMotive?           @relation(fields: [lendingMotiveId], references: [lendingMotiveId])
+  userGroup     AppUserGroup             @relation("LendingBeneficiary", fields: [userGroupId], references: [userGroupId])
+  createdByUser AppUserGroup?            @relation("LendingCreatedBy", fields: [createdBy], references: [userGroupId])
+  details       LendingDocumentDetail[]
+  comments      LendingDocumentComment[]
+
+  @@index([userGroupId])
+  @@index([startDate])
+  @@map("lending_document")
+}
+
+/// Un document prêté au sein d'un prêt (source `LendingDocumentDetail`). C'est ce niveau qui
+/// porte le retour effectif : un prêt peut être rendu document par document.
+model LendingDocumentDetail {
+  lendingDocumentDetailId Int       @id @default(autoincrement()) @map("lending_document_detail_id")
+  lendingDocumentId       Int       @map("lending_document_id")
+  documentId              Int       @map("document_id")
+  returnedDate            DateTime? @map("returned_date") @db.Timestamptz(0)
+
+  lending  LendingDocument @relation(fields: [lendingDocumentId], references: [lendingDocumentId], onDelete: Cascade)
+  document Document        @relation(fields: [documentId], references: [documentId], onDelete: Cascade)
+
+  @@unique([lendingDocumentId, documentId])
+  @@index([documentId])
+  @@index([returnedDate])
+  @@map("lending_document_detail")
+}
+
+/// Commentaire libre sur un prêt (source `LendingDocumentComments`). Pas de menu dédié : exposé
+/// dans le détail d'un prêt.
+model LendingDocumentComment {
+  lendingDocumentCommentId Int      @id @default(autoincrement()) @map("lending_document_comment_id")
+  lendingDocumentId        Int      @map("lending_document_id")
+  userGroupId              Int      @map("user_group_id")
+  comments                 String   @db.Text
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  lending   LendingDocument @relation(fields: [lendingDocumentId], references: [lendingDocumentId], onDelete: Cascade)
+  userGroup AppUserGroup    @relation("LendingCommentAuthor", fields: [userGroupId], references: [userGroupId])
+
+  @@index([lendingDocumentId])
+  @@map("lending_document_comment")
+}

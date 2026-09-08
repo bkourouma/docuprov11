@@ -1,0 +1,1611 @@
+openapi: 3.0.3
+info:
+  title: Reprise « Archivage par QR » — API
+  version: "1.0.0"
+  description: >
+    Contrats REST des trois écrans (P1 intercalaires, P2 acquisition par lot,
+    P3 recherche & export) et de l'administration des référentiels.
+    Feature 001-archivage-qr. Voir spec.md / data-model.md / qr-payload.md.
+    Toutes les routes exigent une authentification (JWT Bearer). P3 applique
+    l'habilitation « refus par défaut » (D-17).
+
+servers:
+  - url: /api
+
+tags:
+  - name: P1-Intercalaires
+  - name: P2-Acquisition
+  - name: P3-Recherche
+  - name: Referentiels
+  - name: Docu-Courriers
+    description: >
+      Module courrier (§05–§13). Chaque endpoint est gardé par le menu de son écran
+      (@RequireMenu) ; l'admin bypasse. Acteur = app_user_group du JWT.
+  - name: Courriers-Parametrage
+    description: Référentiels de paramétrage courrier (§14–§19). Écritures gardées par le menu correspondant.
+  - name: Notifications
+    description: Inbox in-app + badges (chaque acteur ne voit que ses propres notifications).
+
+paths:
+
+  # ---------------------------------------------------------------- P1
+  /intercalaires/categories:
+    get:
+      tags: [P1-Intercalaires]
+      summary: Catégories d'intercalaire sélectionnables (FR-001)
+      responses:
+        "200":
+          description: Liste des catégories (TYPE_DOCUMENT, PLAN, LOCALISATION, DOSSIER, BLANK)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/IntercalaireCategory" }
+
+  /intercalaires/items:
+    get:
+      tags: [P1-Intercalaires]
+      summary: Éléments d'une catégorie (arbre indenté pour PLAN/LOCALISATION) (FR-002)
+      parameters:
+        - name: category
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [TYPE_DOCUMENT, PLAN, LOCALISATION, DOSSIER, BLANK]
+      responses:
+        "200":
+          description: Éléments (depth/path pour le rendu indenté ; vide pour BLANK)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SelectableItem" }
+
+  /intercalaires/generate:
+    post:
+      tags: [P1-Intercalaires]
+      summary: Génère le PDF imprimable, une page A4 par élément (FR-003→007)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, itemIds]
+              properties:
+                category:
+                  type: string
+                  enum: [TYPE_DOCUMENT, PLAN, LOCALISATION, DOSSIER, BLANK]
+                itemIds:
+                  type: array
+                  items: { type: integer }
+                  description: >
+                    Au moins 1 élément requis sauf BLANK (synthétique).
+                    Sélection vide ⇒ 400 (CA-P1-a, FR-006).
+                  minItems: 0
+      responses:
+        "200":
+          description: Document PDF inline (FR-006)
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "400":
+          description: Sélection vide / catégorie invalide
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  # ---------------------------------------------------------------- P2
+  /batches:
+    post:
+      tags: [P2-Acquisition]
+      summary: Ouvre un lot d'acquisition (FR-008, FR-011)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dossierId:
+                  type: integer
+                  nullable: true
+                  description: Dossier existant ; null si nouveau dossier fourni ci-dessous.
+                newDossier:
+                  $ref: "#/components/schemas/NewDossier"
+                sourceLabel: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Lot créé (status=0 ouvert)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "409":
+          description: Libellé de nouveau dossier en doublon (FR-009, CA-P2-b)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /batches/{batchId}/files:
+    post:
+      tags: [P2-Acquisition]
+      summary: Téléverse les PDF du lot (multi-fichiers, FR-010)
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items: { type: string, format: binary }
+      responses:
+        "202":
+          description: Fichiers acceptés ; traitement asynchrone démarré (D-13)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+
+  /batches/{batchId}:
+    get:
+      tags: [P2-Acquisition]
+      summary: Statut et progression du lot (FR-019)
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: État courant du lot et compteurs
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchStatus" }
+
+  /batches/{batchId}/reprocess:
+    post:
+      tags: [P2-Acquisition]
+      summary: Rejoue le traitement du lot, sans doublon (idempotence, FR-020)
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "202": { description: Retraitement démarré }
+
+  # ---------------------------------------------------------------- P3
+  /documents/search:
+    post:
+      tags: [P3-Recherche]
+      summary: Recherche paginée, filtrée, triée, groupée (FR-021→023) + habilitation (FR-026)
+      description: >
+        Renvoie uniquement les documents autorisés pour l'utilisateur
+        (deny-by-default, D-15). La recherche plein-texte porte sur
+        label + cote + document_file.ocr_text.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SearchRequest" }
+      responses:
+        "200":
+          description: Page de résultats
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResponse" }
+
+  /documents/export:
+    post:
+      tags: [P3-Recherche]
+      summary: Exporte le résultat courant (Excel/PDF/Word/CSV) (FR-025, CA-P3-a)
+      description: Reflète exactement le filtre/tri ; ignore la pagination.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/SearchRequest"
+                - type: object
+                  required: [format]
+                  properties:
+                    format: { type: string, enum: [xlsx, pdf, docx, csv] }
+      responses:
+        "200":
+          description: Fichier d'export dans le format demandé
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+
+  /documents/{documentId}:
+    get:
+      tags: [P3-Recherche]
+      summary: Fiche document → version courante + fichiers (FR-024)
+      parameters:
+        - { name: documentId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Document, version courante et fichiers
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentDetail" }
+        "403":
+          description: Non autorisé (deny-by-default, CA-P3-b)
+        "404":
+          description: Inexistant ou masqué par l'habilitation
+
+  /documents/{documentId}/files/{fileId}/content:
+    get:
+      tags: [P3-Recherche]
+      summary: Stream du binaire depuis le disque (D-18) ; soumis à habilitation
+      parameters:
+        - { name: documentId, in: path, required: true, schema: { type: integer } }
+        - { name: fileId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Contenu du fichier
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "403": { description: Non autorisé }
+
+  # ---------------------------------------------------------------- Référentiels (admin)
+  /referentials/dossiers:
+    get:
+      tags: [Referentiels]
+      summary: Arbre des dossiers (sélection en cascade P2) (FR-008, FR-028)
+      parameters:
+        - { name: parentId, in: query, required: false, schema: { type: integer, nullable: true } }
+      responses:
+        "200":
+          description: Dossiers enfants du parent (racines si parentId absent)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SelectableItem" }
+    post:
+      tags: [Referentiels]
+      summary: Crée un dossier (refus si libellé actif en doublon) (FR-009)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewDossier" }
+      responses:
+        "201": { description: Dossier créé }
+        "409": { description: Doublon de libellé actif }
+
+  # ---------------------------------------------------------------- Docu-Courriers (§05–§13)
+  # --- Tableau de bord Docu-Courriers -----------------------------------------------------------
+  # POST + filtre dans le corps (convention du module analytics), @HttpCode(200) : ces routes
+  # lisent, elles ne créent rien. Le périmètre (MailScope) est résolu côté serveur depuis les menus
+  # du rôle — il n'est volontairement PAS un champ du filtre.
+  /courriers/dashboard/layout:
+    get:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Agencement personnalisable de l'utilisateur courant
+      description: >-
+        Rend les widgets placés par l'utilisateur, **re-filtrés par permission à la lecture** : un
+        droit retiré après coup masque le widget sans l'effacer de l'agencement, de sorte qu'il
+        reprend sa place si le droit est rendu. Renvoie aussi le catalogue encore ajoutable et les
+        `dataKeys` à charger — l'écran n'appelle que les endpoints des widgets réellement placés.
+        Sans personnalisation, l'agencement livré est servi (`parDefaut: true`).
+      responses:
+        "200": { description: Agencement, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardAgencement" } } } }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+    put:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Enregistre l'agencement de l'utilisateur courant
+      description: >-
+        Le serveur borne chaque position (taille minimale du catalogue, nombre de colonnes),
+        dédoublonne, ignore les identifiants inconnus et **refuse les widgets non autorisés** —
+        écrire soi-même le corps ne permet donc pas de s'offrir une vue interdite. Renvoie
+        l'agencement re-filtré, que l'écran adopte à la place du sien.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/DashboardAgencementRequete" } } }
+      responses:
+        "200": { description: Agencement enregistré, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardAgencement" } } } }
+        "400": { description: Corps invalide }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+    delete:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Rétablit l'agencement livré
+      description: >-
+        SUPPRIME le réglage utilisateur au lieu d'y recopier le défaut du moment : l'utilisateur
+        bénéficie ainsi des évolutions futures de l'agencement livré.
+      responses:
+        "200": { description: Agencement par défaut, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardAgencement" } } } }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+
+  /courriers/dashboard/alertes:
+    post:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Zone 1 — retards courriers et imputations, courriers sans imputation (D1, D3, E5)
+      description: Hors période — un retard n'appartient pas à une fenêtre temporelle.
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/DashboardFilter" } } }
+      responses:
+        "200": { description: Compteurs d'alerte, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardAlertes" } } } }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+
+  /courriers/dashboard/files:
+    post:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Zone 2 — tour de contrôle, les sept files (B1–B7)
+      description: >-
+        Chaque compteur reprend le `where` réel de son écran, quirks compris, pour réconcilier
+        visuellement. B1 et B2 sont personnels dans l'application : en périmètre global, la version
+        « tous services » est un compteur DIFFÉRENT, à libeller comme tel.
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/DashboardFilter" } } }
+      responses:
+        "200": { description: Compteurs de files, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardFiles" } } } }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+
+  /courriers/dashboard/synthese:
+    post:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Zone 3 — chiffres clés de la période et variation (A1, A4, A5, C3)
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/DashboardFilter" } } }
+      responses:
+        "200": { description: Synthèse, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardSynthese" } } } }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+
+  /courriers/dashboard/flux:
+    post:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Zone 4 — flux entrées/sorties et encours cumulé (A7, A8)
+      description: >-
+        Série sans trou (`generate_series` + LEFT JOIN : les périodes sans activité valent 0 et
+        restent présentes) et cumul amorcé par `backlogInitial`, l'encours antérieur à la fenêtre.
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/DashboardFilter" } } }
+      responses:
+        "200": { description: Série temporelle, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardFlux" } } } }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+
+  /courriers/dashboard/repartition:
+    post:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Zone 5 — répartition selon une dimension (A2, A3, F1–F4)
+      description: >-
+        Top 8 + « Autres ». La tranche non renseignée est épinglée en dernier et jamais fondue dans
+        « Autres » : c'est souvent la ligne la plus actionnable. Les jointures référentielles ne
+        filtrent PAS sur `is_active`, sinon les courriers pointant un libellé désactivé
+        disparaîtraient du total.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/DashboardRepartitionFilter" } } }
+      responses:
+        "200": { description: Répartition, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardRepartition" } } } }
+        "400": { description: Dimension inconnue }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+
+  /courriers/dashboard/retards:
+    post:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Zone 6a — paliers d'échéance, ancienneté du backlog, top des retards (D4, D5, D6)
+      description: >-
+        Hors période (stock). Les tranches sont calculées par les fonctions pures du domaine
+        (`bucketPalier`, `bucketAnciennete`), jamais réécrites en SQL. `sansEcheance` compte les
+        courriers en cours dépourvus de date butoir : absents des paliers par construction, aucune
+        relance ne les signale.
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/DashboardFilter" } } }
+      responses:
+        "200": { description: Retards, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardRetards" } } } }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+
+  /courriers/dashboard/delais:
+    post:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Zone 6b — délais de prise en charge et de traitement, respect du SLA (C1, C3, C4, C5)
+      description: >-
+        Médiane et P90, jamais la moyenne seule. Le SLA compare le délai réel aux durées de suivi
+        de l'objet : une durée à 0 ou nulle vaut « non configuré », le courrier est écarté du
+        calcul et NON compté en échec. Le délai d'imputation est ségrégé auto/manuel, les types
+        `suivi = true` étant soldés à la simple lecture du courrier.
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/DashboardFilter" } } }
+      responses:
+        "200": { description: Délais, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardDelais" } } } }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+
+  /courriers/dashboard/charge:
+    post:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Zone 7 — charge par agent et par service (E1–E3, C7)
+      description: >-
+        **Restitution nominative** (arbitrée par le commanditaire). Réservée au périmètre global :
+        403 sinon — la restriction est portée par le service, de sorte qu'un appel direct à
+        l'endpoint ne contourne pas ce que l'écran ne montre pas. Le délai médian n'est pas rendu
+        sous `seuilEffectif` dossiers traités : un percentile sur deux dossiers ne mesure rien, et
+        un classement le rendrait tranchant. Le rollup par service inclut les descendants et
+        expose une tranche « Non rattaché » plutôt que d'écarter les courriers sans organigramme.
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/DashboardFilter" } } }
+      responses:
+        "200": { description: Charge, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardCharge" } } } }
+        "401": { description: Non authentifié }
+        "403": { description: Périmètre insuffisant (suivi permanent requis) ou menu non accordé }
+
+  /courriers/dashboard/hygiene:
+    post:
+      tags: [Docu-Courriers — Tableau de bord]
+      summary: Zone 9 — hygiène des données (G1–G9)
+      description: >-
+        Défauts de saisie et de paramétrage qui dégradent silencieusement les autres indicateurs.
+        Chaque entrée porte sa conséquence et, quand il existe, l'écran où corriger.
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/DashboardFilter" } } }
+      responses:
+        "200": { description: Indicateurs d'hygiène, content: { application/json: { schema: { $ref: "#/components/schemas/DashboardHygiene" } } } }
+        "401": { description: Non authentifié }
+        "403": { description: Menu non accordé }
+
+  /courriers/badges:
+    get:
+      tags: [Docu-Courriers]
+      summary: Compteurs de badges des files (§04.7, authentifié)
+      responses:
+        "200": { description: Compteurs, content: { application/json: { schema: { $ref: "#/components/schemas/BadgeCounts" } } } }
+
+  /courriers/actors:
+    get:
+      tags: [Docu-Courriers]
+      summary: Acteurs sélectionnables (destinataire §05 / imputé §08) — lookup, tout authentifié
+      description: Un acteur = un app_user_group (identité effective). Libellé « Nom — Groupe ». Comptes désactivés exclus.
+      responses:
+        "200":
+          description: Acteurs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Actor" }
+
+  /courriers/documents-scannes:
+    get:
+      tags: [Docu-Courriers]
+      summary: File des documents scannés en attente d'enregistrement (§07) — menu /courriers/documents-scannes
+      parameters:
+        - { name: page, in: query, required: false, schema: { type: integer } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: Scans non traités (récents d'abord)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScannedListResult" }
+
+  /courriers/documents-scannes/{scanId}:
+    get:
+      tags: [Docu-Courriers]
+      summary: Détail d'un document scanné (§07)
+      parameters:
+        - { name: scanId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Document scanné }
+        "404": { description: Document scanné introuvable }
+
+  /courriers/controle:
+    get:
+      tags: [Docu-Courriers]
+      summary: File Contrôle / Courriers Arrivés (§06) — menu /courriers/controle
+      parameters:
+        - { name: page, in: query, required: false, schema: { type: integer } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200": { description: Page de courriers, content: { application/json: { schema: { $ref: "#/components/schemas/MailListResult" } } } }
+        "403": { description: Accès refusé (menu non accordé) }
+
+  /courriers/parapheur:
+    get:
+      tags: [Docu-Courriers]
+      summary: File Parapheur / Courriers imputés (§08) — menu /courriers/parapheur
+      description: Courriers contrôlés (Valider=true), combiné à la visibilité (§03.2).
+      parameters:
+        - { name: page, in: query, required: false, schema: { type: integer } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200": { description: Page de courriers, content: { application/json: { schema: { $ref: "#/components/schemas/MailListResult" } } } }
+
+  /courriers/suivi:
+    get:
+      tags: [Docu-Courriers]
+      summary: File Suivi (§09) — menu /courriers/suivi
+      parameters:
+        - { name: page, in: query, required: false, schema: { type: integer } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200": { description: Page de courriers, content: { application/json: { schema: { $ref: "#/components/schemas/MailListResult" } } } }
+
+  /courriers/validation-direction:
+    get:
+      tags: [Docu-Courriers]
+      summary: File Validation Direction (§10) — menu /courriers/validation
+      responses:
+        "200": { description: Page de courriers, content: { application/json: { schema: { $ref: "#/components/schemas/MailListResult" } } } }
+    post:
+      tags: [Docu-Courriers]
+      summary: Valider en lot par la Direction (§10)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MailIdList" } } } }
+      responses:
+        "200": { description: Nombre de courriers mis à jour }
+
+  /courriers/depart:
+    get:
+      tags: [Docu-Courriers]
+      summary: File Courrier de Départ (§12) — menu /courriers/depart
+      responses:
+        "200": { description: Page de courriers, content: { application/json: { schema: { $ref: "#/components/schemas/MailListResult" } } } }
+    post:
+      tags: [Docu-Courriers]
+      summary: Créer un courrier de Départ (§12) — Rédigé + numérotation par type
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateDepart" } } } }
+      responses:
+        "201": { description: Courrier créé }
+        "400": { description: Corps invalide (Zod) }
+
+  /courriers/integration-decharge:
+    get:
+      tags: [Docu-Courriers]
+      summary: File des courriers dont la décharge signée reste à intégrer (§13)
+      description: Courriers avec le drapeau Decharge=true dont le statut n'est pas encore Déchargé.
+      parameters:
+        - { name: page, in: query, required: false, schema: { type: integer } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200": { description: Page de courriers, content: { application/json: { schema: { $ref: "#/components/schemas/MailListResult" } } } }
+
+  /courriers/next-reference/arrivee:
+    get:
+      tags: [Docu-Courriers]
+      summary: Prochain n° d'enregistrement Arrivée (registre global hors Départ) (§05)
+      responses:
+        "200": { description: NReference proposé, content: { application/json: { schema: { $ref: "#/components/schemas/NextReference" } } } }
+
+  /courriers/next-reference/depart/{typeId}:
+    get:
+      tags: [Docu-Courriers]
+      summary: Prochain n° Départ par type (numérotation par type, §19)
+      parameters:
+        - { name: typeId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: NReference proposé, content: { application/json: { schema: { $ref: "#/components/schemas/NextReference" } } } }
+
+  /courriers/arrivee:
+    post:
+      tags: [Docu-Courriers]
+      summary: Enregistrer un courrier Arrivée (§05) — menu /courriers/enregistrement
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateArrivee" } } } }
+      responses:
+        "201": { description: Courrier créé }
+        "400": { description: Corps invalide (Zod) }
+
+  /courriers/recherche:
+    post:
+      tags: [Docu-Courriers]
+      summary: Recherche multicritères plein-texte (§11) — menu /courriers/recherche
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MailSearch" } } } }
+      responses:
+        "200": { description: Résultats paginés }
+
+  /courriers/{id}:
+    get:
+      tags: [Docu-Courriers]
+      summary: Détail d'un courrier (non supprimé)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Détail du courrier }
+        "404": { description: Courrier introuvable }
+    delete:
+      tags: [Docu-Courriers]
+      summary: Suppression logique (is_deleted) — menu /courriers/controle
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Courrier supprimé (logiquement) }
+
+  /courriers/{id}/valider:
+    post:
+      tags: [Docu-Courriers]
+      summary: Contrôle bureau d'ordre (§06) — Valider=true
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Courrier validé } }
+
+  /courriers/{id}/decharge:
+    post:
+      tags: [Docu-Courriers]
+      summary: Décharger le courrier (§08) — drapeau Decharge
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Courrier déchargé } }
+
+  /courriers/{id}/enregistrement-reponse:
+    post:
+      tags: [Docu-Courriers]
+      summary: Transfert Guichet Unique / réponse enregistrée (§08)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Réponse enregistrée } }
+
+  /courriers/{id}/validation-dg:
+    post:
+      tags: [Docu-Courriers]
+      summary: Validation DG (§08) — ValidationDG + imputation Pour Suivi (type 10)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Validé DG } }
+
+  /courriers/{id}/archiver:
+    post:
+      tags: [Docu-Courriers]
+      summary: Archivage service courrier (§03.1) — DateTraited
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Courrier archivé } }
+
+  /courriers/{id}/integration-decharge:
+    post:
+      tags: [Docu-Courriers]
+      summary: Intégration de la décharge signée (§13) — Déchargé + archivage
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/DocumentRef" } } } }
+      responses: { "200": { description: Décharge intégrée } }
+
+  /courriers/imputations:
+    post:
+      tags: [Docu-Courriers]
+      summary: Créer une imputation (§08) — menu /courriers/parapheur
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateInputation" } } } }
+      responses: { "201": { description: Imputation créée } }
+
+  /courriers/imputations/validation:
+    post:
+      tags: [Docu-Courriers]
+      summary: Soumettre à validation (§08) — type 5 (DG) ou 14 (Direction), +48h
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/SubmitValidation" } } } }
+      responses: { "201": { description: Imputation de validation créée } }
+
+  /courriers/{id}/imputations/lecture:
+    post:
+      tags: [Docu-Courriers]
+      summary: Validation automatique à la lecture (§08) — imputations « suivi »
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Résultat du traitement automatique } }
+
+  /courriers/{id}/imputations/traiter:
+    post:
+      tags: [Docu-Courriers]
+      summary: Marquer traité (§08) — traite toutes les imputations puis Traité
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Courrier traité } }
+
+  /courriers/{id}/imputations/traiter-destinataire:
+    post:
+      tags: [Docu-Courriers]
+      summary: Traiter les imputations d'un destinataire (validation en masse §10)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UserGroupRef" } } } }
+      responses: { "200": { description: Imputations traitées } }
+
+  /courriers/{id}/documents:
+    get:
+      tags: [Docu-Courriers]
+      summary: Documents rattachés à un courrier (§02.6)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Liste des liaisons } }
+    post:
+      tags: [Docu-Courriers]
+      summary: Rattacher un document GED existant — menu /courriers/parapheur
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/LinkDocument" } } } }
+      responses: { "200": { description: Document rattaché } }
+
+  /courriers/{id}/documents/{documentId}:
+    delete:
+      tags: [Docu-Courriers]
+      summary: Déliaison courrier ↔ document (§03.6, code 1014)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: documentId, in: path, required: true, schema: { type: integer } }
+      responses: { "200": { description: Lien retiré } }
+
+  # ---------------------------------------------------------------- Docu-Courriers — paramétrage (§14–§19)
+  /courriers/organigramme:
+    get:
+      tags: [Courriers-Parametrage]
+      summary: Arbre organigramme (§14)
+      responses: { "200": { description: Nœuds actifs (materialized-path) } }
+    post:
+      tags: [Courriers-Parametrage]
+      summary: Créer un nœud — menu /admin/courriers/organigrammes
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateNode" } } } }
+      responses: { "201": { description: Nœud créé } }
+
+  /courriers/organigramme/role-assignments:
+    get:
+      tags: [Courriers-Parametrage]
+      summary: Rôles et leur organigramme assigné (§15)
+      responses: { "200": { description: Assignations rôle ↔ organigramme } }
+
+  /courriers/organigramme/{id}:
+    patch:
+      tags: [Courriers-Parametrage]
+      summary: Renommer un nœud — menu /admin/courriers/organigrammes
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Label" } } } }
+      responses: { "200": { description: Nœud modifié } }
+    delete:
+      tags: [Courriers-Parametrage]
+      summary: Désactiver un nœud et son sous-arbre
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Nœud désactivé } }
+
+  /courriers/organigramme/{id}/parent:
+    patch:
+      tags: [Courriers-Parametrage]
+      summary: Déplacer un nœud (recalcul du sous-arbre)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Reparent" } } } }
+      responses: { "200": { description: Nœud déplacé }, "400": { description: Déplacement cyclique interdit } }
+
+  /courriers/organigramme/roles/{roleId}:
+    patch:
+      tags: [Courriers-Parametrage]
+      summary: Assigner/détacher l'organigramme d'un rôle (§15) — menu /admin/courriers/role-organigramme
+      parameters: [{ name: roleId, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AssignRole" } } } }
+      responses: { "200": { description: Rôle mis à jour } }
+
+  # Référentiels courrier. Forme de base (natures ci-dessous comme MODÈLE) : GET liste / POST créer
+  # (body Label) / PATCH :id (body Label) / DELETE :id, gardés par leur menu /admin/courriers/*.
+  # DIVERGENCES à connaître :
+  #  - `objets` et `inputation-types` ont un body de création/édition enrichi (durées de suivi /
+  #    drapeau `suivi`) au lieu de Label ; PATCH accepte des champs partiels.
+  #  - `depart-types`, `external-entity-types` et `confidentialites` suivent la forme de base (Label).
+  #  - `custom-properties` n'a PAS de PATCH (création + désactivation seulement).
+  # UNICITÉ (§16) : le libellé est unique parmi les actifs, comparaison insensible à la casse ET aux
+  # espaces (« Officiel » == « officiel » == « OFFICIEL ») → 409 en cas de doublon.
+  #  - `external-entities` : POST/PATCH avec CreateExternalEntity ; `custom-values` est un POST unique
+  #    (body composé) et sa liste se lit via GET external-entities/{id}/custom-values (documentés ci-dessous).
+  /courriers/referentials/natures:
+    get:
+      tags: [Courriers-Parametrage]
+      summary: Lister les natures actives (lookup)
+      responses: { "200": { description: Liste des natures } }
+    post:
+      tags: [Courriers-Parametrage]
+      summary: Créer une nature — menu /admin/courriers/natures
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Label" } } } }
+      responses: { "201": { description: Nature créée }, "409": { description: Doublon de libellé actif } }
+
+  /courriers/referentials/natures/{id}:
+    patch:
+      tags: [Courriers-Parametrage]
+      summary: Renommer une nature
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Label" } } } }
+      responses: { "200": { description: Nature modifiée }, "409": { description: Doublon de libellé actif } }
+    delete:
+      tags: [Courriers-Parametrage]
+      summary: Désactiver une nature
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Nature désactivée } }
+
+  /courriers/referentials/external-entities:
+    get:
+      tags: [Courriers-Parametrage]
+      summary: Lister les entités externes / correspondants (§17)
+      responses: { "200": { description: Liste des entités externes } }
+    post:
+      tags: [Courriers-Parametrage]
+      summary: Créer une entité externe — menu /admin/courriers/entites-externes
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateExternalEntity" } } } }
+      responses: { "201": { description: Entité externe créée } }
+
+  /courriers/referentials/external-entities/{id}/custom-values:
+    get:
+      tags: [Courriers-Parametrage]
+      summary: Valeurs EAV (propriétés personnalisées) d'une entité externe (§12/§16)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Valeurs personnalisées de l'entité } }
+
+  /courriers/referentials/custom-values:
+    post:
+      tags: [Courriers-Parametrage]
+      summary: Poser/écraser une valeur EAV (upsert par entité × propriété) — menu /admin/courriers/entites-externes
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/SetCustomValue" } } } }
+      responses: { "200": { description: Valeur enregistrée } }
+
+  # ---------------------------------------------------------------- Notifications
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Inbox de l'utilisateur courant (paginée)
+      parameters:
+        - { name: unreadOnly, in: query, required: false, schema: { type: string, enum: ["true", "false"] } }
+        - { name: page, in: query, required: false, schema: { type: integer } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200": { description: Inbox, content: { application/json: { schema: { $ref: "#/components/schemas/NotificationList" } } } }
+
+  /notifications/unread-count:
+    get:
+      tags: [Notifications]
+      summary: Nombre de notifications non lues (badge)
+      responses:
+        "200": { description: Compteur, content: { application/json: { schema: { type: object, properties: { count: { type: integer } } } } } }
+
+  /notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Marquer une notification comme lue (propriétaire uniquement)
+      parameters: [{ name: id, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Résultat } }
+
+  /notifications/read-all:
+    patch:
+      tags: [Notifications]
+      summary: Marquer toutes les notifications de l'acteur comme lues
+      responses: { "200": { description: Résultat } }
+
+components:
+  schemas:
+
+    IntercalaireCategory:
+      type: object
+      properties:
+        code: { type: string, enum: [TYPE_DOCUMENT, PLAN, LOCALISATION, DOSSIER, BLANK] }
+        label: { type: string }
+        isBlank: { type: boolean }
+        targetTable: { type: string, nullable: true }
+        targetColumn: { type: string, nullable: true }
+
+    SelectableItem:
+      type: object
+      description: Élément de référentiel sélectionnable (plat ou arborescent)
+      properties:
+        id: { type: integer }
+        label: { type: string }
+        code: { type: string, nullable: true }
+        parentId: { type: integer, nullable: true }
+        depth: { type: integer, description: "Niveau pour le rendu indenté" }
+        path: { type: string, nullable: true }
+        hasChildren: { type: boolean }
+
+    NewDossier:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string }
+        parentId: { type: integer, nullable: true }
+        dossierCategoryId: { type: integer, nullable: true }
+        locationId: { type: integer, nullable: true }
+
+    Batch:
+      type: object
+      properties:
+        batchId: { type: integer }
+        batchGuid: { type: string, format: uuid }
+        dossierId: { type: integer, nullable: true }
+        status: { $ref: "#/components/schemas/BatchStatusEnum" }
+        scanDate: { type: string, format: date-time }
+
+    BatchStatusEnum:
+      type: integer
+      enum: [0, 1, 2]
+      description: "0=ouvert, 1=terminé, 2=échec"
+
+    BatchStatus:
+      type: object
+      properties:
+        batchId: { type: integer }
+        status: { $ref: "#/components/schemas/BatchStatusEnum" }
+        fileCount: { type: integer }
+        documentCount: { type: integer }
+        processedFiles: { type: integer, description: "Progression (FR-019)" }
+        nextScreenUrl:
+          type: string
+          nullable: true
+          description: Lien vers validation/indexation (hors périmètre, prévu)
+
+    SearchRequest:
+      type: object
+      description: Filtre/tri/regroupement/pagination de la grille P3
+      properties:
+        fullText:
+          type: string
+          nullable: true
+          description: Recherche label + cote + ocr_text (FR-023)
+        documentTypeId: { type: integer, nullable: true }
+        dossierId: { type: integer, nullable: true }
+        planId: { type: integer, nullable: true }
+        locationId: { type: integer, nullable: true }
+        documentDateFrom: { type: string, format: date, nullable: true }
+        documentDateTo: { type: string, format: date, nullable: true }
+        sort:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string, enum: [label, documentType, cote, documentDate, dossier, plan, location] }
+              dir: { type: string, enum: [asc, desc] }
+        groupBy:
+          type: array
+          items: { type: string }
+        page: { type: integer, default: 1, minimum: 1 }
+        pageSize: { type: integer, default: 50, maximum: 500 }
+
+    SearchResponse:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/DocumentRow" }
+
+    DocumentRow:
+      type: object
+      description: Ligne de grille P3 (colonnes FR-021)
+      properties:
+        documentId: { type: integer }
+        label: { type: string }
+        documentType: { type: string, nullable: true }
+        cote: { type: string, nullable: true }
+        documentDate: { type: string, format: date, nullable: true }
+        dossier: { type: string, nullable: true }
+        plan: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+
+    DocumentDetail:
+      type: object
+      properties:
+        documentId: { type: integer }
+        label: { type: string }
+        cote: { type: string, nullable: true }
+        documentDate: { type: string, format: date, nullable: true }
+        isArchived: { type: boolean }
+        isFrozen: { type: boolean }
+        currentVersion:
+          type: object
+          properties:
+            documentVersionId: { type: integer }
+            versionNumber: { type: integer }
+            files:
+              type: array
+              items:
+                type: object
+                properties:
+                  fileId: { type: integer }
+                  originalName: { type: string, nullable: true }
+                  fileExtension: { type: string }
+                  pageCount: { type: integer, nullable: true }
+                  sortOrder: { type: integer }
+
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+
+    # ---- Docu-Courriers ----
+    BadgeCounts:
+      type: object
+      description: >-
+        Chaque compteur reflète EXACTEMENT ce que sa file affiche. `controle` et `parapheur` sont
+        PERSONNELS (destinataire / imputé) ; `suivi` est soumis au périmètre MailScope ;
+        `validation`, `decharge` et `scans` sont globaux, comme leurs écrans.
+      properties:
+        controle: { type: integer }
+        validation: { type: integer }
+        suivi: { type: integer }
+        parapheur: { type: integer, description: Imputations actionnables non traitées (« En Copie » exclu) }
+        decharge: { type: integer, description: Départs sans document de décharge — non plafonné }
+        scans: { type: integer, description: Documents scannés en attente d'enregistrement }
+
+    DashboardAgentCharge:
+      type: object
+      required: [userGroupId, label, ouvertes, traitees, enRetard, delaiMedianJours, n]
+      properties:
+        userGroupId: { type: integer }
+        label: { type: string, description: "« Nom — Groupe », le groupe levant l'ambiguïté d'un acteur multi-groupes" }
+        ouvertes: { type: integer, description: E1 — charge courante }
+        traitees: { type: integer, description: E3 — débit sur la période }
+        enRetard: { type: integer }
+        delaiMedianJours:
+          type: number
+          nullable: true
+          description: C7 — null quand n < seuilEffectif
+        n: { type: integer, description: Effectif ayant servi au délai, pour rendre le seuil vérifiable }
+    DashboardServiceCharge:
+      type: object
+      required: [organigrammeId, label, depth, ouvertes]
+      properties:
+        organigrammeId: { type: integer, nullable: true, description: null = tranche « Non rattaché » }
+        label: { type: string }
+        depth: { type: integer, description: Profondeur dans l'arbre, pour l'indentation }
+        ouvertes: { type: integer, description: Inclut les nœuds descendants }
+    DashboardCharge:
+      type: object
+      required: [scope, periode, agents, services, seuilEffectif]
+      properties:
+        scope: { $ref: "#/components/schemas/MailScope" }
+        periode:
+          type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        agents:
+          type: array
+          items: { $ref: "#/components/schemas/DashboardAgentCharge" }
+        services:
+          type: array
+          items: { $ref: "#/components/schemas/DashboardServiceCharge" }
+        seuilEffectif: { type: integer, example: 5 }
+
+    DashboardHygieneIndicateur:
+      type: object
+      required: [cle, label, consequence, count, lien]
+      properties:
+        cle: { type: string, example: g4 }
+        label: { type: string }
+        consequence: { type: string, description: Ce que le défaut empêche de voir — l'argument, pas le compteur }
+        count: { type: integer }
+        lien: { type: string, nullable: true, description: Écran de correction, null s'il n'en existe pas }
+    DashboardHygiene:
+      type: object
+      required: [scope, indicateurs]
+      properties:
+        scope: { $ref: "#/components/schemas/MailScope" }
+        indicateurs:
+          type: array
+          items: { $ref: "#/components/schemas/DashboardHygieneIndicateur" }
+
+    NextReference:
+      type: object
+      properties:
+        nReference: { type: string, example: "00042" }
+
+    Actor:
+      type: object
+      description: Acteur sélectionnable = app_user_group (identité effective V6).
+      properties:
+        userGroupId: { type: integer }
+        label: { type: string, example: "Zoé Martin — Direction" }
+
+    ScannedDocument:
+      type: object
+      properties:
+        mailScannedDocumentId: { type: integer }
+        fileName: { type: string, nullable: true }
+        filePath: { type: string, nullable: true }
+        dateScanned: { type: string, format: date-time }
+        machineName: { type: string, nullable: true }
+        isTraite: { type: boolean }
+        mailId: { type: integer, nullable: true }
+        documentId: { type: integer, nullable: true }
+
+    ScannedListResult:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/ScannedDocument" }
+
+    # --- Tableau de bord Docu-Courriers ---------------------------------------------------------
+    DashboardFilter:
+      type: object
+      additionalProperties: false
+      description: Filtre commun des zones du tableau de bord. Aucun champ n'est obligatoire.
+      properties:
+        dateFrom: { type: string, format: date, description: "Défaut : J-29" }
+        dateTo: { type: string, format: date, description: "Défaut : aujourd'hui" }
+        mailType: { type: integer, enum: [0, 1, 2], description: 0 Arrivée · 1 Départ · 2 Interne }
+        organigrammeId: { type: integer, minimum: 1, description: Inclut les descendants (materialized-path) }
+        externalEntityId: { type: integer, minimum: 1 }
+        granularity: { type: string, enum: [day, week, month, quarter, year], default: day }
+        basis:
+          type: string
+          enum: [date_enregistrement_courrier, mail_date, created_at]
+          default: date_enregistrement_courrier
+    MailScope:
+      type: string
+      enum: [all, imputed, none]
+      description: Périmètre résolu côté serveur — all (suivi permanent), imputed (mes imputations), none.
+    DashboardFileCompteur:
+      type: object
+      required: [count, oldestDays]
+      properties:
+        count: { type: integer }
+        oldestDays:
+          type: integer
+          nullable: true
+          description: Ancienneté du plus vieil élément, en jours. null si la file est vide.
+    DashboardAlertes:
+      type: object
+      required: [scope, courriersEnRetard, imputationsEnRetard, sansImputation]
+      properties:
+        scope: { $ref: "#/components/schemas/MailScope" }
+        courriersEnRetard: { type: integer, description: "D1 — échéance dépassée, non traité" }
+        imputationsEnRetard: { type: integer, description: "D3 — échue et non traitée : le worker a cessé de relancer" }
+        sansImputation: { type: integer, description: "E5 — non traité et personne n'est imputé" }
+    DashboardFiles:
+      type: object
+      required: [scope, aControler, parapheur, validationDirection, validationDg, decharge, scans, enCours]
+      properties:
+        scope: { $ref: "#/components/schemas/MailScope" }
+        aControler: { $ref: "#/components/schemas/DashboardFileCompteur" }
+        parapheur: { $ref: "#/components/schemas/DashboardFileCompteur" }
+        validationDirection: { $ref: "#/components/schemas/DashboardFileCompteur" }
+        validationDg: { $ref: "#/components/schemas/DashboardFileCompteur" }
+        decharge: { $ref: "#/components/schemas/DashboardFileCompteur" }
+        scans: { $ref: "#/components/schemas/DashboardFileCompteur" }
+        enCours: { $ref: "#/components/schemas/DashboardFileCompteur" }
+    DashboardVariation:
+      type: object
+      required: [valeur, precedent, ratio, sens]
+      properties:
+        valeur: { type: integer }
+        precedent: { type: integer, nullable: true }
+        ratio:
+          type: number
+          nullable: true
+          description: Ratio signé (0.25 = +25 %). null quand la période précédente vaut 0 — une apparition n'a pas de taux.
+        sens: { type: string, enum: [hausse, baisse, stable, indetermine] }
+    DashboardSyntheseParType:
+      type: object
+      required: [mailType, enregistres, traites, enCours]
+      properties:
+        mailType: { type: integer, enum: [0, 1, 2] }
+        enregistres: { type: integer }
+        traites: { type: integer }
+        enCours: { type: integer }
+    DashboardSynthese:
+      type: object
+      required: [scope, periode, enregistres, traites, enCours, delaiMedianJours, delaiP90Jours, parType]
+      properties:
+        scope: { $ref: "#/components/schemas/MailScope" }
+        periode:
+          type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        enregistres: { $ref: "#/components/schemas/DashboardVariation" }
+        traites: { $ref: "#/components/schemas/DashboardVariation" }
+        enCours: { type: integer, description: "A4 — stock courant, volontairement hors période" }
+        delaiMedianJours: { type: number, nullable: true, description: "C3 — médiane, en jours" }
+        delaiP90Jours: { type: number, nullable: true, description: "C3 — P90 : jamais la moyenne seule" }
+        parType:
+          type: array
+          description: >-
+            Ventilation par type. Un Départ porte une date d'archivage dès sa rédaction (§3.1) :
+            il peut donc être compté « archivé » (A5) tout en restant « en cours » (A4). Le détail
+            permet à l'écran de séparer les deux flux sans nouvelle route.
+          items: { $ref: "#/components/schemas/DashboardSyntheseParType" }
+
+    DashboardWidgetPlacement:
+      type: object
+      description: >-
+        La SEULE chose persistée avec l'identifiant. Titre, taille minimale et permission viennent
+        du catalogue en code, jamais du JSON stocké — un agencement ancien ne fige donc pas un
+        libellé corrigé depuis.
+      required: [id, x, y, w, h]
+      properties:
+        id: { type: string, maxLength: 80, example: alertes }
+        x: { type: integer, minimum: 0, maximum: 200 }
+        y: { type: integer, minimum: 0, maximum: 2000 }
+        w: { type: integer, minimum: 1, maximum: 48 }
+        h: { type: integer, minimum: 1, maximum: 200 }
+    DashboardAgencementRequete:
+      type: object
+      additionalProperties: false
+      required: [widgets]
+      properties:
+        widgets:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/DashboardWidgetPlacement" }
+    DashboardWidgetResolu:
+      allOf:
+        - $ref: "#/components/schemas/DashboardWidgetPlacement"
+        - type: object
+          required: [titre, description, dataKey, minW, minH]
+          properties:
+            titre: { type: string }
+            description: { type: string }
+            dataKey: { $ref: "#/components/schemas/DashboardWidgetDataKey" }
+            minW: { type: integer }
+            minH: { type: integer }
+    DashboardWidgetDataKey:
+      type: string
+      description: Jeu de données requis par le widget — sert à ne charger que le nécessaire.
+      enum: [alertes, files, synthese, flux, repartition, retards, delais, charge, hygiene]
+    DashboardWidgetDefinition:
+      type: object
+      description: Entrée du catalogue statique, filtrée par les permissions de l'utilisateur.
+      required: [id, titre, description, dataKey, w, h, minW, minH]
+      properties:
+        id: { type: string }
+        titre: { type: string }
+        description: { type: string }
+        dataKey: { $ref: "#/components/schemas/DashboardWidgetDataKey" }
+        w: { type: integer, description: Largeur par défaut à l'ajout }
+        h: { type: integer, description: Hauteur par défaut à l'ajout }
+        minW: { type: integer }
+        minH: { type: integer }
+    DashboardAgencement:
+      type: object
+      required: [scope, colonnes, widgets, disponibles, parDefaut, dataKeys]
+      properties:
+        scope: { $ref: "#/components/schemas/MailScope" }
+        colonnes: { type: integer, example: 12, description: Colonnes de la grille }
+        widgets:
+          type: array
+          description: Widgets affichables — déjà re-filtrés par permission.
+          items: { $ref: "#/components/schemas/DashboardWidgetResolu" }
+        disponibles:
+          type: array
+          description: Catalogue autorisé — alimente la modale « Ajouter un widget ».
+          items: { $ref: "#/components/schemas/DashboardWidgetDefinition" }
+        parDefaut: { type: boolean, description: true = aucune personnalisation enregistrée }
+        dataKeys:
+          type: array
+          description: Jeux de données à charger, dérivés des seuls widgets placés.
+          items: { $ref: "#/components/schemas/DashboardWidgetDataKey" }
+
+    DashboardFluxPoint:
+      type: object
+      required: [bucket, entrees, sorties, backlogNet]
+      properties:
+        bucket: { type: string, format: date, description: Début du seau }
+        entrees: { type: integer }
+        sorties: { type: integer }
+        backlogNet: { type: integer, description: Encours cumulé, amorcé par backlogInitial }
+    DashboardFlux:
+      type: object
+      required: [scope, granularity, periode, backlogInitial, points]
+      properties:
+        scope: { $ref: "#/components/schemas/MailScope" }
+        granularity: { type: string, enum: [day, week, month, quarter, year] }
+        periode:
+          type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        backlogInitial: { type: integer, description: Encours antérieur à la fenêtre }
+        points:
+          type: array
+          items: { $ref: "#/components/schemas/DashboardFluxPoint" }
+    DashboardRepartitionFilter:
+      allOf:
+        - $ref: "#/components/schemas/DashboardFilter"
+        - type: object
+          required: [dimension]
+          properties:
+            dimension:
+              type: string
+              enum: [statut, type, correspondant, type_entite, nature, objet, confidentialite, type_depart, service]
+    DashboardRepartitionTranche:
+      type: object
+      required: [label, valeur]
+      properties:
+        label: { type: string }
+        valeur: { type: integer }
+    DashboardRepartition:
+      type: object
+      required: [scope, dimension, periode, total, tranches]
+      properties:
+        scope: { $ref: "#/components/schemas/MailScope" }
+        dimension: { type: string }
+        periode:
+          type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        total: { type: integer, description: Somme de toutes les tranches — permet de vérifier qu'aucune n'a été perdue }
+        tranches:
+          type: array
+          items: { $ref: "#/components/schemas/DashboardRepartitionTranche" }
+
+    DashboardRetardsBucket:
+      type: object
+      required: [cle, label, count]
+      properties:
+        cle: { type: string }
+        label: { type: string }
+        count: { type: integer }
+    DashboardTopRetard:
+      type: object
+      required: [mailId, title, reference, joursRetard]
+      properties:
+        mailId: { type: integer }
+        title: { type: string }
+        reference: { type: string, nullable: true }
+        joursRetard: { type: integer }
+    DashboardRetards:
+      type: object
+      required: [scope, paliers, anciennete, top, sansEcheance]
+      properties:
+        scope: { $ref: "#/components/schemas/MailScope" }
+        paliers:
+          type: array
+          description: D4 — toutes les tranches sont rendues, y compris à zéro.
+          items: { $ref: "#/components/schemas/DashboardRetardsBucket" }
+        anciennete:
+          type: array
+          description: D5 — indépendant de l'échéance ; seul filet pour les courriers qui n'en ont pas.
+          items: { $ref: "#/components/schemas/DashboardRetardsBucket" }
+        top:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/DashboardTopRetard" }
+        sansEcheance: { type: integer, description: G1 — en cours et sans date butoir }
+    DashboardDelaiStat:
+      type: object
+      required: [medianeJours, p90Jours, n]
+      properties:
+        medianeJours: { type: number, nullable: true }
+        p90Jours: { type: number, nullable: true }
+        n: { type: integer, description: Effectif du calcul — un percentile sur 2 dossiers ne veut rien dire }
+    DashboardDelais:
+      type: object
+      required: [scope, periode, priseEnCharge, traitementGlobal, sla, imputations]
+      properties:
+        scope: { $ref: "#/components/schemas/MailScope" }
+        periode:
+          type: object
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        priseEnCharge: { $ref: "#/components/schemas/DashboardDelaiStat" }
+        traitementGlobal: { $ref: "#/components/schemas/DashboardDelaiStat" }
+        sla:
+          type: object
+          required: [configure, dansLesDelais, horsDelais, nonEvalues, objetsSansDuree]
+          properties:
+            configure: { type: boolean, description: false = aucune durée exploitable → l'écran affiche « SLA non configuré » }
+            dansLesDelais: { type: integer }
+            horsDelais: { type: integer }
+            nonEvalues: { type: integer, description: Écartés faute de durée — ni succès ni échec }
+            objetsSansDuree: { type: integer, description: G4 — la cause corrigeable }
+        imputations:
+          type: object
+          required: [auto, manuel]
+          properties:
+            auto: { $ref: "#/components/schemas/DashboardDelaiStat" }
+            manuel: { $ref: "#/components/schemas/DashboardDelaiStat" }
+
+    MailSummary:
+      type: object
+      properties:
+        mailId: { type: integer }
+        title: { type: string }
+        date: { type: string, format: date }
+        nReference: { type: string, nullable: true }
+        reference: { type: string, nullable: true }
+        mailType: { type: integer, description: "0 Arrivée, 1 Départ, 2 Interne" }
+        status: { type: integer, description: "0 Redaction .. 4 Supprimé" }
+        valider: { type: boolean }
+        validationDirection: { type: boolean }
+        validationDG: { type: boolean }
+        decharge: { type: boolean }
+        dateTraited: { type: string, format: date-time, nullable: true }
+        dateButoire: { type: string, format: date-time, nullable: true }
+
+    MailListResult:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/MailSummary" }
+
+    CreateArrivee:
+      type: object
+      required: [title, date, destinataireUserGroupId]
+      properties:
+        title: { type: string }
+        date: { type: string, format: date }
+        destinataireUserGroupId: { type: integer }
+        description: { type: string }
+        reference: { type: string }
+        nReference: { type: string, description: "Si vide, généré serveur (registre global)" }
+        dateEnregistrementCourrier: { type: string, format: date-time }
+        dateFollowUp: { type: string, format: date-time }
+        dateButoire: { type: string, format: date-time }
+        mailNatureId: { type: integer }
+        confidentialiteId: { type: integer }
+        externalEntityId: { type: integer }
+        mailObjetId: { type: integer }
+        documentId: { type: integer }
+        scannedDocumentId: { type: integer }
+        enCopieUserGroupIds:
+          type: array
+          items: { type: integer }
+
+    CreateDepart:
+      type: object
+      required: [title, date, destinataireUserGroupId]
+      properties:
+        title: { type: string }
+        date: { type: string, format: date }
+        destinataireUserGroupId: { type: integer }
+        mailDepartTypeId: { type: integer, description: "Type de départ — pilote la numérotation par type" }
+        nReference: { type: string }
+        description: { type: string }
+        reference: { type: string }
+        externalEntityId: { type: integer }
+        confidentialiteId: { type: integer }
+        documentId: { type: integer }
+        parentMailId: { type: integer, description: "Courrier parent si réponse (archivé)" }
+
+    MailSearch:
+      type: object
+      properties:
+        fullText: { type: string }
+        mailType: { type: integer }
+        status: { type: integer }
+        externalEntityId: { type: integer }
+        mailNatureId: { type: integer }
+        mailObjetId: { type: integer }
+        dateFrom: { type: string, format: date }
+        dateTo: { type: string, format: date }
+        page: { type: integer }
+        pageSize: { type: integer }
+        sort:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              dir: { type: string, enum: [asc, desc] }
+
+    MailIdList:
+      type: object
+      required: [mailIds]
+      properties:
+        mailIds:
+          type: array
+          items: { type: integer }
+
+    DocumentRef:
+      type: object
+      required: [documentId]
+      properties:
+        documentId: { type: integer }
+
+    UserGroupRef:
+      type: object
+      required: [userGroupId]
+      properties:
+        userGroupId: { type: integer }
+
+    LinkDocument:
+      type: object
+      required: [documentId]
+      properties:
+        documentId: { type: integer }
+        decharge: { type: boolean }
+
+    CreateInputation:
+      type: object
+      required: [mailId, userGroupId, mailInputationTypeId]
+      properties:
+        mailId: { type: integer }
+        userGroupId: { type: integer }
+        mailInputationTypeId: { type: integer }
+        instructions: { type: string }
+        deadline: { type: string, format: date-time }
+
+    SubmitValidation:
+      type: object
+      required: [mailId, userGroupId]
+      properties:
+        mailId: { type: integer }
+        userGroupId: { type: integer }
+        isDG: { type: boolean, description: "true = type 5 (DG), false = type 14 (Direction)" }
+
+    CreateNode:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string }
+        parentId: { type: integer }
+
+    Label:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string }
+
+    Reparent:
+      type: object
+      required: [parentId]
+      properties:
+        parentId: { type: integer, nullable: true }
+
+    AssignRole:
+      type: object
+      required: [organigrammeId]
+      properties:
+        organigrammeId: { type: integer, nullable: true }
+
+    CreateExternalEntity:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string }
+        email: { type: string }
+        telephone: { type: string }
+        externalEntityTypeId: { type: integer }
+
+    SetCustomValue:
+      type: object
+      required: [externalEntityId, externalEntityCustomPropertyId, externalEntityTypeId, value]
+      properties:
+        externalEntityId: { type: integer }
+        externalEntityCustomPropertyId: { type: integer }
+        externalEntityTypeId: { type: integer }
+        value: { type: string }
+
+    Notification:
+      type: object
+      properties:
+        notificationId: { type: integer }
+        message: { type: string }
+        targetType: { type: string, nullable: true }
+        targetId: { type: integer, nullable: true }
+        isRead: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        readAt: { type: string, format: date-time, nullable: true }
+
+    NotificationList:
+      type: object
+      properties:
+        total: { type: integer }
+        unread: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/Notification" }
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []

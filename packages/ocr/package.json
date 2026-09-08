@@ -1,0 +1,22 @@
+{
+  "name": "@archivage/ocr",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "OCR abstraction: PDF text-layer first, Tesseract fallback (fra/eng).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "echo \"(@archivage/ocr) no tests yet\""
+  },
+  "dependencies": {
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "@archivage/config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

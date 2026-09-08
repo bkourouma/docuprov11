@@ -1,0 +1,57 @@
+// --- Notifications (1) --- brique transverse (aucun équivalent V6 avant ce module)
+//
+// Alimente l'inbox in-app + les badges par polling + la livraison des rappels (worker BullMQ,
+// phase G). Remplace l'IAppNotifier du source. L'e-mail éventuel (nodemailer) est un add-on
+// approuvé séparément et ne fait pas partie de ce modèle.
+
+/// Notification in-app destinée à un acteur (app_user_group). `targetType`/`targetId` pointent
+/// l'objet concerné (ex. 'mail' + mail_id) pour la navigation depuis l'inbox.
+model Notification {
+  notificationId       Int       @id @default(autoincrement()) @map("notification_id")
+  recipientUserGroupId Int       @map("recipient_user_group_id")
+  message              String    @db.Text
+  targetType           String?   @map("target_type") @db.VarChar(50)
+  targetId             Int?      @map("target_id")
+  isRead               Boolean   @default(false) @map("is_read")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  readAt               DateTime? @map("read_at") @db.Timestamptz(0)
+
+  recipient AppUserGroup @relation("NotificationRecipient", fields: [recipientUserGroupId], references: [userGroupId], onDelete: Cascade)
+
+  @@index([recipientUserGroupId, isRead])
+  @@map("notification")
+}
+
+/// Identité affichée dans les e-mails de notification (§03.5) — logo, nom de l'organisation,
+/// coordonnées. Auparavant portée par les variables d'environnement `MAIL_*`, ce qui obligeait à
+/// redémarrer l'API pour changer un libellé : le paramétrage passe donc en base, éditable depuis
+/// l'écran « Paramétrage e-mail ».
+///
+/// LIGNE UNIQUE. L'identifiant vaut toujours 1 (CHECK ajouté en SQL brut) : il n'y a qu'une
+/// organisation par déploiement, et un `upsert` sur une clé constante évite la question « quelle
+/// ligne fait foi ? » qu'une table à plusieurs lignes poserait à chaque envoi.
+///
+/// TOUS les champs sont facultatifs, et un champ vide est OMIS du gabarit plutôt que rendu vide :
+/// une organisation qui ne renseigne ni e-mail ni site web reçoit un e-mail sans bloc coordonnées,
+/// pas un e-mail troué. Le gabarit ne suppose donc aucune valeur.
+model EmailTemplateSetting {
+  emailTemplateSettingId Int @id @default(1) @map("email_template_setting_id")
+
+  /// Nom de l'organisation — en-tête et pied de page.
+  orgName String? @map("org_name") @db.VarChar(200)
+
+  /// Nom du binaire déposé sous ARCHIVES/_branding. Sert à servir puis à remplacer le fichier.
+  logoFileName     String? @map("logo_file_name") @db.VarChar(260)
+  /// Nom d'origine du fichier téléversé, pour l'affichage dans l'écran de paramétrage.
+  logoOriginalName String? @map("logo_original_name") @db.VarChar(260)
+
+  /// Coordonnées, toutes facultatives — affichées en pied de page si renseignées.
+  contactEmail String? @map("contact_email") @db.VarChar(200)
+  websiteUrl   String? @map("website_url") @db.VarChar(300)
+
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+  updatedBy Int?     @map("updated_by") // no FK : trace d'édition, pas une contrainte métier
+
+  // CHECK (email_template_setting_id = 1) added in raw SQL
+  @@map("email_template_setting")
+}

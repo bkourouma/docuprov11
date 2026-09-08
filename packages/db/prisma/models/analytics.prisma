@@ -1,0 +1,28 @@
+// --- Couche analytique (additive, lecture seule) ---
+// Objets dédiés aux tableaux de bord. AUCUNE table métier n'est modifiée ici :
+// seule la table de cibles est ajoutée. Les index additifs sur les tables
+// existantes et les CHECK d'intégrité vivent en SQL brut (prisma/sql/analytics.sql),
+// appliqués via `prisma db execute` (cf. README couche analytique).
+
+/// Cible chiffrée d'archivage, par périmètre et période, pour les KPI « objectif vs réalisé ».
+/// scope = 'global' | 'programme' (scope_ref_id = dossier racine) | 'type' (scope_ref_id = document_type).
+model AnalyticsTarget {
+  targetId    Int       @id @default(autoincrement()) @map("target_id")
+  scope       String    @default("global") @db.VarChar(20) // CHECK in raw SQL: global|programme|type
+  scopeRefId  Int?      @map("scope_ref_id") // dossier_id (programme) ou document_type_id ; null si global
+  periodKind  String    @map("period_kind") @db.VarChar(10) // CHECK in raw SQL: month|quarter|year
+  periodStart DateTime  @map("period_start") @db.Date // borne basse inclusive de la période
+  metric      String    @default("documents") @db.VarChar(20) // CHECK in raw SQL: documents|pages
+  targetValue Int       @map("target_value")
+  note        String?   @db.VarChar(255)
+  createdBy   Int?      @map("created_by") // app_user_group.user_group_id (pas de FK : journal léger)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  updatedAt   DateTime? @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  // Une seule cible par (périmètre, référence, période, métrique). Le cas global
+  // (scope_ref_id NULL) est verrouillé en plus par un index unique partiel (raw SQL).
+  @@unique([scope, scopeRefId, periodKind, periodStart, metric], name: "ux_target_scope_period")
+  @@index([periodStart])
+  @@index([scope, scopeRefId])
+  @@map("analytics_target")
+}

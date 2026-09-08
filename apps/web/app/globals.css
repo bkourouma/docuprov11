@@ -1,0 +1,348 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================================
+   Design system « Plus Admin » (relook 002) — styles globaux
+   - Variables sur-mesure (marque, top bar, ombres) ; les couleurs AntD
+     sont disponibles via var(--ant-color-*) grâce à cssVar:true.
+   - data-theme="dark" est posé sur <html> par le ThemeProvider.
+   ========================================================================= */
+
+:root {
+  /* Polices : Open Sans posée par next/font (--font-sans) ; les anciennes
+     variables restent des ALIAS pour ne casser aucun consommateur. */
+  --font-display: var(--font-sans);
+  --font-geist-sans: var(--font-sans);
+
+  /* Compat transitoire (phase 3 renommera les consommateurs) : l'« accent »
+     historique ocre est re-mappé sur le primaire Plus Admin. */
+  --da-accent: #0033c4;
+  --da-accent-strong: #1a55e3;
+  --da-accent-soft: #e8eefc;
+  --da-accent-border: #c7d6f7;
+
+  /* Dégradé signature cyan → bleu roi (texte toujours sur la moitié bleue). */
+  --da-brand-from: #00cff4;
+  --da-brand-to: #0033c4;
+  --da-on-brand: #ffffff;
+  --da-on-brand-muted: #c9d7ff;
+
+  /* Îlot top bar — constant entre les thèmes (marqueur n°1 Plus Admin). */
+  --da-topbar-bg: #0033c4;
+  --da-on-topbar: #ffffff;
+  --da-on-topbar-muted: #ffffff;
+
+  /* Design plat : les cartes n'ont AUCUNE ombre ; popovers/modales seulement. */
+  --da-shadow-card: none;
+  --da-shadow-raised: 0 1px 15px 1px rgba(230, 234, 236, 0.35);
+  --da-shadow-popover: 0 3px 21px rgba(0, 0, 0, 0.2);
+  --da-grid-line: rgba(0, 51, 196, 0.06);
+
+  --da-radius-pill: 999px;
+}
+
+[data-theme='dark'] {
+  --da-accent: #5a85ff;
+  --da-accent-strong: #7a9cff;
+  --da-accent-soft: #2c3247;
+  --da-accent-border: #3d4666;
+
+  --da-brand-from: #00829a;
+  --da-brand-to: #00279a;
+  --da-on-brand: #ffffff;
+  --da-on-brand-muted: #c9d7ff;
+
+  --da-topbar-bg: #0033c4;
+  --da-on-topbar: #ffffff;
+  --da-on-topbar-muted: #b9c0d4;
+
+  --da-shadow-card: none;
+  --da-shadow-raised: none;
+  --da-shadow-popover: 0 3px 21px rgba(0, 0, 0, 0.45);
+  --da-grid-line: rgba(255, 255, 255, 0.05);
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  font-family:
+    var(--font-sans),
+    'Open Sans',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Display : alias d'Open Sans (la distinction des titres se fait par la graisse). */
+.da-display {
+  font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+/* Mono = Geist Mono (cotes, références, N° pièce, identifiants QR). */
+.da-mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chiffres tabulaires partout dans les tableaux : alignement net. */
+.ant-table-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Focus net et visible partout (accessibilité WCAG). */
+:where(a, button, [role='button'], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--ant-color-primary, #0033c4);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* =========================================================================
+   Îlot top bar (PRD relook §4.4) : barre bleu roi constante, contenus blancs.
+   Les popovers (cloche, menu utilisateur, palette) sont portalés hors de
+   .da-topbar et restent sous le thème ambiant.
+   ========================================================================= */
+.da-topbar {
+  background: var(--da-topbar-bg);
+  color: var(--da-on-topbar);
+  font-weight: 300;
+}
+.da-topbar .ant-btn-text {
+  color: var(--da-on-topbar) !important;
+}
+.da-topbar .ant-btn-text:hover,
+.da-topbar .ant-btn-text:active {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: var(--da-on-topbar) !important;
+}
+/* Focus ring blanc sur fond bleu roi (9,25:1). */
+.da-topbar :where(a, button, [role='button'], input, [tabindex]):focus-visible {
+  outline-color: var(--da-on-topbar);
+}
+
+/* Barre laterale : bandeau du logo fige, seul le menu defile (AuthShell). AntD interpose
+   `.ant-layout-sider-children` entre le `Sider` et nos deux blocs — sans colonne flex ici,
+   ils ne peuvent pas se partager la hauteur et l'ascenseur remonte derriere le logo. */
+.da-sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Utilitaire pilule (badges pilule, puces de filtres). */
+.da-pill {
+  border-radius: var(--da-radius-pill) !important;
+}
+
+/* Badges pleins en thème sombre : leur fond vient des dérivés AA de la palette
+   CLAIRE (seuls fonds sur lesquels du texte blanc passe, cf. design-tokens §3.1),
+   si bien que les teintes les plus sombres — « brand » #1a55e3 — ne contrastent
+   qu'à 2,51:1 avec la carte #252529, sous le seuil non-texte de 3:1. Le filet
+   clair redonne une limite discernable sans toucher au fond ni au texte. */
+[data-theme='dark'] .ant-tag.ant-tag-has-color {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+/* Barres de défilement discrètes. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ant-color-border, #e3e6e4) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--ant-color-border, #e3e6e4);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--ant-color-text-quaternary, #b6bbb8);
+  background-clip: content-box;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--ant-color-primary, #0033c4) 22%, transparent);
+}
+
+/* Lien rendu via <a> sans href (ouverture de document, etc.) : curseur main. */
+a:not([href]) {
+  cursor: pointer;
+}
+
+/* Réduction de mouvement : on coupe transforms/animations, on garde l'opacité.
+   (motion gère déjà ses transforms via reducedMotion="user".) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Surbrillance transitoire d'une nouvelle ligne / ligne modifiée (édition référentiels). */
+@keyframes da-row-flash {
+  from {
+    background-color: var(--ant-color-primary-bg, #e8eefc);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.da-row-flash > td {
+  animation: da-row-flash 1.4s ease-out;
+}
+
+/* Rotation continue (badge « En cours », chargeurs sur-mesure). */
+@keyframes da-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Cellule « cliquer pour modifier » : soulignement pointillé + crayon au survol. */
+.da-editable {
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin: -1px -4px;
+  transition: background 0.14s ease;
+}
+.da-editable:hover {
+  background: var(--ant-color-fill-quaternary, #f0f2f1);
+  box-shadow: inset 0 -1px 0 var(--ant-color-text-quaternary, #b6bbb8);
+}
+.da-editable:hover .da-editable-pen {
+  opacity: 0.55 !important;
+}
+
+/* Textes en noir (au lieu du gris « secondary ») pour une meilleure lisibilité.
+   - .acq-readable : page Acquisition + sa modale d'indexation.
+   - .dash-readable : page Tableaux de bord (titres de widgets, sous-titres, légendes). */
+.acq-readable .ant-typography-secondary,
+.dash-readable .ant-typography-secondary {
+  color: var(--ant-color-text) !important;
+}
+
+/* Utilitaire : conteneur de page — padding Plus Admin 25×27 (relevé de la démo).
+   La gouttière horizontale est exposée en variable : les barres d'action collantes
+   s'en servent pour déborder pile jusqu'aux bords de la page (sans elle, elles
+   restent codées sur une valeur qui se désynchronise au moindre changement). */
+.da-page {
+  --da-page-pad-x: 16px;
+  padding: 16px;
+}
+@media (min-width: 768px) {
+  .da-page {
+    --da-page-pad-x: 27px;
+    padding: 25px 27px;
+  }
+}
+
+/* Barre d'action collante en bas de page (intercalaires, sélections multiples). */
+.da-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin-top: 16px;
+  margin-inline: calc(-1 * var(--da-page-pad-x, 16px));
+  padding: 12px var(--da-page-pad-x, 16px);
+  background: var(--ant-color-bg-container, #ffffff);
+  border-top: 1px solid var(--ant-color-border, #e4e9f0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Largeur maximale de confort en très grand écran : les pages denses (tableaux,
+   wizards) restent lisibles sans s'étirer indéfiniment sur un moniteur 1920px+.
+   Volontairement généreuse (1600px) pour ne pas gêner les tableaux larges. */
+@media (min-width: 1600px) {
+  .da-page > * {
+    max-width: 1600px;
+    margin-inline: auto;
+  }
+}
+
+/* Compteur de menu (§04.7, AuthShell) : AntD pose le libellé et le badge `extra` comme deux
+   enfants flex côte à côte, sans min-width:0 ni flex-shrink sur ni l'un ni l'autre — pour les
+   libellés les plus longs du Sider (« Suivi des courriers », « Intégration décharge »)
+   associés à un compteur à deux chiffres, la marge restante tombe à quelques px à peine,
+   insuffisante pour absorber les variations de rendu de police (OS, hinting) : le compteur se
+   fait alors rogner par l'overflow:hidden du conteneur au lieu de s'afficher en entier. On
+   resserre le padding autour du badge pour redonner de la marge, sans toucher au libellé (qui
+   doit rester une chaîne — cf. commentaire dans AuthShell.tsx sur le popup de la barre
+   repliée).
+   !important partout : les styles CSS-in-JS d'AntD s'insèrent après notre feuille dans le
+   <head>, donc à spécificité égale (le sélecteur ":where(...)" d'AntD ne compte pas) c'est
+   l'ordre d'insertion qui décide et AntD gagne — cf. le commentaire cascade/@layer
+   d'AuthShell.tsx. `padding-left` (physique) plutôt que `padding-inline-start` : le build
+   (lightningcss) éclate la propriété logique en variantes `:lang()` pour le RTL et perd le
+   `!important` au passage — l'app est LTR uniquement (FR), la propriété physique évite le
+   piège. */
+.ant-layout-sider .ant-menu-item-extra {
+  padding-left: 3px !important;
+  flex-shrink: 0 !important;
+}
+.ant-layout-sider .ant-menu-item .ant-badge-count {
+  padding: 0 5px !important;
+}
+
+/* Libellés de menu tronqués sur UNE seule ligne (Sider déplié + Drawer mobile), même fragilité
+   flexbox que ci-dessus : `.ant-menu-title-content` a bien `overflow:hidden`/`text-overflow:
+   ellipsis`, mais son parent flex (le <li> de l'item) n'a pas de `min-width:0` explicite — sans
+   lui, certains moteurs (WebKit mobile en particulier) laissent le libellé le plus long
+   (« Historique des communications ») repasser sur deux lignes plutôt que de le tronquer par
+   « … ». `!important` : même raison d'ordre de cascade CSS-in-JS d'AntD que le bloc ci-dessus. */
+.ant-menu-title-content {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  min-width: 0 !important;
+}
+.ant-menu-item,
+.ant-menu-submenu-title {
+  min-width: 0 !important;
+}
+
+/* …SAUF les entrées du menu déplié (Sider 264px + Drawer mobile 280px), où la troncature par
+   « … » coûtait le sens : « Sécurité type document par utilisateur » et « par profil » se
+   coupaient au même endroit (« Sécurité type document … »), donc indiscernables l'une de
+   l'autre, et « Confidentialité des utilisateurs » perdait son complément. Les libellés y
+   passent sur DEUX lignes plutôt que d'être rognés ; les entrées courtes gardent leur hauteur
+   d'origine (40px = `itemHeight` AntD) puisqu'un texte qui tient ne se replie pas.
+   Portée volontairement étroite (`.ant-menu-inline`) : le menu de la barre repliée est un popup
+   `.ant-menu-vertical` rendu hors du Sider, qui se dimensionne sur son contenu et n'a donc pas
+   le problème. `line-height` normal + `padding-block` remplacent le `line-height: 40px` d'AntD,
+   qui espacerait les deux lignes de 40px chacune. */
+.ant-layout-sider .ant-menu-inline .ant-menu-item,
+.ant-drawer .ant-menu-inline .ant-menu-item {
+  height: auto !important;
+  min-height: 40px !important;
+  line-height: 1.35 !important;
+  padding-block: 6px !important;
+  align-items: center !important;
+}
+.ant-layout-sider .ant-menu-inline .ant-menu-item .ant-menu-title-content,
+.ant-drawer .ant-menu-inline .ant-menu-item .ant-menu-title-content {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}

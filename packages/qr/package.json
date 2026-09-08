@@ -1,0 +1,24 @@
+{
+  "name": "@archivage/qr",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "QR contract (DOCUPRO|1|INTERCALAIRE|cat|id): generation + parsing/validation.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "zxing-wasm": "^2.0.0"
+  },
+  "devDependencies": {
+    "@archivage/config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "@types/qrcode": "^1.5.5",
+    "typescript": "^5.7.2"
+  }
+}

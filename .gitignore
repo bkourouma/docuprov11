@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Turborepo
+.turbo/
+
+# Test / coverage
+coverage/
+
+# Env (keep the example)
+.env
+.env.*
+!.env.example
+
+# Prisma generated client
+packages/db/generated/
+
+# Stored binaries (kept out of VCS)
+storage/archives/*
+!storage/archives/.gitkeep
+
+# OCR language data
+*.traineddata
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp

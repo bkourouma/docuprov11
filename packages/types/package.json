@@ -1,0 +1,22 @@
+{
+  "name": "@archivage/types",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Shared DTOs, enums and the intercalaire category contract types.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "echo \"(@archivage/types) no tests yet\""
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@archivage/config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

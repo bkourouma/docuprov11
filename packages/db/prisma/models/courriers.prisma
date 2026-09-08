@@ -1,0 +1,370 @@
+// --- Docu-Courriers (17) --- docs/DOCUMENTATION_MODULE_DOCU-COURRIERS.md §02
+//
+// Portage métier du module « Docu-Courriers » (source ASP.NET Zero / ABP) sur la
+// stack V6. Conventions appliquées (cf. décisions Étape 0, memory docu-courriers-etape0-decisions) :
+//  - Mono-tenant : aucune colonne TenantId (le module source était IMayHaveTenant).
+//  - Pas d'énumération Prisma : les états sont des `Int @db.SmallInt` + CHECK (raw SQL).
+//      MailStatus : 0 Redaction, 1 Rédigé, 2 Déchargé, 3 Traité, 4 Supprimé            (§02.1.1)
+//      MailType   : 0 Arrivée, 1 Départ, 2 Interne                                     (§02.1.2)
+//  - Pas de soft-delete hérité : `is_deleted` explicite porté par Mail uniquement.
+//  - Acteurs métier (destinataire, imputé, auteur, audit) → app_user_group (acteur effectif V6).
+//  - Référentiels « lean » façon V6 (label + is_active + unique partiel sur is_active),
+//    la désactivation remplaçant le soft-delete source. Libellé = `label` (convention V6).
+//  - `MailControle` (privilèges de rôle, enum Privileges) est ABANDONNÉ : l'accès passe
+//    par le menu-RBAC (+ is_admin) ; une ACL par courrier (MailPermission) est modélisée
+//    mais RÉSERVÉE / inactive en v1.
+//
+// Contraintes non exprimables en Prisma (CHECK, uniques partiels, tsvector/GIN) : voir la migration.
+
+// ===========================================================================
+// Référentiels de paramétrage (menu MailSettings)
+// ===========================================================================
+
+/// Nature de courrier (§02.8 MailNatures).
+model MailNature {
+  mailNatureId Int     @id @default(autoincrement()) @map("mail_nature_id")
+  label        String  @db.VarChar(500)
+  isActive     Boolean @default(true) @map("is_active") // unique partiel sur label WHERE is_active (raw SQL)
+
+  mails Mail[]
+
+  @@map("mail_nature")
+}
+
+/// Objet type de courrier + durées de suivi qui alimentent DateFollowUp (§02.7 MailObjets).
+model MailObjet {
+  mailObjetId       Int     @id @default(autoincrement()) @map("mail_objet_id")
+  label             String  @db.VarChar(500)
+  dureeSuiviExterne Int     @default(0) @map("duree_suivi_externe") // jours
+  dureeSuiviInterne Int     @default(0) @map("duree_suivi_interne") // jours
+  isActive          Boolean @default(true) @map("is_active")
+
+  mails Mail[]
+
+  @@map("mail_objet")
+}
+
+/// Type d'imputation (§02.4 MailInputationTypes). `suivi` déclenche l'auto-« traité » à la lecture.
+/// Valeurs métier figées côté domaine (5 Validation DG, 14 Validation Direction, 10 Pour Suivi, 17 En Copie) — seed.
+model MailInputationType {
+  mailInputationTypeId Int     @id @default(autoincrement()) @map("mail_inputation_type_id")
+  label                String  @db.VarChar(500)
+  suivi                Boolean @default(false)
+  isActive             Boolean @default(true) @map("is_active")
+
+  inputations MailInputation[]
+
+  @@map("mail_inputation_type")
+}
+
+/// Type de courrier de départ (§02.9 — entité MailDepartType, table source `MailTypes`).
+/// À ne pas confondre avec l'énumération MailType. Alimente la numérotation NReference par type.
+model MailDepartType {
+  mailDepartTypeId Int     @id @default(autoincrement()) @map("mail_depart_type_id")
+  label            String  @db.VarChar(500)
+  isActive         Boolean @default(true) @map("is_active")
+
+  mails Mail[]
+
+  @@map("mail_depart_type")
+}
+
+/// Niveau de confidentialité (§02.16 Confidentialiteses). Référentiel informatif en v1.
+model MailConfidentialite {
+  mailConfidentialiteId Int     @id @default(autoincrement()) @map("mail_confidentialite_id")
+  label                 String  @db.VarChar(500)
+  isActive              Boolean @default(true) @map("is_active")
+
+  mails Mail[]
+
+  @@map("mail_confidentialite")
+}
+
+/// Type d'entité externe (§02.11 ExternalEntityTypes).
+model ExternalEntityType {
+  externalEntityTypeId Int     @id @default(autoincrement()) @map("external_entity_type_id")
+  label                String  @db.VarChar(500)
+  isActive             Boolean @default(true) @map("is_active")
+
+  entities     ExternalEntity[]
+  customValues ExternalEntityCustomValue[]
+
+  @@map("external_entity_type")
+}
+
+/// Entité externe / correspondant (§02.10 ExternalEntities).
+model ExternalEntity {
+  externalEntityId     Int     @id @default(autoincrement()) @map("external_entity_id")
+  label                String  @db.VarChar(500)
+  email                String? @db.VarChar(200)
+  telephone            String? @db.VarChar(50)
+  externalEntityTypeId Int?    @map("external_entity_type_id")
+  isActive             Boolean @default(true) @map("is_active")
+
+  externalEntityType ExternalEntityType?         @relation(fields: [externalEntityTypeId], references: [externalEntityTypeId])
+  customValues       ExternalEntityCustomValue[]
+  mails              Mail[]
+
+  @@index([externalEntityTypeId])
+  @@map("external_entity")
+}
+
+/// Définition d'une propriété personnalisée d'entité externe (§02.12, EAV).
+model ExternalEntityCustomProperty {
+  externalEntityCustomPropertyId Int     @id @default(autoincrement()) @map("external_entity_custom_property_id")
+  label                          String  @db.VarChar(500)
+  isActive                       Boolean @default(true) @map("is_active")
+
+  customValues ExternalEntityCustomValue[]
+
+  @@map("external_entity_custom_property")
+}
+
+/// Valeur d'une propriété personnalisée (§02.13, EAV : entité × type × propriété → valeur).
+model ExternalEntityCustomValue {
+  externalEntityCustomValueId    Int    @id @default(autoincrement()) @map("external_entity_custom_value_id")
+  value                          String @db.Text
+  externalEntityId               Int    @map("external_entity_id")
+  externalEntityTypeId           Int    @map("external_entity_type_id")
+  externalEntityCustomPropertyId Int    @map("external_entity_custom_property_id")
+
+  externalEntity     ExternalEntity               @relation(fields: [externalEntityId], references: [externalEntityId], onDelete: Cascade)
+  externalEntityType ExternalEntityType           @relation(fields: [externalEntityTypeId], references: [externalEntityTypeId])
+  customProperty     ExternalEntityCustomProperty @relation(fields: [externalEntityCustomPropertyId], references: [externalEntityCustomPropertyId])
+
+  @@unique([externalEntityId, externalEntityCustomPropertyId], name: "ux_eecv_entity_property")
+  @@index([externalEntityId])
+  @@map("external_entity_custom_value")
+}
+
+/// Organigramme hiérarchique (§02.14). Materialized-path (réutilise HierarchyService).
+/// Assigné à un Role via role.organigramme_id (§02.15, « RoleOrganigramme » = colonne, pas de table).
+model Organigramme {
+  organigrammeId Int     @id @default(autoincrement()) @map("organigramme_id")
+  parentId       Int?    @map("parent_id")
+  label          String  @db.VarChar(500)
+  depth          Int     @default(0)
+  path           String  @db.VarChar(900)
+  isActive       Boolean @default(true) @map("is_active")
+
+  parent   Organigramme?  @relation("OrganigrammeTree", fields: [parentId], references: [organigrammeId])
+  children Organigramme[] @relation("OrganigrammeTree")
+  roles    Role[]
+  mails    Mail[]
+
+  @@index([parentId])
+  @@index([path])
+  @@map("organigramme")
+}
+
+// ===========================================================================
+// Entité pivot + éléments liés
+// ===========================================================================
+
+/// Courrier (§02.1 Mails) — entité pivot du module. L'état résulte de `status` (MailStatus),
+/// de 5 drapeaux booléens et de 6 dates de cycle de vie (§03).
+model Mail {
+  mailId      Int      @id @default(autoincrement()) @map("mail_id")
+  title       String   @db.VarChar(500) // Objet / titre (source Title, [Required])
+  date        DateTime @map("mail_date") @db.Date // Date du courrier (source Date, [Required]) — date métier (colonne "mail_date", cf. document_date)
+  description String?  @db.Text
+  reference   String?  @db.VarChar(255)
+  nReference  String?  @map("n_reference") @db.VarChar(100) // numéro de référence (départ) — unique par type (raw SQL)
+  mailType    Int      @default(0) @map("mail_type") @db.SmallInt // 0 Arrivée,1 Départ,2 Interne — CHECK raw SQL
+  status      Int      @default(0) @db.SmallInt // MailStatus 0..4 — CHECK raw SQL
+
+  // Dates de cycle de vie (§03.3). Toutes nullables, horodatées UTC.
+  dateEnregistrementCourrier DateTime? @map("date_enregistrement_courrier") @db.Timestamptz(0)
+  dateFollowUp               DateTime? @map("date_follow_up") @db.Timestamptz(0)
+  endDateFollowUp            DateTime? @map("end_date_follow_up") @db.Timestamptz(0)
+  dateDecharge               DateTime? @map("date_decharge") @db.Timestamptz(0)
+  dateTraited                DateTime? @map("date_traited") @db.Timestamptz(0)
+  dateButoire                DateTime? @map("date_butoire") @db.Timestamptz(0) // échéance (rappels)
+
+  // Drapeaux de workflow (§03.2), défaut false.
+  valider               Boolean @default(false)
+  validationDirection   Boolean @default(false) @map("validation_direction")
+  validationDG          Boolean @default(false) @map("validation_dg")
+  enregistrementReponse Boolean @default(false) @map("enregistrement_reponse")
+  decharge              Boolean @default(false)
+
+  // Liens
+  // Destinataire : SOIT un acteur nommé (Départ §12, courriers historiques), SOIT un rôle (Arrivée
+  // §05 : le courrier est adressé à une fonction, et tous les utilisateurs qui la portent le
+  // reçoivent). Exactement l'un des deux est renseigné — CHECK `ck_mail_destinataire` (raw SQL).
+  destinataireExpediteur Int? @map("destinataire_expediteur") // FK → app_user_group (acteur effectif ; source long → AbpUsers)
+  destinataireRoleId     Int? @map("destinataire_role_id") // FK → role (destinataire collectif §05)
+  mailNatureId           Int? @map("mail_nature_id")
+  confidentialiteId      Int? @map("confidentialite_id")
+  externalEntityId       Int? @map("external_entity_id") // nullable : courrier Interne (§02.1.2 type 2) sans correspondant ; corrige le null→0 source
+  mailParent             Int? @map("mail_parent") // auto-référence (fil / réponse)
+  mailObjetId            Int? @map("mail_objet_id")
+  organigrammeId         Int? @map("organigramme_id")
+  mailDepartTypeId       Int? @map("mail_depart_type_id")
+
+  // Soft-delete explicite (V6 n'a pas de soft-delete hérité ; porte l'IsDeleted source, filtré en requête).
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  // Audit V6 (acteur effectif → app_user_group).
+  createdBy  Int?      @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  modifiedBy Int?      @map("modified_by")
+  modifiedAt DateTime? @map("modified_at") @db.Timestamptz(0)
+
+  destinataire     AppUserGroup?        @relation("MailDestinataire", fields: [destinataireExpediteur], references: [userGroupId])
+  destinataireRole Role?                @relation("MailDestinataireRole", fields: [destinataireRoleId], references: [roleId])
+  nature           MailNature?          @relation(fields: [mailNatureId], references: [mailNatureId])
+  confidentialite  MailConfidentialite? @relation(fields: [confidentialiteId], references: [mailConfidentialiteId])
+  externalEntity   ExternalEntity?      @relation(fields: [externalEntityId], references: [externalEntityId])
+  parent           Mail?                @relation("MailThread", fields: [mailParent], references: [mailId])
+  replies          Mail[]               @relation("MailThread")
+  objet            MailObjet?           @relation(fields: [mailObjetId], references: [mailObjetId])
+  organigramme     Organigramme?        @relation(fields: [organigrammeId], references: [organigrammeId])
+  departType       MailDepartType?      @relation(fields: [mailDepartTypeId], references: [mailDepartTypeId])
+  createdByUser    AppUserGroup?        @relation("MailCreatedBy", fields: [createdBy], references: [userGroupId])
+  modifiedByUser   AppUserGroup?        @relation("MailModifiedBy", fields: [modifiedBy], references: [userGroupId])
+
+  inputations      MailInputation[]
+  comments         MailComment[]
+  documents        MailDocument[]
+  scannedDocuments MailScannedDocument[]
+  actionLogs       MailActionLog[]
+  permissions      MailPermission[]
+
+  @@index([status])
+  @@index([mailType])
+  @@index([externalEntityId])
+  @@index([destinataireExpediteur])
+  @@index([destinataireRoleId])
+  @@index([mailParent])
+  @@index([dateButoire])
+  @@index([createdAt])
+  // Index des FK référentielles filtrées par la recherche multicritères (§11), façon Document.
+  @@index([mailNatureId])
+  @@index([confidentialiteId])
+  @@index([mailObjetId])
+  @@index([organigrammeId])
+  @@index([mailDepartTypeId])
+  @@map("mail")
+}
+
+/// Imputation : affectation d'un courrier à un acteur (§02.3 MailInputations).
+model MailInputation {
+  mailInputationId     Int       @id @default(autoincrement()) @map("mail_inputation_id")
+  instructions         String?   @db.Text
+  deadline             DateTime? @db.Timestamptz(0)
+  dateTreated          DateTime? @map("date_treated") @db.Timestamptz(0)
+  lastReminderSent     DateTime? @map("last_reminder_sent") @db.Timestamptz(0)
+  mailInputationTypeId Int       @map("mail_inputation_type_id")
+  userId               Int       @map("user_id") // FK → app_user_group (acteur imputé)
+  mailId               Int       @map("mail_id")
+  createdBy            Int?      @map("created_by")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  mail          Mail               @relation(fields: [mailId], references: [mailId], onDelete: Cascade)
+  type          MailInputationType @relation(fields: [mailInputationTypeId], references: [mailInputationTypeId])
+  user          AppUserGroup       @relation("MailInputationUser", fields: [userId], references: [userGroupId])
+  createdByUser AppUserGroup?      @relation("MailInputationCreatedBy", fields: [createdBy], references: [userGroupId])
+
+  @@index([mailId])
+  @@index([userId])
+  @@index([mailInputationTypeId])
+  @@map("mail_inputation")
+}
+
+/// Commentaire de courrier (§02.5 MailCommentses). `userId` = auteur (acteur effectif).
+model MailComment {
+  mailCommentId Int      @id @default(autoincrement()) @map("mail_comment_id")
+  comments      String   @db.Text
+  userId        Int      @map("user_id")
+  mailId        Int      @map("mail_id")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  mail Mail         @relation(fields: [mailId], references: [mailId], onDelete: Cascade)
+  user AppUserGroup @relation("MailCommentUser", fields: [userId], references: [userGroupId])
+
+  @@index([mailId])
+  @@map("mail_comment")
+}
+
+/// Liaison courrier ↔ document GED existant (§02.6 MailDocuments, jonction N-N + drapeau `decharge`).
+/// Réutilise le Document/GED existant (core.prisma) — aucune table document recréée.
+model MailDocument {
+  mailDocumentId Int      @id @default(autoincrement()) @map("mail_document_id")
+  decharge       Boolean  @default(false) // true = document de décharge
+  mailId         Int      @map("mail_id")
+  documentId     Int      @map("document_id")
+  createdBy      Int?     @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  mail          Mail          @relation(fields: [mailId], references: [mailId], onDelete: Cascade)
+  document      Document      @relation(fields: [documentId], references: [documentId])
+  createdByUser AppUserGroup? @relation("MailDocumentCreatedBy", fields: [createdBy], references: [userGroupId])
+
+  @@unique([mailId, documentId], name: "ux_mail_document")
+  @@index([mailId])
+  @@index([documentId])
+  @@map("mail_document")
+}
+
+/// Document scanné en attente d'enregistrement (§02.17 DocumentScannes, base CreationAuditedEntity).
+/// L'ingestion réutilise le pipeline AcquisitionBatch/BullMQ (câblage en phase G) ; ici la file d'attente §07.
+/// `mailId`/`documentId` : liens logiques source, matérialisés en FK nullables pour l'intégrité.
+model MailScannedDocument {
+  mailScannedDocumentId Int      @id @default(autoincrement()) @map("mail_scanned_document_id")
+  fileName              String?  @map("file_name") @db.VarChar(500)
+  filePath              String?  @map("file_path") @db.VarChar(1000)
+  dateScanned           DateTime @default(now()) @map("date_scanned") @db.Timestamptz(0)
+  machineName           String?  @map("machine_name") @db.VarChar(128)
+  isTraite              Boolean  @default(false) @map("is_traite") // true une fois enregistré (Mail + Document)
+  mailId                Int?     @map("mail_id")
+  documentId            Int?     @map("document_id")
+  createdBy             Int?     @map("created_by")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  mail          Mail?         @relation(fields: [mailId], references: [mailId], onDelete: SetNull)
+  document      Document?     @relation(fields: [documentId], references: [documentId], onDelete: SetNull)
+  createdByUser AppUserGroup? @relation("MailScannedDocCreatedBy", fields: [createdBy], references: [userGroupId])
+
+  @@index([isTraite])
+  @@index([mailId])
+  @@index([documentId])
+  @@map("mail_scanned_document")
+}
+
+/// Journal d'actions métier sur un courrier (contrôle, décharge, validation…, codes 1014-1021 source).
+/// Remplace les appels ICustomAuditLogsesAppService.AddLog du source.
+model MailActionLog {
+  mailActionLogId Int      @id @default(autoincrement()) @map("mail_action_log_id")
+  mailId          Int?     @map("mail_id")
+  actionCode      Int      @map("action_code")
+  userGroupId     Int?     @map("user_group_id")
+  details         String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  mail      Mail?         @relation(fields: [mailId], references: [mailId], onDelete: SetNull)
+  userGroup AppUserGroup? @relation("MailActionLogActor", fields: [userGroupId], references: [userGroupId])
+
+  @@index([mailId])
+  @@index([userGroupId, createdAt])
+  @@map("mail_action_log")
+}
+
+/// ACL par courrier — RÉSERVÉE / inactive en v1 (accès géré par menu-RBAC + is_admin).
+/// Modèle prêt (calqué sur DocumentPermission) pour réactivation sans migration ultérieure.
+model MailPermission {
+  mailPermissionId  Int      @id @default(autoincrement()) @map("mail_permission_id")
+  mailId            Int      @map("mail_id")
+  permissionLevelId Int      @map("permission_level_id")
+  userGroupId       Int      @map("user_group_id")
+  grantedBy         Int?     @map("granted_by")
+  grantedAt         DateTime @default(now()) @map("granted_at") @db.Timestamptz(0)
+
+  mail            Mail            @relation(fields: [mailId], references: [mailId], onDelete: Cascade)
+  permissionLevel PermissionLevel @relation(fields: [permissionLevelId], references: [permissionLevelId])
+  userGroup       AppUserGroup    @relation("MailPermissionGrantee", fields: [userGroupId], references: [userGroupId])
+
+  @@unique([mailId, userGroupId, permissionLevelId])
+  @@index([mailId, userGroupId])
+  @@map("mail_permission")
+}

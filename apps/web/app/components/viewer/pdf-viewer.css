@@ -1,0 +1,215 @@
+/*
+ * Visionneuse PDF — styles de la couche texte (pdf.js) et de la mise en page.
+ * La couche texte est un calque de <span> transparents superposés au canvas : elle
+ * rend le PDF sélectionnable / copiable / cherchable, ce qu'un <iframe> ne permettait pas.
+ *
+ * Couleurs : variables Ant Design (cssVar) et `--da-*` de globals.css uniquement.
+ * Les quatre jetons `--da-pdf-*` ci-dessous sont les seules valeurs propres à ce
+ * fichier : elles se composent sur le DOCUMENT et non sur la surface du thème,
+ * elles n'ont donc pas d'équivalent dans le design system.
+ */
+
+.da-pdf {
+  /*
+   * CONTRAINTE : le canvas pdf.js est peint sans couche alpha, donc sur un papier
+   * clair dans les DEUX thèmes, et le texte du document reste noir. Les ratios notés
+   * sont ceux de ce noir sur la teinte une fois composée sur le papier (seuil 4,5:1,
+   * WCAG 1.4.3) — pas sur la surface de l'application.
+   */
+  --da-pdf-paper: #ffffff;
+  --da-pdf-highlight: rgb(246 232 78 / 55%); /* jaune Plus Admin #f6e84e — 18,3:1 */
+  --da-pdf-highlight-active: rgb(255 87 48 / 55%); /* warningVivid #ff5730 — 10,9:1 */
+  /* Grille §4.2 : le conteneur est une carte (3 px), pas une modale. */
+  --da-pdf-radius-card: 3px;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* Sans cela, `height: 100%` + bordure font 1 px de trop et débordent du conteneur hôte. */
+  box-sizing: border-box;
+  background: var(--ant-color-bg-container, #ffffff);
+  border: 1px solid var(--ant-color-border, #e4e9f0);
+  border-radius: var(--da-pdf-radius-card);
+  overflow: hidden;
+}
+
+/*
+ * Le papier ne suivant pas le thème, les surlignages restent dans la même famille
+ * de teintes en sombre ; seule l'opacité baisse pour que l'îlot clair du document
+ * n'éblouisse pas sur un fond `#111115`.
+ */
+[data-theme='dark'] .da-pdf {
+  --da-pdf-highlight: rgb(246 232 78 / 42%); /* 18,8:1 */
+  --da-pdf-highlight-active: rgb(255 87 48 / 45%); /* 12,2:1 */
+}
+
+.da-pdf__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ant-color-border-secondary, #eef1f6);
+  background: var(--ant-color-bg-container, #ffffff);
+}
+
+/*
+ * Cible tactile. La barre reste en `size="small"` (dérogation §4.6.5 : outils de
+ * lecture, pas des actions de page), mais aucun contrôle ne descend sous 32 px.
+ * Les hauteurs sont réécrites ici et non via `controlHeightSM` du thème, qui
+ * s'appliquerait à toutes les barres `small` de l'application.
+ */
+.da-pdf .da-pdf__toolbar .ant-btn.ant-btn-sm {
+  height: 32px;
+}
+
+.da-pdf .da-pdf__toolbar .ant-btn.ant-btn-sm.ant-btn-icon-only {
+  width: 32px;
+  min-width: 32px;
+}
+
+.da-pdf .da-pdf__toolbar .ant-select.ant-select-sm {
+  height: 32px;
+}
+
+.da-pdf .da-pdf__toolbar .ant-input-number-sm .ant-input-number-input {
+  height: 30px; /* 32 px bordures comprises */
+}
+
+.da-pdf .da-pdf__toolbar .ant-input-affix-wrapper-sm {
+  min-height: 32px;
+}
+
+.da-pdf__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.da-pdf__thumbs {
+  width: 148px;
+  flex: none;
+  overflow: auto;
+  padding: 8px;
+  border-right: 1px solid var(--ant-color-border-secondary, #eef1f6);
+  /* Rail en retrait : le fond de layout le distingue de la surface de la barre. */
+  background: var(--ant-color-bg-layout, #f8f9fb);
+}
+
+.da-pdf__thumb {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--ant-border-radius, 4px);
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.da-pdf__thumb canvas {
+  width: 100%;
+  height: auto;
+  border-radius: var(--ant-border-radius-sm, 2px);
+  /* Design plat : un filet, pas une ombre portée. */
+  box-shadow: 0 0 0 1px var(--ant-color-border, #e4e9f0);
+}
+
+/* Page courante : marquée par l'accent d'état actif, comme l'item de menu actif. */
+.da-pdf__thumb[data-active='true'] {
+  border-color: var(--da-accent-strong, #1a55e3);
+  background: var(--da-accent-soft, #e8eefc);
+}
+
+.da-pdf__thumb-label {
+  display: block;
+  font-size: var(--ant-font-size-sm, 12px);
+  line-height: 16px;
+  text-align: center;
+  color: var(--ant-color-text-secondary, #687480);
+}
+
+.da-pdf__scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  /* CONTRAINTE : valeur dupliquée dans `SCROLL_PADDING` (PdfViewer.tsx), qui la
+     déduit de la largeur utile pour « ajuster » et du décalage de défilement. */
+  padding: 16px;
+  background: var(--ant-color-bg-layout, #f8f9fb);
+  scroll-behavior: smooth;
+}
+
+/* Conteneur des états « chargement » et « document illisible ». */
+.da-pdf__state {
+  display: grid;
+  place-items: center;
+  height: 100%;
+}
+
+.da-pdf__page {
+  position: relative;
+  margin: 0 auto 16px;
+  background: var(--da-pdf-paper);
+  box-shadow: var(--da-shadow-popover, 0 3px 21px rgb(0 0 0 / 20%));
+}
+
+.da-pdf__page canvas {
+  display: block;
+}
+
+/* --- Couche texte pdf.js (reprise minimale de pdf_viewer.css) --- */
+.da-pdf__page .textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  text-align: initial;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 2;
+}
+
+.da-pdf__page .textLayer span,
+.da-pdf__page .textLayer br {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.da-pdf__page .textLayer span.markedContent {
+  top: 0;
+  height: 0;
+}
+
+.da-pdf__page .textLayer ::selection {
+  background: color-mix(in srgb, var(--ant-color-primary, #0033c4) 25%, transparent);
+}
+
+/* Résultats de recherche : le texte reste transparent, seul le fond marque la zone. */
+.da-pdf__page .textLayer mark {
+  background: var(--da-pdf-highlight);
+  color: transparent;
+  border-radius: var(--ant-border-radius-sm, 2px);
+}
+
+/*
+ * L'occurrence courante se distingue par la teinte ET par un filet : la couleur
+ * seule ne suffirait pas à la repérer parmi les autres (WCAG 1.4.1).
+ */
+.da-pdf__page .textLayer mark[data-current='true'] {
+  background: var(--da-pdf-highlight-active);
+  box-shadow: 0 0 0 1px var(--ant-color-warning, #dd2a00);
+}
+
+.da-pdf__empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
