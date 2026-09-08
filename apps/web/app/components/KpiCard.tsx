@@ -2,10 +2,11 @@
 
 import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { Card, Skeleton, Tooltip, Typography } from 'antd';
+import { Card, Skeleton, Typography } from 'antd';
 import { icons, iconDefaults, type IconName } from '../theme/icons';
 import { fmtInt, fmtPct } from '../theme/charts';
 import { fontSize, motion } from '../theme/tokens';
+import { InfoTooltip } from './InfoTooltip';
 
 /**
  * Tuile de chiffre clé. Le dépôt n'utilise `Statistic` d'AntD nulle part : les nombres y sont
@@ -146,11 +147,11 @@ function BadgeVariation({
 }) {
   if (variation.ratio === null || variation.sens === 'indetermine') {
     return (
-      <Tooltip title="Aucune comparaison possible : la période précédente est à zéro.">
+      <InfoTooltip title="Aucune comparaison possible : la période précédente est à zéro.">
         <Typography.Text type="secondary" style={{ fontSize: fontSize.xs }}>
           —
         </Typography.Text>
-      </Tooltip>
+      </InfoTooltip>
     );
   }
 
@@ -165,7 +166,7 @@ function BadgeVariation({
   const hausse = variation.sens === 'hausse';
   const bon = hausse !== defavorable;
   return (
-    <Tooltip title="Comparé à la période précédente de même durée">
+    <InfoTooltip title="Comparé à la période précédente de même durée">
       <Typography.Text
         style={{
           fontSize: fontSize.xs,
@@ -174,6 +175,6 @@ function BadgeVariation({
       >
         {hausse ? '▲' : '▼'} {fmtPct(Math.abs(variation.ratio), 0)}
       </Typography.Text>
-    </Tooltip>
+    </InfoTooltip>
   );
 }

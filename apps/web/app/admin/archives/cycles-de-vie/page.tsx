@@ -31,6 +31,7 @@ import {
   type DocumentTypeOption,
   type FinalFateRow,
 } from '../../../lib/archives';
+import { InfoTooltip } from '../../../components/InfoTooltip';
 
 /**
  * Le serveur stocke et calcule les échéances en MOIS (`domain/dua.ts`, SQL `make_interval`,
@@ -206,9 +207,9 @@ export default function LifeCyclesPage() {
       width: 130,
       sorter: (a, b) => a.usefulnessLifespan - b.usefulnessLifespan,
       render: (_, r) => (
-        <Tooltip title="Durée d'utilité administrative — au-delà, le document apparaît dans « DUA expirés ».">
+        <InfoTooltip title="Durée d'utilité administrative — au-delà, le document apparaît dans « DUA expirés ».">
           <span>{humanYears(monthsToYears(r.usefulnessLifespan))}</span>
-        </Tooltip>
+        </InfoTooltip>
       ),
     },
     { title: 'Sort final', key: 'finalFate', render: (_, r) => r.finalFate?.label ?? dash },

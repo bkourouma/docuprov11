@@ -1,9 +1,10 @@
 'use client';
 
-import { Col, Row, Tooltip, Typography } from 'antd';
+import { Col, Row, Typography } from 'antd';
 import { StatusTile } from '../../../components/StatusTile';
 import type { FileCompteur, FilesResponse, MailScope } from '../lib/api';
 import type { IconName } from '../../../theme/icons';
+import { InfoTooltip } from '../../../components/InfoTooltip';
 
 interface Tuile {
   cle: keyof Omit<FilesResponse, 'scope'>;
@@ -105,10 +106,10 @@ export function MentionPerimetre({ scope }: { scope: MailScope }) {
         ? 'Périmètre : les courriers où vous êtes imputé'
         : 'Aucun périmètre de suivi accordé';
   return (
-    <Tooltip title="Le périmètre découle de vos permissions de suivi ; il n'est pas modifiable ici.">
+    <InfoTooltip title="Le périmètre découle de vos permissions de suivi ; il n'est pas modifiable ici.">
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {texte}
       </Typography.Text>
-    </Tooltip>
+    </InfoTooltip>
   );
 }

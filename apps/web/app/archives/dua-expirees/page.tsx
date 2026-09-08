@@ -12,7 +12,6 @@ import {
   Space,
   Table,
   Tag,
-  Tooltip,
   Typography,
 } from 'antd';
 import type { TableColumnsType, TablePaginationConfig } from 'antd';
@@ -23,6 +22,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { icons } from '../../theme/icons';
 import { colors, fontSize } from '../../theme/tokens';
 import { complianceApi, type ComplianceResult, type ComplianceRow } from '../../lib/archives';
+import { InfoTooltip } from '../../components/InfoTooltip';
 
 const fmt = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY') : '—');
 
@@ -164,9 +164,9 @@ export default function DuaExpireesPage() {
       width: 120,
       sorter: true,
       render: (_, r) => (
-        <Tooltip title="Date du document, à défaut sa date de création — point de départ du décompte.">
+        <InfoTooltip title="Date du document, à défaut sa date de création — point de départ du décompte.">
           <span>{fmt(r.startDate)}</span>
-        </Tooltip>
+        </InfoTooltip>
       ),
     },
     {

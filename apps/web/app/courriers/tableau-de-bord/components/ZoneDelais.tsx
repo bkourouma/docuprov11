@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { Alert, Col, Progress, Row, Tooltip, Typography } from 'antd';
+import { Alert, Col, Progress, Row, Typography } from 'antd';
 import { ChartCard } from '../../../dashboards/components/ChartCard';
 import { fmtInt } from '../../../theme/charts';
 import type { DelaiStat, DelaisResponse } from '../lib/api';
+import { InfoTooltip } from '../../../components/InfoTooltip';
 
 /** Sous ce seuil, un percentile n'a pas de sens : on l'affiche mais on le signale. */
 const EFFECTIF_MINIMAL = 5;
@@ -98,11 +99,11 @@ function LigneDelai({
         padding: '5px 0',
       }}
     >
-      <Tooltip title={aide}>
+      <InfoTooltip title={aide}>
         <Typography.Text style={{ fontSize: 13 }} type={attenue ? 'secondary' : undefined}>
           {libelle}
         </Typography.Text>
-      </Tooltip>
+      </InfoTooltip>
       <span style={{ flex: 'none', textAlign: 'right' }}>
         {stat && stat.medianeJours !== null ? (
           <>
@@ -195,7 +196,7 @@ function BlocSla({ sla }: { sla: DelaisResponse['sla'] }) {
 
       {sla.nonEvalues > 0 && (
         <div style={{ marginTop: 6 }}>
-          <Tooltip title="Ces courriers n'ont pas de durée de suivi paramétrée sur leur objet. Ils ne sont comptés ni en succès ni en échec — les compter en échec fausserait l'indicateur.">
+          <InfoTooltip title="Ces courriers n'ont pas de durée de suivi paramétrée sur leur objet. Ils ne sont comptés ni en succès ni en échec — les compter en échec fausserait l'indicateur.">
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>
               {fmtInt(sla.nonEvalues)} courrier(s) non évalué(s)
               {sla.objetsSansDuree > 0 && (
@@ -211,7 +212,7 @@ function BlocSla({ sla }: { sla: DelaisResponse['sla'] }) {
                 </>
               )}
             </Typography.Text>
-          </Tooltip>
+          </InfoTooltip>
         </div>
       )}
     </div>
