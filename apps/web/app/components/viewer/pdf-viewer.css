@@ -213,3 +213,24 @@
   place-items: center;
   padding: 24px;
 }
+
+/* =========================================================================
+   Mobile (chantier mobile-first, 2026-09-08 — docs/MOBILE-CORRECTIONS.md).
+   Le rail de vignettes fait 148 px en `flex: none` : dans un cadre de ~310 px sur un
+   telephone, l'ouvrir amputait le document de la moitie de sa largeur. On le passe en
+   CALQUE au-dessus du document plutot qu'en colonne a cote : la page garde toute la
+   largeur, et le rail reste exactement le meme composant, ouvert par le meme bouton.
+   Aucun effet au-dessus de 768 px.
+   ========================================================================= */
+@media (max-width: 767px) {
+  .da-pdf__body {
+    position: relative;
+  }
+  .da-pdf__thumbs {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 3;
+    box-shadow: var(--da-shadow-popover, 0 3px 21px rgba(0, 0, 0, 0.2));
+  }
+}

@@ -178,6 +178,10 @@ export function BulkRefPage<T>({
       key: 'actions',
       width: 56,
       align: 'center',
+      // Épinglée à droite : le tableau défile horizontalement sur écran étroit, et sans cela il
+      // fallait faire défiler toute la ligne pour atteindre l'action. Sans effet visible en
+      // desktop, où le tableau tient dans sa carte et n'a donc rien à faire défiler.
+      fixed: 'right',
       render: (_, r) => (
         <Popconfirm
           title={`Désactiver ${itemSingular} ?`}

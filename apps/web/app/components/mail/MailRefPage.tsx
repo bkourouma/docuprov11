@@ -137,8 +137,12 @@ export function MailRefPage<T extends { label: string }>({
       key: 'actions',
       width: 56,
       align: 'center',
-      // La cible tactile de 40 px porterait la ligne à 70 px avec le padding de la densité
-      // consultation : la cellule d'action rend son padding vertical au bouton.
+      // Épinglée à droite : le tableau défile horizontalement sur écran étroit, et sans cela il
+      // fallait faire défiler toute la ligne pour atteindre l'action.
+      fixed: 'right',
+      // La cible tactile (44 px depuis le chantier mobile-first) porterait la ligne bien plus
+      // haut avec le padding de la densité consultation : la cellule d'action rend son padding
+      // vertical au bouton.
       onCell: () => ({ style: { paddingBlock: 0, verticalAlign: 'middle' } }),
       render: (_, r) => (
         <Popconfirm

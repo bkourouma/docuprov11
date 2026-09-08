@@ -109,7 +109,9 @@ export function MailViewer({
     <Modal
       open={mailId != null}
       onCancel={onClose}
-      width="88%"
+      // Pleine largeur sous 768 px : 88 % d'un écran de 360 perdait 12 % de la place pour rien
+      // (une largeur en pourcentage n'est jamais relevée sur mobile). Inchangé au-dessus.
+      width={{ xs: '100%', md: '88%' }}
       style={{ top: space.lg }}
       destroyOnHidden
       // Surface flottante de la grille §4.2 : rayon des modales et ombre de popover. La popup

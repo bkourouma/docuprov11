@@ -235,6 +235,9 @@ export function TypeSecurityPage({
       key: 'actions',
       width: 160,
       align: 'right',
+      // Épinglée à droite : le tableau défile horizontalement sur écran étroit, et sans cela il
+      // fallait faire défiler toute la ligne pour atteindre l'action.
+      fixed: 'right',
       render: (_, g) => (
         <Popconfirm
           title={

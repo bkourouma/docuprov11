@@ -1232,7 +1232,9 @@ export default function AcquisitionPage() {
         onCancel={attemptClose}
         maskClosable={false}
         footer={null}
-        width="94%"
+        // Pleine largeur sous 768 px (une largeur en pourcentage n'est jamais relevée sur
+        // mobile) ; 94 % inchangé au-dessus.
+        width={{ xs: '100%', md: '94%' }}
         className="acq-readable"
         style={{ top: 16 }}
         title={

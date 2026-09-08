@@ -85,7 +85,11 @@ export function FicheImputationModal({
     <Modal
       open={mailId != null}
       onCancel={onClose}
-      width="70%"
+      // Objet responsive (AntD 5.29 `Modal.js:129-146`) : une largeur en POURCENTAGE n'est
+      // jamais relevée sur mobile — 70 % d'un écran de 360 ne laisse que 252 px utiles pour une
+      // visionneuse PDF. Le plafonnement `calc(100vw - 16px)` d'AntD est un MAXIMUM, il ne
+      // corrige donc pas ce cas. Sous 768 px : pleine largeur. Au-dessus : 70 %, inchangé.
+      width={{ xs: '100%', md: '70%' }}
       style={{ top: space.xl }}
       destroyOnHidden
       title="Fiche d'imputation"

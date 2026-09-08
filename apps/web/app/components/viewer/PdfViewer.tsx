@@ -195,6 +195,27 @@ export function PdfViewer({
     if (Number.isFinite(next) && next > 0) setScale(Math.max(0.1, Math.min(next, 6)));
   }, [base, fit]);
 
+  /**
+   * Ajustement initial à la largeur, sur mobile UNIQUEMENT (arbitrage validé du chantier
+   * mobile-first). Sans lui, `fit` vaut `null` au montage et la page reste peinte à l'échelle
+   * 1,25 — soit ~744 px de large dans un cadre de ~310 px sur un téléphone : le document est
+   * illisible et aucune correction de la barre d'outils ou du rail de vignettes n'y changerait
+   * rien. C'est formellement un changement d'état initial, d'où la condition de largeur : au
+   *-dessus de 768 px le comportement est inchangé, bit à bit.
+   *
+   * Posé dans un effet et non dans l'initialiseur de `useState` : lire `window` au rendu
+   * donnerait une valeur différente côté serveur et côté client, et `fit` alimente le sélecteur
+   * de zoom de la barre d'outils — donc le HTML rendu. L'effet s'exécute après l'hydratation,
+   * sans écart possible.
+   *
+   * L'utilisateur reste maître : tout zoom manuel repasse `fit` à `null` (`zoomTo`).
+   */
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+      setFit('width');
+    }
+  }, []);
+
   useLayoutEffect(applyFit, [applyFit]);
 
   useEffect(() => {
