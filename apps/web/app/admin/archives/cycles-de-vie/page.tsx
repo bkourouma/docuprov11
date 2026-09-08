@@ -380,17 +380,28 @@ export default function LifeCyclesPage() {
               </Typography.Text>
             )}
           </div>
-          <Table<DocumentTypeLifeCycleRow>
-            rowKey="documentTypeLifeCycleId"
-            dataSource={rows}
-            columns={columns}
-            size="middle"
-            rowSelection={{
-              selectedRowKeys: selected,
-              onChange: (keys) => setSelected(keys as number[]),
-            }}
-            pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `${t} règle(s)` }}
-          />
+          {/*
+            Wrapper à défilement horizontal — même motif que `parametrage-types`, et pour la même
+            raison : `scroll={{ x: 'max-content' }}` figerait chaque colonne à la largeur de son
+            contenu, ce qui a déjà été écarté sur ce type de tableau. Sans ce wrapper, les
+            7 colonnes (573 px) débordaient de la page entière sur un écran de 360 : la mesure
+            donnait un `scrollWidth` de 598 px, l'en-tête et la barre supérieure partaient de
+            travers, et la colonne « Sort final » restait inatteignable. Le wrapper capture le
+            débordement ici, au lieu de le laisser gagner toute la page.
+          */}
+          <div style={{ overflowX: 'auto' }}>
+            <Table<DocumentTypeLifeCycleRow>
+              rowKey="documentTypeLifeCycleId"
+              dataSource={rows}
+              columns={columns}
+              size="middle"
+              rowSelection={{
+                selectedRowKeys: selected,
+                onChange: (keys) => setSelected(keys as number[]),
+              }}
+              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `${t} règle(s)` }}
+            />
+          </div>
         </Space>
       </Card>
     </div>
