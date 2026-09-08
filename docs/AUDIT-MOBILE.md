@@ -371,5 +371,8 @@ lieu de 23).
    appliquée par précaution : la couche mobile est entièrement en CSS.
 6. **Une 58ᵉ route est apparue pendant le chantier** — `/profil`, développée en parallèle par un
    autre intervenant (avec des modifications de `TopBar.tsx`, `nav.ts`, `lib/auth.ts` et de l'API).
-   Elle **n'a pas été auditée ni corrigée** : elle n'existait pas au moment de l'audit et ne fait
-   partie d'aucun de mes commits.
+   Elle ne fait partie d'aucun de mes commits et **n'a reçu aucune correction**. Elle a en
+   revanche été **mesurée**, et elle passe : `overflow: false` à 360, 390 et 768 px, 0 cible
+   tactile sous 44 px, 0 texte sous 12 px, 0 champ sous 16 px.
+   C'est la meilleure validation de l'approche : une page écrite **sans connaissance du
+   chantier** hérite de la couche mobile partagée et passe les critères sans intervention.

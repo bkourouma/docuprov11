@@ -221,21 +221,43 @@ Hachage identique = mise en page identique, au pixel près.
 
 ---
 
-## 6. Ce qui reste à faire
+## 6. Ce qui a été fait après la première passe, et ce qui reste
 
-Aucune de ces lignes ne fait échouer un critère d'acceptation ; ce sont des améliorations
-d'usage, listées pour ne pas être oubliées.
+### Fait
+
+| Sujet | Où |
+|---|---|
+| **Modales en pourcentage** (70 / 88 / 94 %) → objet responsive `{ xs: '100%', md: … }` | `FicheImputationModal`, `MailViewer`, `acquisition` |
+| **Visionneuse PDF** : ajustement initial à la largeur sous 768 px ; rail de vignettes en calque | `PdfViewer.tsx`, `pdf-viewer.css` |
+| **Colonnes d'actions épinglées** (`fixed: 'right'`) | `BulkRefPage` (3 pages), `MailRefPage` (4), `TypeSecurityPage` (2) |
+| **Widgets empilés sous 768 px**, react-grid-layout non monté | `GrilleWidgets.tsx` |
+| **Infobulles atteignables au doigt** | `InfoTooltip.tsx` + 7 sites |
+
+### Reste
 
 | # | Sujet | Pourquoi ce n'est pas fait |
 |---|---|---|
-| 1 | **Colonnes d'actions épinglées** (`fixed: 'right'`) et colonnes secondaires en `responsive: ['md']` avec report dans une ligne dépliable | `grep "fixed:"` = 0 sur 121 fichiers. Les tableaux les plus denses demandent 4 à 6 largeurs d'écran de défilement pour atteindre les actions (1605 px pour 278 px utiles sur `/courriers/validation`). C'est **pénible, pas bloquant** — rien n'est inatteignable. Le changement fait passer AntD en `table-layout: fixed` et peut redistribuer les colonnes : à traiter patron par patron, avec contrôle desktop après chacun. |
-| 2 | **Modales en pourcentage** (70 / 88 / 94 %) | 252 px utiles sur un écran de 360. Trois fichiers. |
-| 3 | **Visionneuse PDF** : échelle initiale, rail de vignettes 148 px | L'échelle initiale change l'état initial du composant (arbitrage validé, mais non implémenté faute d'avoir pu exercer la visionneuse dans l'outillage). |
-| 4 | **Glisser-déposer des widgets sous 768 px** | Arbitrage validé (sortir de react-grid-layout en mobile), non implémenté : les deux tableaux de bord passent déjà la mesure sans y toucher, et la sortie de RGL demande un test de persistance dédié (composer à 360, enregistrer, rouvrir à 1440, vérifier que l'agencement 12 colonnes est intact). |
-| 5 | **Infobulles porteuses d'information** (12 sites) | Inatteignables au tactile ; `ConfigProvider.tooltip` n'accepte pas `trigger`, il faut un composant `InfoTooltip`. |
-| 6 | **`overflow-x: clip` sur `.da-page`** | Le filet de sécurité. **À poser en tout dernier seulement** : posé plus tôt, il masque les débordements et rend toute vérification impossible. `clip` et non `hidden` — `hidden` créerait un conteneur de défilement et casserait le `position: sticky` de `.da-sticky-actions`. |
+| 1 | **Colonnes secondaires en `responsive: ['md']`** avec report dans une ligne dépliable, sur les tableaux les plus denses | Les colonnes d'actions sont maintenant épinglées, donc atteignables sans défiler toute la ligne — le point douloureux est traité. Réduire le nombre de colonnes visibles reste un confort, et demande de concevoir le repli pour que **rien ne disparaisse** (`expandable`). À faire tableau par tableau, pas en masse. |
+| 2 | **`documents-scannes:151`** — formats acceptés portés par une infobulle sur le bouton d'un `<Upload>` | Y ajouter un déclencheur au clic entrerait en conflit avec l'action du bouton, et rendre les formats visibles ajouterait une ligne à l'en-tête, donc une régression desktop. L'attribut `accept` de l'`Upload` contraint déjà le sélecteur de fichiers aux mêmes formats : l'information n'est pas perdue, elle est appliquée. |
+| 3 | **Les 3 modales en pourcentage n'ont pas été ouvertes** à 360 px | Seule `MailViewer` l'a été (mesurée : 344 px en mobile, 1126 px = 88 % en desktop). Les deux autres sont corrigées par le même mécanisme, vérifié dans la source d'AntD, mais non exercées. |
 
----
+### Décidé de NE PAS faire : `overflow-x: clip` sur `.da-page`
+
+Ce « filet de sécurité » était prévu en dernier lot. **Il n'a pas été posé, et c'est délibéré.**
+
+Son effet est de faire disparaître tout débordement horizontal résiduel. Mais un débordement
+clippé n'est pas un débordement corrigé : le contenu qui dépasse devient **inatteignable**,
+silencieusement — alors qu'un débordement laissé visible reste, lui, accessible en faisant
+défiler la page. Poser `clip` reviendrait donc à échanger un défaut visible et corrigeable
+contre une perte d'information invisible, en contradiction directe avec la règle « rien ne
+disparaît sur mobile » (§4).
+
+Il rendrait aussi impossible la vérification décrite au §5 : `scrollWidth === clientWidth`
+deviendrait vrai partout, y compris sur une page cassée.
+
+Les 57 routes passant la mesure sans lui, il n'a aucun bénéfice actuel — seulement le coût
+d'un futur défaut rendu muet. Si un besoin de filet se fait sentir, la bonne réponse est un
+test automatisé qui MESURE `scrollWidth` sur les routes, pas une règle CSS qui le masque.
 
 ## 7. Mémo pour une nouvelle page
 
