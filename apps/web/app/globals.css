@@ -296,6 +296,23 @@ a:not([href]) {
     flex-wrap: wrap;
   }
 
+  /* a-bis. Rendre les barres réellement réductibles. Deux verrous se cumulaient :
+     - `.ant-space` est `inline-flex`, donc large comme son CONTENU : un champ de 420 px dans
+       une carte de 280 rendait la barre large de 420 et débordait la page (mesuré : 461 px sur
+       un écran de 360, page /archives/dua-expirees) ;
+     - `.ant-space-item` a `min-width: auto`, le minimum d'un élément flex : il refuse de
+       descendre sous la largeur de son contenu, ce qui rendait inopérant le `maxWidth: '100%'`
+       pourtant déjà posé sur le champ — le pourcentage se résolvait contre un parent que le
+       champ dimensionnait lui-même (circulaire).
+     Borner la barre puis débloquer l'item corrige les deux. Le repli (`wrap`) reste prioritaire :
+     un item ne rétrécit que s'il est seul sur sa ligne et encore trop large. */
+  .ant-space:not(.ant-space-compact) {
+    max-width: 100%;
+  }
+  .ant-space:not(.ant-space-compact) > .ant-space-item {
+    min-width: 0;
+  }
+
   /* b. En-tête de carte : `head-wrapper` est flex sans wrap, avec le titre en `flex: 1` et
         l'`extra` (boutons) collé à droite — l'extra sort du cadre dès qu'il est large. */
   .ant-card-head-wrapper {
@@ -304,6 +321,17 @@ a:not([href]) {
   }
   .ant-card-extra {
     margin-inline-start: 0;
+  }
+
+  /* b-bis. `Segmented` : AntD ne le replie JAMAIS (ses items sont en `overflow: hidden` avec
+     ellipsis) et il n'a pas de mode compact. Le filtre de période des deux tableaux de bord en
+     aligne 7 (« Aujourd'hui » … « Personnalisé »), soit 364 px — 4 px de trop pour la zone utile
+     d'un écran de 360, ce qui suffisait à faire déborder la page entière. On le rend défilable
+     au doigt plutôt que de retirer des options (ce serait un changement fonctionnel) ou de le
+     convertir en `Select` (ce serait un changement d'interface). */
+  .ant-segmented {
+    max-width: 100%;
+    overflow-x: auto;
   }
 
   /* c. Surfaces flottantes : AntD les plafonne à 100vw, donc bord à bord, sans gouttière. */
