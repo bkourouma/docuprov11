@@ -74,6 +74,8 @@ export function NotificationsBell() {
     <div
       style={{
         width: 360,
+        // Laisse le panneau rétrécir dans le conteneur ramené à la fenêtre sur mobile.
+        maxWidth: '100%',
         background: 'var(--ant-color-bg-elevated, #fff)',
         borderRadius: radii.card,
         border: '1px solid var(--ant-color-border-secondary, #eef1f6)',
@@ -142,6 +144,12 @@ export function NotificationsBell() {
       onOpenChange={onOpenChange}
       trigger={['click']}
       placement="bottomRight"
+      // Sous 768 px, le panneau est ramené à la largeur de l'écran par `globals.css` : aligné
+      // sur la cloche (bord droit à 288 px sur un 360), ses 360 px partaient sinon 56 px hors
+      // de l'écran À GAUCHE — `autoAdjustOverflow` d'AntD bascule le placement mais ne traite
+      // pas le cas « plus large que la fenêtre ». Le débordement d'un popup ne fait pas défiler
+      // la page : il coupe le contenu en silence.
+      rootClassName="da-notif-dropdown"
       popupRender={() => panel}
     >
       <Tooltip title="Notifications">

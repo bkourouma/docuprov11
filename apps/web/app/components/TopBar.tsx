@@ -138,8 +138,33 @@ export function TopBar({
         )}
       </div>
 
-      {/* Déclencheur de recherche globale — desktop uniquement (masqué en mobile). */}
-      {!isMobile && (
+      {/*
+        Déclencheur de recherche globale. Le faux champ « Rechercher… » ne tient pas sur un
+        téléphone (240 px minimum), mais le masquer purement et simplement — ce qui était le cas
+        — rendait la recherche globale INATTEIGHABLE en mobile : le seul autre point d'entrée est
+        le raccourci Ctrl+K, qu'un téléphone n'a pas. On conditionne donc la FORME, pas la
+        présence : bouton-icône sous 992 px, faux champ au-dessus.
+      */}
+      {isMobile ? (
+        <button
+          onClick={onOpenPalette}
+          aria-label="Recherche globale"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 40,
+            height: 40,
+            flex: 'none',
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--da-on-topbar)',
+            cursor: 'pointer',
+          }}
+        >
+          <Search size={20} strokeWidth={1.75} />
+        </button>
+      ) : (
         <button
           onClick={onOpenPalette}
           aria-label="Recherche globale (Ctrl+K)"

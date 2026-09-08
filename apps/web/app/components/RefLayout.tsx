@@ -141,7 +141,11 @@ export function RefLayout({
         <Drawer
           title={formTitle}
           placement="right"
-          width={Math.min(380, typeof window !== 'undefined' ? window.innerWidth - 24 : 380)}
+          // Largeur en CSS plutôt qu'en JS : la valeur précédente était lue une seule fois sur
+          // `window.innerWidth` au rendu — elle ne suivait donc pas une rotation d'écran, et le
+          // repli SSR (380) dépassait la fenêtre d'un téléphone de 360 le temps de l'hydratation.
+          // `min()` fait le même calcul, en continu, et sans lire `window`.
+          width="min(380px, calc(100vw - 24px))"
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
         >

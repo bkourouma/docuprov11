@@ -313,6 +313,17 @@ a:not([href]) {
     max-width: calc(100vw - 16px);
   }
 
+  /* Panneau de notifications : trop large pour être aligné sur la cloche. On l'étale sur la
+     fenêtre. `!important` : AntD pose la position en style EN LIGNE (`inset: 54px 72px auto
+     auto`), seule une déclaration importante peut la reprendre. Poser `left` ET `right` avec
+     `width: auto` fait dériver la largeur de la fenêtre, pas de la cloche. */
+  .da-notif-dropdown {
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+
   /* d. Sélecteur de plage de dates : AntD code `flex-wrap: nowrap` sur le conteneur des deux
         panneaux mensuels (≈ 560 px), impossible à afficher côte à côte sur un téléphone. */
   .ant-picker-panels {
