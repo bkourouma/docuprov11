@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Button, Tooltip, Typography } from 'antd';
 import {
   ResponsiveGridLayout,
@@ -115,6 +115,35 @@ export function GrilleWidgets<Ctx>({
   // La v2 exige une largeur explicite : ce hook mesure le conteneur et la fournit.
   const { width, mounted, containerRef } = useContainerWidth();
 
+  /**
+   * Mode compact : sous 768 px, on SORT de react-grid-layout et on empile les widgets.
+   *
+   * Sur la grille de 12 colonnes, un widget de 6 colonnes tombe à ~156 px de large sur un
+   * écran de 360 — inexploitable pour un graphique. L'empilement leur rend toute la largeur.
+   *
+   * **RGL n'est alors PAS MONTÉ.** C'est la garantie qui compte : il ne peut émettre aucun
+   * `onLayoutChange`, donc l'agencement 12 colonnes enregistré par l'utilisateur ne peut pas
+   * être écrasé depuis un téléphone. Le bug documenté en tête de ce fichier venait exactement
+   * de là — une grille qui se réorganise et remonte des positions qui ne sont pas celles que
+   * l'utilisateur a composées.
+   *
+   * Contrepartie assumée (arbitrage validé) : ni glissement ni redimensionnement sous 768 px.
+   * L'ajout, le retrait et l'enregistrement continuent de fonctionner.
+   *
+   * `matchMedia` plutôt que la largeur mesurée du conteneur : celle-ci n'est pas monotone au
+   * passage du palier (le padding de `.da-page` passe de 16 à 27 px à 768), on ne peut donc
+   * pas en déduire un seuil fiable. Posé dans un effet, jamais dans l'initialiseur d'état :
+   * lire `window` au rendu créerait un écart d'hydratation.
+   */
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const sync = () => setCompact(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
   const layouts: ResponsiveLayouts<string> = useMemo(
     () => ({
       [RUPTURE]: widgets.map((w) => ({
@@ -135,6 +164,35 @@ export function GrilleWidgets<Ctx>({
 
   if (widgets.length === 0) {
     return <EmptyState icon="analytics" title="Aucun widget affiché" />;
+  }
+
+  if (compact) {
+    // Ordre de lecture de la grille : de haut en bas, puis de gauche à droite. La hauteur
+    // reprend la formule de RGL (lignes + gouttières) pour que chaque widget garde la taille
+    // que son auteur lui a donnée.
+    const ordre = [...widgets].sort((a, b) => a.y - b.y || a.x - b.x);
+    return (
+      <div
+        className={CLASSE_GRILLE}
+        style={{ display: 'flex', flexDirection: 'column', gap: MARGE[1] }}
+      >
+        {ordre.map((w) => (
+          <div
+            key={w.id}
+            style={{ height: w.h * HAUTEUR_LIGNE + (w.h - 1) * MARGE[1], overflow: 'hidden' }}
+          >
+            <CadreWidget
+              widget={w}
+              ctx={ctx}
+              edition={edition}
+              onRetirer={onRetirer}
+              rendre={rendre}
+              connu={connu}
+            />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
