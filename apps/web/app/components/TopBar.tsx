@@ -153,8 +153,10 @@ export function TopBar({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 40,
-            height: 40,
+            // 44 px : seuil de cible tactile retenu par la définition de terminé. Ce bouton est
+            // un <button> nu (pas un `.ant-btn`), la règle de `globals.css` ne l'atteint pas.
+            width: 44,
+            height: 44,
             flex: 'none',
             border: 'none',
             background: 'transparent',

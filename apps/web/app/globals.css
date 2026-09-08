@@ -406,19 +406,38 @@ a:not([href]) {
     font-size: 16px !important; /* AntD déclare `font-size` sur ces sélecteurs (cascade). */
   }
 
-  /* i. Cibles tactiles (arbitrage validé). `controlHeight` vaut 32 px dans la charte
-        (densité de production, dérogation PRD §4.6). Sous `pointer: coarse` seulement —
-        donc jamais sur un poste à souris, même en fenêtre étroite. */
+  /* i. Lisibilité des étiquettes de statut. `.ant-tag` est à 11 px dans la charte ; c'est le
+        SEUL texte réellement sous 12 px de l'application (mesuré : 50 occurrences sur
+        /courriers/validation, 25 sur /courriers/suivi, 0 ailleurs hors /design). Comme pour la
+        police des champs : surcharge CSS bornée au mobile, jetons non touchés, charte intacte
+        au-dessus de 768 px.
+        Exception assumée : `/design` affiche des spécimens typographiques à 11 px — c'est
+        l'objet même de la galerie, qui montre la valeur du jeton. On ne les remonte pas. */
+  .ant-tag {
+    font-size: 12px !important; /* AntD déclare `font-size` sur `.ant-tag` (même cascade). */
+  }
+
+  /* j. Cibles tactiles. `controlHeight` vaut 32 px dans la charte (densité de production,
+        dérogation PRD §4.6). 44 px est le seuil retenu par la définition de terminé — et la
+        recommandation d'Apple ; l'arbitrage validé proposait 40, la valeur est portée à 44 pour
+        satisfaire le critère d'acceptation. Sous `pointer: coarse` seulement, donc jamais sur un
+        poste à souris, même en fenêtre étroite. */
   @media (pointer: coarse) {
     .ant-btn,
     .ant-select-selector,
     .ant-picker,
     .ant-input-affix-wrapper,
     .ant-input {
-      min-height: 40px;
+      min-height: 44px;
     }
-    .ant-btn.ant-btn-icon-only {
-      min-width: 40px;
+    /* `min-width` sur TOUS les boutons, et pas seulement `.ant-btn-icon-only` : AntD ne pose
+       pas cette classe sur un bouton dont l'icône est passée en enfant plutôt qu'en prop `icon`
+       (cas des actions de ligne des référentiels, mesurées à 40 px de large pour 44 de haut).
+       Sans effet sur les boutons portant un libellé, déjà bien plus larges. */
+    .ant-btn,
+    .ant-btn.ant-btn-icon-only,
+    .ant-btn.ant-btn-sm.ant-btn-icon-only {
+      min-width: 44px !important; /* AntD pose `min-width` ET `width` sur les boutons icône. */
     }
   }
 }
