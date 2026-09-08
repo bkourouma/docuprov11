@@ -11,14 +11,24 @@ import { radii } from '../theme/tokens';
  * `border-secondary` comme les tables, contour de carte sur `border` (#e4e9f0).
  */
 
-/** Squelette de tableau : en-tête + N lignes. */
+/**
+ * Squelette de tableau : en-tête + N lignes.
+ *
+ * `minmax(0, 1fr)` et non `1fr` : le minimum implicite d'une piste `1fr` est `auto`, donc la
+ * largeur minimale de son contenu. Or `Skeleton.Button` porte un `min-width` imposé par AntD
+ * (`controlHeightSM × 2` = 56 px) : les pistes refusaient de descendre sous 56 px et la grille
+ * devenait irréductible à N × 56 + gouttières. Mesuré à 360 px pendant le chargement, avant
+ * correction : 7 colonnes (files courrier) donnaient `56px` × 7 et une page de 537 px de large,
+ * soit 177 px de débordement — sur le TOUT PREMIER écran affiché, celui du chargement.
+ * Le `minWidth: 0` posé sur chaque `Skeleton.Button` lève le plancher côté enfant.
+ */
 export function TableSkeleton({ rows = 6, columns = 4 }: { rows?: number; columns?: number }) {
   return (
     <div style={{ width: '100%' }} aria-busy="true" aria-label="Chargement…">
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: `repeat(${columns}, 1fr)`,
+          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
           gap: 16,
           padding: '12px 8px',
           borderBottom: '1px solid var(--ant-color-border-secondary)',
@@ -29,7 +39,7 @@ export function TableSkeleton({ rows = 6, columns = 4 }: { rows?: number; column
             key={i}
             active
             size="small"
-            style={{ width: '60%', height: 14 }}
+            style={{ width: '60%', height: 14, minWidth: 0 }}
             block={false}
           />
         ))}
@@ -39,7 +49,7 @@ export function TableSkeleton({ rows = 6, columns = 4 }: { rows?: number; column
           key={r}
           style={{
             display: 'grid',
-            gridTemplateColumns: `repeat(${columns}, 1fr)`,
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
             gap: 16,
             padding: '14px 8px',
             borderBottom: '1px solid var(--ant-color-border-secondary)',
@@ -50,7 +60,7 @@ export function TableSkeleton({ rows = 6, columns = 4 }: { rows?: number; column
               key={c}
               active
               size="small"
-              style={{ width: c === 0 ? '85%' : '50%', height: 16 }}
+              style={{ width: c === 0 ? '85%' : '50%', height: 16, minWidth: 0 }}
               block={false}
             />
           ))}
