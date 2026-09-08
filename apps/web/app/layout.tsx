@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { GeistMono } from 'geist/font/mono';
@@ -21,6 +21,20 @@ const openSans = Open_Sans({
 export const metadata: Metadata = {
   title: 'DocuPro',
   description: "Génération d'intercalaires, acquisition par lot, recherche & export",
+};
+
+/**
+ * Fenêtre d'affichage. Sans cet export, la balise `viewport` injectée par défaut suffit à
+ * l'échelle mais rien ne garantit le contrat : on le déclare explicitement.
+ *
+ * `maximumScale` et `userScalable` sont VOLONTAIREMENT absents. Les poser (pour empêcher le
+ * zoom iOS au focus d'un champ) interdirait à l'utilisateur d'agrandir la page — une
+ * régression d'accessibilité. Le zoom au focus est traité à la source, en portant la police
+ * des champs à 16 px sous 768 px (`globals.css`, couche mobile §h).
+ */
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

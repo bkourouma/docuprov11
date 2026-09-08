@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Modèle de boîte homogène. Le preflight Tailwind est désactivé (tailwind.config.ts) pour ne
+   pas écraser le reset d'AntD, et AntD ne pose `border-box` que sur `[class^="ant-"]` et leurs
+   descendants — soit, en pratique, tout l'arbre applicatif. Vérifié dans le navigateur avant
+   d'écrire cette règle : 1176 éléments déjà en `border-box` contre 30 en `content-box`, tous
+   invisibles (<script>, portail Next, div vide 0×0). Cette déclaration est donc un no-op sur
+   l'existant ; elle est posée comme socle arithmétique des largeurs écrites à la main
+   (media queries ci-dessous, conteneurs de défilement) et des pages à venir. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 /* =========================================================================
    Design system « Plus Admin » (relook 002) — styles globaux
    - Variables sur-mesure (marque, top bar, ombres) ; les couleurs AntD
@@ -159,19 +172,26 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--ant-color-border, #e3e6e4) transparent;
 }
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-*::-webkit-scrollbar-thumb {
-  background: var(--ant-color-border, #e3e6e4);
-  border-radius: 999px;
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--ant-color-text-quaternary, #b6bbb8);
-  background-clip: content-box;
+/* Barres dessinées uniquement au pointeur fin. Sur WebKit mobile, styler
+   `::-webkit-scrollbar` fait basculer les barres de superposition (qui ne consomment aucune
+   place) en barres classiques, qui prennent 10 px sur la largeur utile de CHAQUE conteneur
+   défilant — soit, sur les tableaux, 10 px retirés à la colonne la plus à droite. Le rendu
+   desktop est inchangé : `hover: hover` et `pointer: fine` sont vrais sur un poste à souris. */
+@media (hover: hover) and (pointer: fine) {
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--ant-color-border, #e3e6e4);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--ant-color-text-quaternary, #b6bbb8);
+    background-clip: content-box;
+  }
 }
 
 ::selection {
@@ -251,6 +271,116 @@ a:not([href]) {
   .da-page {
     --da-page-pad-x: 27px;
     padding: 25px 27px;
+  }
+}
+
+/* =========================================================================
+   Couche mobile (chantier mobile-first, 2026-09-08 — docs/MOBILE-CORRECTIONS.md)
+
+   Seuil unique : 768 px. C'est le SEUL palier sur lequel Ant Design (`screenMD`),
+   Tailwind (`md`) et la règle `.da-page` ci-dessus s'accordent. Arbitrage validé :
+   on n'introduit AUCUN préfixe responsive Tailwind dans les .tsx (il n'y en a zéro
+   aujourd'hui dans les 121 fichiers) — tout le responsive transverse vit ici, en CSS,
+   ce qui évite d'entretenir deux systèmes de paliers contradictoires.
+
+   Ces règles corrigent des composants AntD qui ne se replient pas d'eux-mêmes ;
+   aucune ne touche une couleur, un rayon, une ombre ou une famille de police.
+   Bornées à `max-width: 767px` : le rendu desktop est inchangé, bit à bit.
+   ========================================================================= */
+@media (max-width: 767px) {
+  /* a. Barres d'actions. `.ant-space` est `inline-flex` SANS `flex-wrap` : une barre de
+        3 boutons ne se replie jamais et pousse la page. Le `wrap` du composant React est
+        posé en style en ligne, il gagne donc toujours sur cette règle — aucun conflit.
+        Exclusions : `-compact` (bordures jointes, les replier les casserait) et `-vertical`. */
+  .ant-space:not(.ant-space-vertical):not(.ant-space-compact) {
+    flex-wrap: wrap;
+  }
+
+  /* b. En-tête de carte : `head-wrapper` est flex sans wrap, avec le titre en `flex: 1` et
+        l'`extra` (boutons) collé à droite — l'extra sort du cadre dès qu'il est large. */
+  .ant-card-head-wrapper {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .ant-card-extra {
+    margin-inline-start: 0;
+  }
+
+  /* c. Surfaces flottantes : AntD les plafonne à 100vw, donc bord à bord, sans gouttière. */
+  .ant-popover,
+  .ant-dropdown,
+  .ant-picker-panel-container {
+    max-width: calc(100vw - 16px);
+  }
+
+  /* d. Sélecteur de plage de dates : AntD code `flex-wrap: nowrap` sur le conteneur des deux
+        panneaux mensuels (≈ 560 px), impossible à afficher côte à côte sur un téléphone. */
+  .ant-picker-panels {
+    flex-wrap: wrap !important; /* AntD déclare `nowrap` — même cascade que les onglets. */
+  }
+
+  /* e. `<Descriptions bordered>` : AntD repasse la variante bordée en `table-layout: auto`,
+        la table se dimensionne alors sur son contenu et n'a AUCUN overflow — c'est la cause
+        exacte des fiches courrier mesurées à 419 et 518 px de large (audit §1.4). On rend le
+        dépassement défilable au lieu de le laisser pousser la page. */
+  .ant-descriptions-view {
+    overflow-x: auto;
+  }
+
+  /* f. Barres d'onglets. `nav-wrap` est en `overflow: hidden` et le bouton « plus » d'AntD
+        n'est pas rendu ici : sur la fiche document, 4 onglets sur 7 (dont « Accès par
+        utilisateur » et « Sécurité et conformité ») étaient purement inatteignables.
+        On rend la barre défilable au doigt. Le bouton « plus » n'est PAS masqué : s'il
+        apparaît, les deux mécanismes coexistent.
+        `!important` : AntD déclare `overflow: hidden` sur ce sélecteur, et sa feuille CSS-in-JS
+        s'insère APRÈS celle-ci dans le head — à spécificité égale c'est l'ordre d'insertion
+        qui tranche, et AntD gagne (même cascade que `.ant-menu-item-extra` plus bas). Vérifié
+        dans le navigateur : sans `!important`, la règle ne s'applique pas. */
+  .ant-tabs-nav-wrap {
+    overflow-x: auto !important;
+  }
+  .ant-tabs-nav-wrap::before,
+  .ant-tabs-nav-wrap::after {
+    display: none;
+  }
+
+  /* g. Barre d'action collante : le conteneur se replie déjà, ses enfants non. */
+  .da-sticky-actions .ant-space {
+    flex-wrap: wrap;
+  }
+  .da-sticky-actions > * {
+    min-width: 0;
+  }
+
+  /* h. Zoom iOS (arbitrage validé). Safari iOS zoome la page dès qu'un champ de saisie a une
+        police < 16 px, et ne dézoome pas au blur : la mise en page « saute » à chaque focus.
+        Surcharge CSS bornée au mobile UNIQUEMENT, sur les champs de saisie de texte seuls.
+        Les jetons (`tokens.ts`, `antdTheme.ts`) ne sont pas touchés : la charte Plus Admin
+        (13/14 px) reste intacte au-dessus de 768 px. Alternative écartée : `maximum-scale=1`
+        dans le viewport, qui interdirait le zoom utilisateur — régression d'accessibilité. */
+  .ant-input,
+  .ant-input-number-input,
+  textarea.ant-input,
+  .ant-select-selection-search-input,
+  .ant-picker-input > input,
+  .ant-select-single .ant-select-selector {
+    font-size: 16px !important; /* AntD déclare `font-size` sur ces sélecteurs (cascade). */
+  }
+
+  /* i. Cibles tactiles (arbitrage validé). `controlHeight` vaut 32 px dans la charte
+        (densité de production, dérogation PRD §4.6). Sous `pointer: coarse` seulement —
+        donc jamais sur un poste à souris, même en fenêtre étroite. */
+  @media (pointer: coarse) {
+    .ant-btn,
+    .ant-select-selector,
+    .ant-picker,
+    .ant-input-affix-wrapper,
+    .ant-input {
+      min-height: 40px;
+    }
+    .ant-btn.ant-btn-icon-only {
+      min-width: 40px;
+    }
   }
 }
 
