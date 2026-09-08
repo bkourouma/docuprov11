@@ -28,6 +28,13 @@ redimensionnement à chaud), un script mesure dans la page :
 - cibles tactiles < 44 px, textes < 12 px, champs de saisie < 16 px (zoom iOS),
   éléments `position: fixed`, largeur des modales/tiroirs ouverts.
 
+**Les captures d'écran de cet outillage ne sont PAS une preuve.** Vérifié en plaçant des repères
+de position à gauche, au milieu et à droite du viewport : sous viewport émulé, la capture
+**répète le viewport en mosaïque**. Ce qui ressemble à du contenu coupé au bord droit est une
+limite de tuile, pas un débordement. Les captures « avant » de ce document sont donc
+illustratives et ne doivent pas être lues comme des mesures ; **c'est la mesure DOM qui fait
+foi**, et c'est elle qui est reportée dans les tableaux.
+
 ### 0.2 Le piège : un faux positif massif, écarté
 
 **La première campagne de mesure a produit un diagnostic faux, qui aurait conduit à « corriger »
@@ -82,78 +89,78 @@ La colonne « Après » sera renseignée en phase 2.
 
 | Route | 360 | 390 | 768 | Débordement (px, élément) | Autres défauts | Gravité | Effort | Après |
 |---|---|---|---|---|---|---|---|---|
-| `/` → `/dashboards` | **ÉCHEC 380** | OK | OK | +20 — `Segmented` 7 options (364 px) | idem `/dashboards` | Majeur | S | — |
-| `/dashboards` | **ÉCHEC 380** | OK | OK | +20 — `.ant-space` 364 px (`PeriodFilter`) | 7 champs < 16 px | Majeur | S | — |
-| `/acquisition` | OK | OK | OK | — | 1 champ < 16 px | Mineur | S | — |
-| `/intercalaires` | OK | OK | OK | — | **21 champs < 16 px**, 32 cibles < 44 px | Majeur | S | — |
-| `/search` | OK | OK | OK | — | tableau 1189/278 = **4,3 écrans** | Majeur | M | — |
-| `/documents/[id]` (149) | OK | OK | OK | — | onglets 861 px clippés ; PDF | Majeur | M | — |
-| `/design` | OK | OK | OK | — | 35 textes < 12 px (galerie de tokens) | Mineur | S | — |
-| `/login` | OK | OK | OK | — | 2 champs < 16 px | Mineur | S | — |
+| `/` → `/dashboards` | **ÉCHEC 380** | OK | OK | +20 — `Segmented` 7 options (364 px) | idem `/dashboards` | Majeur | S | **OK 360 / 390 / 758** |
+| `/dashboards` | **ÉCHEC 380** | OK | OK | +20 — `.ant-space` 364 px (`PeriodFilter`) | 7 champs < 16 px | Majeur | S | **OK 360 / 390 / 758** |
+| `/acquisition` | OK | OK | OK | — | 1 champ < 16 px | Mineur | S | **OK** |
+| `/intercalaires` | OK | OK | OK | — | **21 champs < 16 px**, 32 cibles < 44 px | Majeur | S | **OK** |
+| `/search` | OK | OK | OK | — | tableau 1189/278 = **4,3 écrans** | Majeur | M | **OK** |
+| `/documents/[id]` (149) | OK | OK | OK | — | onglets 861 px clippés ; PDF | Majeur | M | **OK** |
+| `/design` | OK | OK | OK | — | 35 textes < 12 px (galerie de tokens) | Mineur | S | **OK** |
+| `/login` | OK | OK | OK | — | 2 champs < 16 px | Mineur | S | **OK** |
 
 ### 1.2 Administration (29 routes)
 
 | Route | 360 | 390 | 768 | Débordement | Autres défauts | Gravité | Effort | Après |
 |---|---|---|---|---|---|---|---|---|
-| `/admin` → `classification-plans` | OK | OK | OK | — | **129 cibles < 44 px** ; 545/278 | Majeur | M | — |
-| `/admin/users` | OK | OK | OK | — | 786/278 ; 10 textes < 12 px | Majeur | M | — |
-| `/admin/roles` | OK | OK | OK | — | **46 champs < 16 px**, 72 cibles < 44 px | Majeur | M | — |
-| `/admin/document-types` | OK | OK | OK | — | — | — | — | — |
-| `/admin/dossiers` | OK | OK | OK | — | 553/278 ; 77 cibles < 44 px | Majeur | M | — |
-| `/admin/classification-plans` | OK | OK | OK | — | 545/278 ; 129 cibles < 44 px | Majeur | M | — |
-| `/admin/geolocalisation` | OK | OK | OK | — | 396/278 | Mineur | S | — |
-| `/admin/parametres/email` | OK | OK | OK | — | 3 champs < 16 px | Mineur | S | — |
-| `/admin/archives/cycles-de-vie` | **ÉCHEC 614** | **ÉCHEC 614** | OK | +254 — `<table>` 573 px, `<Table>` **sans `scroll`** | 7 colonnes inatteignables | **Bloquant** | S | — |
-| `/admin/archives/elements-listes` | OK | OK | OK | — | 438/278 ; 13 champs < 16 px | Mineur | S | — |
-| `/admin/archives/metadonnees-types` | OK | OK | OK | — | 559/278 | Mineur | S | — |
-| `/admin/archives/metadonnees` | OK | OK | OK | — | 479/278 ; 12 champs < 16 px | Mineur | S | — |
-| `/admin/archives/modes-destruction` | OK | OK | OK | — | 5 champs < 16 px | Mineur | S | — |
-| `/admin/archives/motifs-pret` | OK | OK | OK | — | 5 champs < 16 px | Mineur | S | — |
-| `/admin/archives/parametrage-types` | OK | OK | OK | — | 559/278 (6 colonnes) | Mineur | S | — |
-| `/admin/archives/sorts-finaux` | OK | OK | OK | — | — | — | — | — |
-| `/admin/courriers/confidentialites` | OK | OK | OK | — | — | — | — | — |
-| `/admin/courriers/entites-externes` | OK | OK | OK | — | **1148/278 = 4,1 écrans** ; 103 cibles < 44 px | Majeur | M | — |
-| `/admin/courriers/natures` | OK | OK | OK | — | — | — | — | — |
-| `/admin/courriers/objets` | OK | OK | OK | — | 606/278 ; 8 champs < 16 px | Mineur | S | — |
-| `/admin/courriers/organigrammes` | OK | OK | OK | — | 541/278 | Mineur | S | — |
-| `/admin/courriers/role-organigramme` | OK | OK | OK | — | 509/278 ; 7 textes < 12 px | Mineur | S | — |
-| `/admin/courriers/types-depart` | OK | OK | OK | — | — | — | — | — |
-| `/admin/courriers/types-entites-externes` | OK | OK | OK | — | — | — | — | — |
-| `/admin/courriers/types-imputation` | OK | OK | OK | — | 437/278 | Mineur | S | — |
-| `/admin/securite/confidentialite-utilisateurs` | OK | OK | OK | — | 633/278 ; 20 textes < 12 px | Majeur | M | — |
-| `/admin/securite/confidentialites` | OK | OK | OK | — | 330/278 | Mineur | S | — |
-| `/admin/securite/type-par-profil` | OK | OK | OK | — | 368/278 ; 5 champs < 16 px | Mineur | S | — |
-| `/admin/securite/type-par-utilisateur` | OK | OK | OK | — | 5 champs < 16 px | Mineur | S | — |
+| `/admin` → `classification-plans` | OK | OK | OK | — | **129 cibles < 44 px** ; 545/278 | Majeur | M | **OK** |
+| `/admin/users` | OK | OK | OK | — | 786/278 ; 10 textes < 12 px | Majeur | M | **OK** |
+| `/admin/roles` | OK | OK | OK | — | **46 champs < 16 px**, 72 cibles < 44 px | Majeur | M | **OK** |
+| `/admin/document-types` | OK | OK | OK | — | — | — | — | **OK** |
+| `/admin/dossiers` | OK | OK | OK | — | 553/278 ; 77 cibles < 44 px | Majeur | M | **OK** |
+| `/admin/classification-plans` | OK | OK | OK | — | 545/278 ; 129 cibles < 44 px | Majeur | M | **OK** |
+| `/admin/geolocalisation` | OK | OK | OK | — | 396/278 | Mineur | S | **OK** |
+| `/admin/parametres/email` | OK | OK | OK | — | 3 champs < 16 px | Mineur | S | **OK** |
+| `/admin/archives/cycles-de-vie` | **ÉCHEC 614** | **ÉCHEC 614** | OK | +254 — `<table>` 573 px, `<Table>` **sans `scroll`** | 7 colonnes inatteignables | **Bloquant** | S | **OK 360 / 390 / 758** |
+| `/admin/archives/elements-listes` | OK | OK | OK | — | 438/278 ; 13 champs < 16 px | Mineur | S | **OK** |
+| `/admin/archives/metadonnees-types` | OK | OK | OK | — | 559/278 | Mineur | S | **OK** |
+| `/admin/archives/metadonnees` | OK | OK | OK | — | 479/278 ; 12 champs < 16 px | Mineur | S | **OK** |
+| `/admin/archives/modes-destruction` | OK | OK | OK | — | 5 champs < 16 px | Mineur | S | **OK** |
+| `/admin/archives/motifs-pret` | OK | OK | OK | — | 5 champs < 16 px | Mineur | S | **OK** |
+| `/admin/archives/parametrage-types` | OK | OK | OK | — | 559/278 (6 colonnes) | Mineur | S | **OK** |
+| `/admin/archives/sorts-finaux` | OK | OK | OK | — | — | — | — | **OK** |
+| `/admin/courriers/confidentialites` | OK | OK | OK | — | — | — | — | **OK** |
+| `/admin/courriers/entites-externes` | OK | OK | OK | — | **1148/278 = 4,1 écrans** ; 103 cibles < 44 px | Majeur | M | **OK** |
+| `/admin/courriers/natures` | OK | OK | OK | — | — | — | — | **OK** |
+| `/admin/courriers/objets` | OK | OK | OK | — | 606/278 ; 8 champs < 16 px | Mineur | S | **OK** |
+| `/admin/courriers/organigrammes` | OK | OK | OK | — | 541/278 | Mineur | S | **OK** |
+| `/admin/courriers/role-organigramme` | OK | OK | OK | — | 509/278 ; 7 textes < 12 px | Mineur | S | **OK** |
+| `/admin/courriers/types-depart` | OK | OK | OK | — | — | — | — | **OK** |
+| `/admin/courriers/types-entites-externes` | OK | OK | OK | — | — | — | — | **OK** |
+| `/admin/courriers/types-imputation` | OK | OK | OK | — | 437/278 | Mineur | S | **OK** |
+| `/admin/securite/confidentialite-utilisateurs` | OK | OK | OK | — | 633/278 ; 20 textes < 12 px | Majeur | M | **OK** |
+| `/admin/securite/confidentialites` | OK | OK | OK | — | 330/278 | Mineur | S | **OK** |
+| `/admin/securite/type-par-profil` | OK | OK | OK | — | 368/278 ; 5 champs < 16 px | Mineur | S | **OK** |
+| `/admin/securite/type-par-utilisateur` | OK | OK | OK | — | 5 champs < 16 px | Mineur | S | **OK** |
 
 ### 1.3 Archives (6 routes)
 
 | Route | 360 | 390 | 768 | Débordement | Autres défauts | Gravité | Effort | Après |
 |---|---|---|---|---|---|---|---|---|
-| `/archives/communiquer` | OK | OK | OK | — | 5 champs < 16 px | Mineur | S | — |
-| `/archives/documents-communiques` | OK | OK | OK | — | 935/278 (8 colonnes) | Majeur | M | — |
-| `/archives/documents-epures` | OK | OK | OK | — | 985/278 (7 colonnes) | Majeur | M | — |
-| `/archives/dua-expirees` | **ÉCHEC 461** | **ÉCHEC 461** | OK | +101 — `Input.Search` **largeur figée 420 px** | 1151/278 = 4,1 écrans | **Bloquant** | S | — |
-| `/archives/historique-communications` | OK | OK | OK | — | 815/278 | Majeur | M | — |
-| `/archives/mes-documents-communiques` | OK | OK | OK | — | 819/278 | Majeur | M | — |
+| `/archives/communiquer` | OK | OK | OK | — | 5 champs < 16 px | Mineur | S | **OK** |
+| `/archives/documents-communiques` | OK | OK | OK | — | 935/278 (8 colonnes) | Majeur | M | **OK** |
+| `/archives/documents-epures` | OK | OK | OK | — | 985/278 (7 colonnes) | Majeur | M | **OK** |
+| `/archives/dua-expirees` | **ÉCHEC 461** | **ÉCHEC 461** | OK | +101 — `Input.Search` **largeur figée 420 px** | 1151/278 = 4,1 écrans | **Bloquant** | S | **OK 360 / 390 / 768** |
+| `/archives/historique-communications` | OK | OK | OK | — | 815/278 | Majeur | M | **OK** |
+| `/archives/mes-documents-communiques` | OK | OK | OK | — | 819/278 | Majeur | M | **OK** |
 
 ### 1.4 Courriers (14 routes)
 
 | Route | 360 | 390 | 768 | Débordement | Autres défauts | Gravité | Effort | Après |
 |---|---|---|---|---|---|---|---|---|
-| `/courriers/tableau-de-bord` | **ÉCHEC 380** | OK | OK | +20 — `Segmented` `PeriodFilter` | désaccord en-tête/corps des 2 tableaux de widgets **à confirmer** (§4) | Majeur | S | — |
-| `/courriers/enregistrement` | OK | OK | OK | — | 9 champs < 16 px | Mineur | S | — |
-| `/courriers/depart` | OK | OK | OK | — | 6 champs < 16 px | Mineur | S | — |
-| `/courriers/controle` | OK | OK | OK | — | **1264/278 = 4,5 écrans** | Majeur | M | — |
-| `/courriers/controle/[id]` (1244) | **ÉCHEC 461** | **ÉCHEC 461** | OK | +101 — `<Descriptions>` 419 px | — | **Bloquant** | S | — |
-| `/courriers/validation` | OK | OK | OK | — | **1605/278 = 5,8 écrans** (pire de l'app) ; 50 textes < 12 px | Majeur | M | — |
-| `/courriers/suivi` | OK | OK | OK | — | 1544/278 = 5,6 écrans ; 25 textes < 12 px | Majeur | M | — |
-| `/courriers/suivi/[id]` (1247) | **ÉCHEC 560** | **ÉCHEC 560** | OK | +200 — `<Descriptions>` 518 px | — | **Bloquant** | S | — |
-| `/courriers/parapheur` | OK | OK | OK | — | 1357/278 = 4,9 écrans | Majeur | M | — |
-| `/courriers/parapheur/[id]` (1236) | **ÉCHEC 560** | **ÉCHEC 560** | OK | +200 — `<Descriptions>` 518 px | — | **Bloquant** | S | — |
-| `/courriers/recherche` | OK | OK | OK | — | 1353/278 = 4,9 écrans ; 7 champs < 16 px | Majeur | M | — |
-| `/courriers/recherche/[id]` (1244) | **ÉCHEC 461** | **ÉCHEC 461** | OK | +101 — `<Descriptions>` 419 px | — | **Bloquant** | S | — |
-| `/courriers/integration-decharge` | OK | OK | OK | — | 1 champ < 16 px | Mineur | S | — |
-| `/courriers/documents-scannes` | OK | OK | OK | — | 752/278 ; infobulle des formats inatteignable au doigt | Majeur | M | — |
+| `/courriers/tableau-de-bord` | **ÉCHEC 380** | OK | OK | +20 — `Segmented` `PeriodFilter` | désaccord en-tête/corps des 2 tableaux de widgets **à confirmer** (§4) | Majeur | S | **OK 360 / 390 / 758** |
+| `/courriers/enregistrement` | OK | OK | OK | — | 9 champs < 16 px | Mineur | S | **OK** |
+| `/courriers/depart` | OK | OK | OK | — | 6 champs < 16 px | Mineur | S | **OK** |
+| `/courriers/controle` | OK | OK | OK | — | **1264/278 = 4,5 écrans** | Majeur | M | **OK** |
+| `/courriers/controle/[id]` (1244) | **ÉCHEC 461** | **ÉCHEC 461** | OK | +101 — `<Descriptions>` 419 px | — | **Bloquant** | S | **OK 360 / 390 / 768** |
+| `/courriers/validation` | OK | OK | OK | — | **1605/278 = 5,8 écrans** (pire de l'app) ; 50 textes < 12 px | Majeur | M | **OK** |
+| `/courriers/suivi` | OK | OK | OK | — | 1544/278 = 5,6 écrans ; 25 textes < 12 px | Majeur | M | **OK** |
+| `/courriers/suivi/[id]` (1247) | **ÉCHEC 560** | **ÉCHEC 560** | OK | +200 — `<Descriptions>` 518 px | — | **Bloquant** | S | **OK 360 / 390 / 768** |
+| `/courriers/parapheur` | OK | OK | OK | — | 1357/278 = 4,9 écrans | Majeur | M | **OK** |
+| `/courriers/parapheur/[id]` (1236) | **ÉCHEC 560** | **ÉCHEC 560** | OK | +200 — `<Descriptions>` 518 px | — | **Bloquant** | S | **OK 360 / 390 / 768** |
+| `/courriers/recherche` | OK | OK | OK | — | 1353/278 = 4,9 écrans ; 7 champs < 16 px | Majeur | M | **OK** |
+| `/courriers/recherche/[id]` (1244) | **ÉCHEC 461** | **ÉCHEC 461** | OK | +101 — `<Descriptions>` 419 px | — | **Bloquant** | S | **OK 360 / 390 / 768** |
+| `/courriers/integration-decharge` | OK | OK | OK | — | 1 champ < 16 px | Mineur | S | **OK** |
+| `/courriers/documents-scannes` | OK | OK | OK | — | 752/278 ; infobulle des formats inatteignable au doigt | Majeur | M | **OK** |
 
 ---
 
@@ -163,8 +170,29 @@ La colonne « Après » sera renseignée en phase 2.
 
 | | 360 px | 390 px | 768 px |
 |---|---|---|---|
-| Routes qui passent | **48 / 57** | **50 / 57** | **57 / 57** |
-| Routes en échec | **9** | **7** | **0** |
+| **Avant** — routes qui passent | **48 / 57** | **50 / 57** | **57 / 57** |
+| **Avant** — routes en échec | **9** | **7** | **0** |
+| **Après** — routes qui passent | **57 / 57** | **57 / 57** | **57 / 57** |
+| **Après** — routes en échec | **0** | **0** | **0** |
+
+> **Après correction** (branche `fix/mobile-first`, 6 commits) : les 57 routes ont
+> `overflow: false` aux trois largeurs. S'y ajoutent trois défauts qui n'apparaissaient pas dans
+> ce comptage et qui sont eux aussi corrigés : le débordement **pendant le chargement**
+> (squelettes, §2.3), le panneau de notifications **coupé hors écran** (invisible à
+> `scrollWidth`, un popup qui déborde ne fait pas défiler la page), et la **recherche globale
+> inatteignable** sous 992 px (§2.4b).
+>
+> Mesure finale : 57/57 à 360 px, 57/57 à 390 px, 18 routes de contrôle à 768 px (couvrant tous
+> les modules et **toutes** les routes modifiées — la couche mobile étant bornée à
+> `max-width: 767px`, elle est inactive à 768 px, où l'audit initial donnait déjà 57/57).
+> Non-régression desktop : empreinte géométrique **identique** à la référence sur les 7 pages de
+> contrôle à 1280 px ; aucun débordement à 1536 px.
+> Cibles tactiles < 44 px : **0**. Textes < 12 px : **0** (hors spécimens typographiques
+> assumés de `/design`). Champs < 16 px : **0**. Zoom utilisateur : préservé.
+> `tsc --noEmit` propre, `lint` propre, **build de production OK**.
+>
+> Le détail des motifs et la règle à suivre pour une page future :
+> [`MOBILE-CORRECTIONS.md`](MOBILE-CORRECTIONS.md).
 
 Les 9 routes en échec à 360 px (8 pages distinctes, `/` étant un alias de `/dashboards`) :
 
@@ -325,12 +353,23 @@ lieu de 23).
    `overflow-x: auto`). Mesuré en-tête 1236 px / corps 650 px, mais dans le contexte bridé du §0.2.
    **À revérifier sur appareil réel avant modification.** Le correctif (`x: 'max-content'`) est de
    toute façon sans risque.
-2. **`parametrage-types` et `cycles-de-vie`** : le commentaire `parametrage-types:462-471` explique
-   que `scroll={{ x: 'max-content' }}` avait été **délibérément écarté** (il rejetait « Plan de
-   classement » hors cadre). Utiliser le wrapper `overflowX: 'auto'` déjà en place à `:472`.
-3. **Visionneuse PDF** : non exercée par la mesure (les fiches ne l'ouvrent pas par défaut).
-   Diagnostic issu de la lecture du code, à confirmer en ouvrant un document.
-4. **Modales et tiroirs** : aucune n'était ouverte pendant les mesures. À mesurer une par une.
+2. ~~**`parametrage-types` et `cycles-de-vie`**~~ — **traité.** `cycles-de-vie` a reçu le wrapper
+   `overflowX: 'auto'`, le motif déjà en place sur `parametrage-types`, pour la raison que son
+   commentaire d'origine documente (`max-content` fige les colonnes et rejetait « Plan de
+   classement » hors cadre).
+3. **Visionneuse PDF** : toujours non exercée par la mesure (les fiches ne l'ouvrent pas par
+   défaut). Diagnostic issu de la lecture du code. **Non corrigée** — voir
+   [`MOBILE-CORRECTIONS.md`](MOBILE-CORRECTIONS.md) §6.
+4. **Modales et tiroirs** — **partiellement traité.** Ouverts et mesurés à 360 px : le panneau de
+   notifications (défaut réel, corrigé), le tiroir `RefLayout` (336 px, déjà correct) et les
+   modales de confirmation (AntD les plafonne lui-même — règle relevée dans sa feuille de style,
+   aucune correction nécessaire). **Restent** les trois modales en pourcentage (70 / 88 / 94 %),
+   non ouvertes faute de chemin d'accès direct, et non corrigées.
 5. **`Grid.useBreakpoint()` renverrait `{}` au premier rendu** (donc tous les `!screens.X` vrais au
-   premier paint) : rapporté par l'inventaire statique, **non revérifié par moi**. S'il se confirme,
-   préférer la media query CSS au point de rupture JS partout où le choix existe.
+   premier paint) : rapporté par l'inventaire statique, **toujours non revérifié par moi**. La
+   règle de méthode qui en découle (préférer la media query CSS au point de rupture JS) a été
+   appliquée par précaution : la couche mobile est entièrement en CSS.
+6. **Une 58ᵉ route est apparue pendant le chantier** — `/profil`, développée en parallèle par un
+   autre intervenant (avec des modifications de `TopBar.tsx`, `nav.ts`, `lib/auth.ts` et de l'API).
+   Elle **n'a pas été auditée ni corrigée** : elle n'existait pas au moment de l'audit et ne fait
+   partie d'aucun de mes commits.
