@@ -1,0 +1,183 @@
+# DocuPro-V6 — pile de production isolée (projet Compose : docupro-demo).
+# Ne pas réutiliser les noms, volumes, réseau ou ports d'une autre app (docupro-new, …).
+name: docupro-demo
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: docupro-demo-postgres
+    restart: unless-stopped
+    env_file:
+      - /home/deployer/docupro-demo.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - docupro-demo-postgres-data:/var/lib/postgresql/data
+    networks:
+      - docupro-demo-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7
+    container_name: docupro-demo-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - docupro-demo-redis-data:/data
+    networks:
+      - docupro-demo-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile.api
+    image: docupro-demo-api:latest
+    container_name: docupro-demo-api
+    restart: unless-stopped
+    env_file:
+      - /home/deployer/docupro-demo.env
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      ARCHIVES_PATH: /data/archives
+    volumes:
+      - docupro-demo-archives-data:/data/archives
+    networks:
+      - docupro-demo-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile.worker
+    image: docupro-demo-worker:latest
+    container_name: docupro-demo-worker
+    restart: unless-stopped
+    env_file:
+      - /home/deployer/docupro-demo.env
+    environment:
+      NODE_ENV: production
+      ARCHIVES_PATH: /data/archives
+      TESSERACT_DATA_PATH: /opt/tessdata
+    volumes:
+      - docupro-demo-archives-data:/data/archives
+    networks:
+      - docupro-demo-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const n=require('net');const s=n.connect(6379,'docupro-demo-redis',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),4000)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile.web
+      args:
+        API_INTERNAL_URL: http://docupro-demo-api:3001
+    image: docupro-demo-web:latest
+    container_name: docupro-demo-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+      PORT: "5000"
+      API_INTERNAL_URL: http://docupro-demo-api:3001
+    ports:
+      - "127.0.0.1:3018:5000"
+    networks:
+      - docupro-demo-network
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:5000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  docupro-demo-network:
+    name: docupro-demo-network
+
+volumes:
+  docupro-demo-postgres-data:
+    name: docupro-demo-postgres-data
+  docupro-demo-archives-data:
+    name: docupro-demo-archives-data
+  docupro-demo-redis-data:
+    name: docupro-demo-redis-data

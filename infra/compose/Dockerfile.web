@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1
+# DocuPro-V6 Web (Next.js). Pas de output standalone : next.config.mjs (rewrites) est lu au `next start`.
+FROM node:20-bookworm-slim AS build
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV PNPM_HOME=/pnpm
+ENV PATH="${PNPM_HOME}:${PATH}"
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json .npmrc ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY apps/worker/package.json apps/worker/package.json
+COPY apps/scan-agent/package.json apps/scan-agent/package.json
+COPY packages/config/package.json packages/config/package.json
+COPY packages/config/tsconfig.base.json packages/config/tsconfig.base.json
+COPY packages/db/package.json packages/db/package.json
+COPY packages/exports/package.json packages/exports/package.json
+COPY packages/mailer/package.json packages/mailer/package.json
+COPY packages/ocr/package.json packages/ocr/package.json
+COPY packages/pdf/package.json packages/pdf/package.json
+COPY packages/qr/package.json packages/qr/package.json
+COPY packages/sealing/package.json packages/sealing/package.json
+COPY packages/storage/package.json packages/storage/package.json
+COPY packages/types/package.json packages/types/package.json
+COPY packages/ui/package.json packages/ui/package.json
+
+RUN --mount=type=cache,id=docupro-pnpm-store,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store \
+ && pnpm install --frozen-lockfile
+
+COPY . .
+
+RUN find . -name '*.tsbuildinfo' -delete
+
+# Next.js 15 sérialise les rewrites au `next build` (pas au `next start`).
+# API_INTERNAL_URL doit donc être connu ici — pas seulement au runtime.
+ARG API_INTERNAL_URL=http://docupro-demo-api:3001
+ENV API_INTERNAL_URL=${API_INTERNAL_URL}
+ENV NEXT_PUBLIC_API_URL=/api
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
+RUN pnpm turbo run build --filter=@archivage/web
+
+FROM node:20-bookworm-slim AS runtime
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
+ENV PORT=5000
+ENV NEXT_TELEMETRY_DISABLED=1
+# Destination du rewrite /api (surchargeable, lue au démarrage de next start).
+ENV API_INTERNAL_URL=http://docupro-demo-api:3001
+
+COPY --from=build /app /app
+
+WORKDIR /app/apps/web
+EXPOSE 5000
+CMD ["node", "/app/node_modules/next/dist/bin/next", "start", "-p", "5000"]

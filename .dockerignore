@@ -1,6 +1,7 @@
 **/node_modules
 **/dist
 **/.next
+**/*.tsbuildinfo
 **/.turbo
 **/coverage
 .git
@@ -9,10 +10,17 @@
 .env
 .env.*
 !.env.example
-Dockerfile*
 .dockerignore
-storage/archives/
+# Racine seulement — ne pas ignorer packages/storage
+/storage
+/storage/**
 specs/
 docs/
 .specify/
 .claude/
+infra
+DocuPro.backup
+.token.tmp
+*.backup
+apps/web/public/pdfjs
+
