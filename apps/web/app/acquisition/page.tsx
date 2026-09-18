@@ -37,81 +37,10 @@ import { StatusBadge } from '../components/StatusBadge';
 import { StatusTile } from '../components/StatusTile';
 import { BatchPipeline, type PipelinePhase } from '../components/BatchPipeline';
 import { useFeedback } from '../components/feedback';
-import { icons, type IconName } from '../theme/icons';
+import { icons } from '../theme/icons';
 import { radii } from '../theme/tokens';
 
 const { Text } = Typography;
-
-/** Panneau de choix de mode (étape « Destination ») : cible cliquable compacte, façon carte radio. */
-function ModeOptionCard({
-  selected,
-  title,
-  icon,
-  onSelect,
-}: {
-  selected: boolean;
-  title: string;
-  icon: IconName;
-  onSelect: () => void;
-}) {
-  const Glyph = icons[icon];
-  return (
-    <Card
-      hoverable
-      onClick={onSelect}
-      role="radio"
-      aria-checked={selected}
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
-      style={{
-        height: '100%',
-        // État choisi : bordure primaire de 2 px (l'ombre d'1 px d'avant se lisait
-        // mal sur les cartes désormais plates), sans décaler la mise en page.
-        borderColor: selected ? 'var(--ant-color-primary)' : undefined,
-        outline: selected ? '1px solid var(--ant-color-primary)' : undefined,
-        outlineOffset: -1,
-        cursor: 'pointer',
-      }}
-      styles={{ body: { display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px' } }}
-    >
-      <span
-        style={{
-          width: 26,
-          height: 26,
-          borderRadius: radii.base,
-          display: 'grid',
-          placeItems: 'center',
-          flex: 'none',
-          background: selected
-            ? 'var(--ant-color-primary-bg, #e8eefc)'
-            : 'var(--ant-color-fill-quaternary)',
-          color: selected ? 'var(--ant-color-primary, #0033c4)' : 'var(--ant-color-text-tertiary)',
-        }}
-      >
-        <Glyph size={15} strokeWidth={1.75} />
-      </span>
-      <div style={{ minWidth: 0 }}>
-        <Space align="center" size={6}>
-          <Text strong style={{ fontSize: 13 }}>
-            {title}
-          </Text>
-          {selected && (
-            <icons.check
-              size={14}
-              strokeWidth={2.5}
-              style={{ color: 'var(--ant-color-primary)' }}
-            />
-          )}
-        </Space>
-      </div>
-    </Card>
-  );
-}
 
 /** Les 4 étapes du wizard : 2 de préparation (pilotées par `wizardStep`) + 2 automatiques
  * (Traitement/Indexation, pilotées par le statut du lot une fois créé). */
@@ -263,7 +192,11 @@ export default function AcquisitionPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Mode d'acquisition : false = normal (tous les fichiers → 1 document) ; true = ancien système QR + OCR.
-  const [useIntercalaires, setUseIntercalaires] = useState(false);
+  // Figé à `false` depuis le 2026-09-16 — le sélecteur a été retiré de l'écran. La valeur reste une
+  // variable (et non une constante littérale) pour que les branches « avec intercalaires » restent
+  // typées `boolean` et compilent telles quelles : rétablir le choix ne demande que de rendre le
+  // setter au `useState`.
+  const [useIntercalaires] = useState(false);
   // Étape courante du wizard de préparation (0 Destination — mode inclus, 1 Fichiers).
   const [wizardStep, setWizardStep] = useState(0);
 
@@ -906,33 +839,13 @@ export default function AcquisitionPage() {
 
       {!batch && (
         <Card>
-          {/* Étape 1/2 — Mode d'acquisition + destination */}
+          {/* Étape 1/2 — Destination.
+              Le choix du mode d'acquisition n'est plus proposé (2026-09-16) : l'acquisition se
+              fait toujours SANS intercalaire. Le mode QR + OCR reste entièrement implémenté côté
+              worker et pilotable par l'API — seul le sélecteur disparaît de l'écran. Le rétablir
+              tient au retour de ce bloc et d'un `ModeOptionCard`, tous deux dans l'historique. */}
           {wizardStep === 0 && (
             <Space direction="vertical" size="large" style={{ width: '100%' }}>
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Mode d’acquisition
-                </Text>
-                <Row gutter={[8, 8]} style={{ marginTop: 4 }}>
-                  <Col xs={24} md={12}>
-                    <ModeOptionCard
-                      selected={!useIntercalaires}
-                      icon="document"
-                      title="Sans intercalaire"
-                      onSelect={() => setUseIntercalaires(false)}
-                    />
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <ModeOptionCard
-                      selected={useIntercalaires}
-                      icon="qr"
-                      title="Avec intercalaires (QR + OCR)"
-                      onSelect={() => setUseIntercalaires(true)}
-                    />
-                  </Col>
-                </Row>
-              </div>
-
               <div>
                 <Typography.Title level={5} style={{ marginTop: 0 }}>
                   Quels documents allez-vous numériser ?

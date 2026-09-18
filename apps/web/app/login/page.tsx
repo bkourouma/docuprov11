@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Alert, Button, Form, Grid, Input, Space, Typography } from 'antd';
+import { Alert, Button, ConfigProvider, Form, Grid, Input, Typography } from 'antd';
 import { motion } from 'motion/react';
 import { API_BASE } from '../lib/api';
 import { Logo } from '../components/BrandMark';
+import { CLIENT_BRAND } from '../theme/client-brand';
 import { icons } from '../theme/icons';
 import { fadeUp } from '../theme/motion';
 
@@ -14,6 +15,35 @@ interface LoginForm {
   password: string;
 }
 
+/**
+ * Palette de l'écran de connexion — vert AGEF, demandé par le client.
+ *
+ * LOCALE À CETTE PAGE, et non posée sur les tokens `--da-brand-*` : ceux-ci
+ * habillent la barre du haut et tout le reste de l'application, qui restent au
+ * bleu Plus Admin.
+ *
+ * Ce vert est TRÈS clair (luminance 0,82) : du blanc dessus tomberait à 1,2:1.
+ * Tout ce qui s'y pose passe donc en encre sombre — mais en encre NEUTRE, celle
+ * du design system, et non dans un vert foncé assorti : une encre teintée sur un
+ * champ de la même teinte se fond perceptivement, le texte paraît délavé même
+ * quand le ratio est bon (le vert foncé précédent mesurait pourtant 10,2:1).
+ * Ratios sur `#d8f0da` : `ink` 17,1:1, `inkMuted` 10,8:1.
+ */
+const AGEF = {
+  panel: '#d8f0da',
+  /** Même teinte, à peine plus dense : n'affleure qu'au coin, comme le cyan du dégradé d'origine. */
+  panelDeep: '#c2e7c8',
+  /** `colors.text` du design system. */
+  ink: '#030303',
+  /** `colors.textStrong` — atténué par la graisse et la taille, pas par un gris pâle. */
+  inkMuted: '#313131',
+  /** Vert foncé réservé aux FORMES décoratives : elles ne portent pas de texte. */
+  decor: '#0f3d1c',
+  /** Contour : le fond du bouton ne tranche pas sur le blanc de la carte (1,2:1), c'est
+      la bordure qui délimite la cible — 3,25:1, le minimum exigé pour un élément d'interface. */
+  border: '#5f9c6b',
+} as const;
+
 /** Panneau de marque (gauche desktop / bandeau mobile) : fond « Encre », motif QR → archive. */
 function BrandPanel({ compact = false }: { compact?: boolean }) {
   return (
@@ -21,11 +51,10 @@ function BrandPanel({ compact = false }: { compact?: boolean }) {
       style={{
         position: 'relative',
         overflow: 'hidden',
-        // Dégradé signature : le bleu roi couvre toute la zone de texte (blanc à
-        // 9,25:1), le cyan n'affleure qu'au coin opposé — seul il tomberait à 1,87:1.
-        background:
-          'linear-gradient(155deg, var(--da-brand-to) 0%, var(--da-brand-to) 60%, var(--da-brand-from) 165%)',
-        color: 'var(--da-on-brand)',
+        // Structure du dégradé d'origine conservée : le vert demandé couvre toute la
+        // zone de texte, une nuance à peine plus dense n'affleure qu'au coin opposé.
+        background: `linear-gradient(155deg, ${AGEF.panel} 0%, ${AGEF.panel} 60%, ${AGEF.panelDeep} 165%)`,
+        color: AGEF.ink,
         padding: compact ? '28px 24px' : '48px 56px',
         display: 'flex',
         flexDirection: 'column',
@@ -40,28 +69,22 @@ function BrandPanel({ compact = false }: { compact?: boolean }) {
           width="420"
           height="420"
           viewBox="0 0 420 420"
-          style={{ position: 'absolute', right: -80, bottom: -60, opacity: 0.12 }}
+          style={{ position: 'absolute', right: -80, bottom: -60, opacity: 0.16 }}
         >
-          <g fill="none" stroke="var(--da-on-brand)" strokeWidth="6">
+          {/* Motif sombre et non blanc : sur un fond clair, un décor blanc
+              disparaîtrait purement et simplement. */}
+          <g fill="none" stroke={AGEF.decor} strokeWidth="6">
             <rect x="30" y="30" width="90" height="90" rx="5" />
-            <rect
-              x="55"
-              y="55"
-              width="40"
-              height="40"
-              rx="4"
-              fill="var(--da-on-brand)"
-              stroke="none"
-            />
+            <rect x="55" y="55" width="40" height="40" rx="4" fill={AGEF.decor} stroke="none" />
           </g>
-          <g fill="var(--da-on-brand)">
+          <g fill={AGEF.decor}>
             <rect x="150" y="34" width="26" height="26" rx="4" />
             <rect x="190" y="34" width="26" height="26" rx="4" opacity="0.6" />
             <rect x="150" y="74" width="26" height="26" rx="4" opacity="0.6" />
           </g>
-          {/* Les « lignes d'archive » reprennent le cyan du dégradé signature : posées
-              sur le bleu roi du panneau, elles restent le seul contrepoint de teinte. */}
-          <g fill="var(--da-brand-from)">
+          {/* Les « lignes d'archive » gardent leur rôle de contrepoint : un vert
+              moyen, seule teinte distincte de l'encre sur le panneau. */}
+          <g fill={AGEF.border}>
             <rect x="30" y="170" width="260" height="14" rx="4" />
             <rect x="30" y="205" width="200" height="14" rx="4" opacity="0.8" />
             <rect x="30" y="240" width="230" height="14" rx="4" opacity="0.6" />
@@ -70,6 +93,8 @@ function BrandPanel({ compact = false }: { compact?: boolean }) {
         </svg>
       )}
 
+      {/* Le panneau porte la seule marque du produit : la marque de l'organisation
+          cliente vit côté formulaire, en filigrane. */}
       <div style={{ position: 'relative', zIndex: 1 }}>
         <Logo height={compact ? 28 : 40} />
       </div>
@@ -79,13 +104,11 @@ function BrandPanel({ compact = false }: { compact?: boolean }) {
           <Typography.Title
             level={2}
             className="da-display"
-            style={{ color: 'var(--da-on-brand)', marginBottom: 12 }}
+            style={{ color: AGEF.ink, marginBottom: 12 }}
           >
             Vos archives, retrouvées en un instant.
           </Typography.Title>
-          <Typography.Paragraph
-            style={{ color: 'var(--da-on-brand-muted)', fontSize: 16, margin: 0 }}
-          >
+          <Typography.Paragraph style={{ color: AGEF.inkMuted, fontSize: 16, margin: 0 }}>
             Transformez vos piles de documents papier en archives numériques classées et
             recherchables — des intercalaires QR jusqu'à la recherche plein-texte.
           </Typography.Paragraph>
@@ -97,11 +120,13 @@ function BrandPanel({ compact = false }: { compact?: boolean }) {
           style={{
             position: 'relative',
             zIndex: 1,
-            color: 'var(--da-on-brand-muted)',
+            color: AGEF.inkMuted,
             fontSize: 13,
           }}
         >
-          Génération d'intercalaires · Acquisition par lot · Recherche &amp; export
+          {CLIENT_BRAND
+            ? `Espace d'archivage de ${CLIENT_BRAND.longNameInSentence} — intercalaires QR, acquisition par lot, recherche & export.`
+            : "Génération d'intercalaires · Acquisition par lot · Recherche & export"}
         </div>
       )}
     </div>
@@ -163,6 +188,7 @@ export default function LoginPage() {
 
       <div
         style={{
+          position: 'relative',
           flex: 1,
           display: 'grid',
           placeItems: 'center',
@@ -170,76 +196,133 @@ export default function LoginPage() {
           background: 'var(--ant-color-bg-container, #fff)',
         }}
       >
-        <motion.div
-          variants={fadeUp}
-          initial="hidden"
-          animate="show"
-          style={{ width: '100%', maxWidth: 380 }}
+        {/* Filigrane du logo client. Décoratif : `aria-hidden`, et l'appartenance
+            reste énoncée en toutes lettres sous le titre du formulaire. */}
+        {CLIENT_BRAND && (
+          <div aria-hidden className="da-client-watermark-clip">
+            <div
+              className="da-client-watermark"
+              style={{ backgroundImage: `url(${CLIENT_BRAND.logoSrc})` }}
+            />
+          </div>
+        )}
+
+        {/* Conteneur en verre dépoli : le motif court sous toute la colonne et
+            reste visible au travers ; c'est le flou de `backdrop-filter` qui rend
+            la saisie lisible, pas un aplat opaque. */}
+        {/* La carte ne doit porter AUCUNE opacité animée, ni en avoir une au-dessus
+            d'elle : Chromium désactive `backdrop-filter` sous un ancêtre dont
+            l'opacité est animée, et le verre dépoli disparaîtrait. Le cadre reste
+            donc statique, c'est son contenu qui s'anime. */}
+        {/* `ConfigProvider` local plutôt que du CSS : le survol et le focus des champs
+            sont peints par Ant Design à partir de `colorPrimary`. Les rattraper en CSS
+            demanderait de surenchérir sur sa spécificité, alors qu'un fournisseur
+            imbriqué fusionne proprement avec le thème global — lequel reste au bleu
+            pour tout le reste de l'application. */}
+        <ConfigProvider
+          theme={{
+            token: {
+              colorPrimary: AGEF.border,
+              colorPrimaryHover: '#4d8459',
+              controlOutline: 'rgba(95, 156, 107, 0.2)',
+            },
+          }}
         >
-          <Typography.Title level={3} className="da-display" style={{ marginBottom: 4 }}>
-            Connexion
-          </Typography.Title>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 24 }}>
-            Accédez à votre espace d'archivage.
-          </Typography.Paragraph>
-
-          {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
-
-          <Form layout="vertical" onFinish={onFinish} requiredMark={false} autoComplete="off">
-            <Form.Item
-              name="username"
-              label="Nom d'utilisateur"
-              rules={[{ required: true, message: 'Saisissez votre nom d’utilisateur.' }]}
-            >
-              <Input
-                autoFocus
-                autoComplete="off"
-                placeholder="ex. agent.archives"
-                prefix={
-                  <icons.users
-                    size={16}
-                    strokeWidth={1.75}
-                    style={{ color: 'var(--ant-color-text-tertiary)' }}
-                  />
-                }
-              />
-            </Form.Item>
-            <Form.Item
-              name="password"
-              label="Mot de passe"
-              rules={[{ required: true, message: 'Saisissez votre mot de passe.' }]}
-            >
-              <Input.Password
-                autoComplete="new-password"
-                placeholder="••••••••"
-                prefix={
-                  <Lock
-                    size={16}
-                    strokeWidth={1.75}
-                    style={{ color: 'var(--ant-color-text-tertiary)' }}
-                  />
-                }
-              />
-            </Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              block
-              loading={loading}
-              style={{ marginTop: 4 }}
-            >
-              Se connecter
-            </Button>
-          </Form>
-
-          <Space
-            size={6}
-            style={{ marginTop: 20, color: 'var(--ant-color-text-tertiary)', fontSize: 12 }}
+          <div
+            className="da-login-card"
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              width: '100%',
+              maxWidth: 420,
+              padding: isWide ? '36px 36px 32px' : '28px 24px 24px',
+            }}
           >
-            <Lock size={13} strokeWidth={1.75} />
-            <span>Connexion sécurisée — vos accès sont journalisés.</span>
-          </Space>
-        </motion.div>
+            <motion.div variants={fadeUp} initial="hidden" animate="show">
+              <Typography.Title level={3} className="da-display" style={{ marginBottom: 4 }}>
+                Connexion
+              </Typography.Title>
+              {/* Pas de `type="secondary"` : ce gris est calibré pour un blanc plein,
+                  il s'affadit sur une carte translucide posée sur le motif. */}
+              <Typography.Paragraph style={{ color: AGEF.inkMuted, marginBottom: 24 }}>
+                {CLIENT_BRAND
+                  ? `Accédez à l'espace d'archivage de ${CLIENT_BRAND.longNameInSentence}.`
+                  : "Accédez à votre espace d'archivage."}
+              </Typography.Paragraph>
+
+              {error && (
+                <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />
+              )}
+
+              <Form layout="vertical" onFinish={onFinish} requiredMark={false} autoComplete="off">
+                <Form.Item
+                  name="username"
+                  label="Nom d'utilisateur"
+                  rules={[{ required: true, message: 'Saisissez votre nom d’utilisateur.' }]}
+                >
+                  <Input
+                    autoFocus
+                    autoComplete="off"
+                    placeholder="ex. agent.archives"
+                    prefix={
+                      <icons.users
+                        size={16}
+                        strokeWidth={1.75}
+                        style={{ color: 'var(--ant-color-text-tertiary)' }}
+                      />
+                    }
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="password"
+                  label="Mot de passe"
+                  rules={[{ required: true, message: 'Saisissez votre mot de passe.' }]}
+                >
+                  <Input.Password
+                    autoComplete="new-password"
+                    placeholder="••••••••"
+                    prefix={
+                      <Lock
+                        size={16}
+                        strokeWidth={1.75}
+                        style={{ color: 'var(--ant-color-text-tertiary)' }}
+                      />
+                    }
+                  />
+                </Form.Item>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  block
+                  loading={loading}
+                  className="da-login-cta"
+                  style={{ marginTop: 4 }}
+                >
+                  Se connecter
+                </Button>
+              </Form>
+
+              {/* Un flex, et non `Space` : les enfants de `Space` sont des blocs, si bien
+              qu'un texte replié sur deux lignes (carte étroite, mobile) laisse le
+              cadenas seul sur la sienne. Aligné en tête, l'icône reste au texte. */}
+              <div
+                style={{
+                  marginTop: 20,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 6,
+                  // Secondaire et non tertiaire : le tertiaire tombe sous les 4,5:1
+                  // dès que le motif affleure derrière le verre.
+                  color: 'var(--ant-color-text-secondary)',
+                  fontSize: 12,
+                }}
+              >
+                <Lock size={13} strokeWidth={1.75} style={{ flex: 'none', marginTop: 2 }} />
+                <span>Connexion sécurisée — vos accès sont journalisés.</span>
+              </div>
+            </motion.div>
+          </div>
+        </ConfigProvider>
       </div>
     </div>
   );

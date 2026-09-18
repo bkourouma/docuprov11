@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
@@ -121,5 +121,42 @@ describe('Acquisition pipeline — live fixture run', () => {
     expect(updated!.status).toBe(1);
     expect(updated!.documentCount).toBe(1);
     expect(updated!.processedFiles).toBe(1);
+  }, 180000);
+
+  // Retraiter commence par supprimer les documents du lot et leurs binaires, sans transaction.
+  // Tant que la lecture du dépôt venait APRÈS, un dossier `_incoming` manquant détruisait le lot
+  // puis échouait : perte sèche. L'échec doit désormais survenir avant toute suppression.
+  it('refuses to reprocess a batch whose staging dir is gone, without destroying it', async () => {
+    const typeId = await activeDocumentTypeId();
+    const batchId = await stageBatch(false, typeId);
+
+    await processBatch(batchId, { archivesPath, tesseractLang: 'eng' });
+
+    const avant = await prisma.document.findMany({
+      where: { batchId },
+      include: { versions: { include: { files: true } } },
+    });
+    expect(avant).toHaveLength(1);
+    const fichierAvant = avant[0]!.versions[0]!.files[0]!;
+
+    // Le cas reel : lot restaure sans ses depots, ou `_incoming` purge.
+    await rm(incomingDir(archivesPath, batchId), { recursive: true, force: true });
+
+    await expect(processBatch(batchId, { archivesPath, tesseractLang: 'eng' })).rejects.toThrow(
+      /dépôt introuvable/,
+    );
+
+    // Le coeur du test : le lot est intact, en base comme sur disque.
+    const apres = await prisma.document.findMany({
+      where: { batchId },
+      include: { versions: { include: { files: true } } },
+    });
+    expect(apres).toHaveLength(1);
+    expect(apres[0]!.documentId).toBe(avant[0]!.documentId);
+    const fichierApres = apres[0]!.versions[0]!.files[0]!;
+    expect(fichierApres.fileId).toBe(fichierAvant.fileId);
+    await expect(
+      stat(join(archivesPath, `${fichierApres.fileId}${fichierApres.fileExtension}`)),
+    ).resolves.toBeDefined();
   }, 180000);
 });

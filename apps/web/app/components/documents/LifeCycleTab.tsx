@@ -102,10 +102,6 @@ export function LifeCycleTab({
                   label="Échéance conformité calculée"
                   value={fmt(rule.projectedCompliance)}
                 />
-                <InfoRow
-                  label="Décompte à partir du"
-                  value={`${fmt(data?.startDate ?? null)} (date du document, à défaut sa date d’enregistrement)`}
-                />
               </InfoCard>
             </Col>
             <Col xs={24} lg={12}>

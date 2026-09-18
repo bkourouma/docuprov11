@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import { buildDocumentPdf } from '@archivage/pdf';
 import type { DiskFileStore } from '@archivage/storage';
@@ -5,6 +6,23 @@ import { prisma } from '../db';
 import type { DocumentPlan } from './segment';
 import { pageKey } from './page-source';
 import { grantConsultation } from './grant-permission';
+import { sealFreshDocument } from './seal-document';
+
+/**
+ * Empreinte de référence du binaire, posée DÈS l'ingestion (2026-09-15).
+ *
+ * Avant, aucun chemin de création ne renseignait `hash` : un document fraîchement numérisé arrivait
+ * sans référence, et l'onglet « Sécurité et conformité » ne pouvait que la POSER au premier
+ * contrôle — c'est-à-dire figer comme faisant foi un état déjà vieux de plusieurs semaines. La
+ * protection ne commençait donc que le jour où quelqu'un pensait à cliquer. Mesurée ici, elle
+ * couvre le document à partir de la seconde où il entre au coffre.
+ *
+ * Calculée sur les octets RÉELLEMENT écrits sur le coffre (le PDF assemblé), jamais sur les
+ * fichiers d'entrée : c'est le binaire archivé que la vérification relira.
+ */
+function empreinte(bytes: Uint8Array): { hash: string; hashComputedAt: Date } {
+  return { hash: createHash('sha256').update(bytes).digest('hex'), hashComputedAt: new Date() };
+}
 
 async function resolveFileType(extension: string): Promise<{ fileTypeId: number }> {
   return prisma.fileType.upsert({
@@ -34,6 +52,8 @@ export interface PersistOptions {
   sources: PDFDocument[];
   pageText: Map<string, string>;
   fileStore: DiskFileStore;
+  /** Racine du coffre — le cachet y trouve la clé de l'installation (`<racine>/.keys/…`). */
+  archivesPath: string;
   /**
    * Classement résolu par l'appelant : type du lot en repli du type lu sur l'intercalaire, et plan
    * du paramétrage de ce type. Passé cuit plutôt que recalculé ici pour n'interroger la base
@@ -87,9 +107,14 @@ export async function persistDocument(opts: PersistOptions): Promise<void> {
         pageCount: plan.pages.length,
         ocrText: ocrText.length > 0 ? ocrText : null,
         sortOrder: 0,
+        ...empreinte(bytes),
       },
     });
     await fileStore.write(file.fileId, '.pdf', Buffer.from(bytes));
+    // Scellé APRÈS l'écriture sur le coffre : le cachet atteste un binaire réellement présent.
+    // L'inverse signerait un fichier qui n'existe pas encore, et qu'un incident d'écriture
+    // pourrait ne jamais faire exister.
+    await sealFreshDocument(document.documentId, opts.archivesPath);
   }
 
   if (createdBy != null) {
@@ -132,6 +157,8 @@ export interface PersistMergedOptions {
   /** Confidentialité par défaut du type retenu (`document_type_setting.confidentialite_id`). */
   confidentialiteId: number | null;
   fileStore: DiskFileStore;
+  /** Racine du coffre — le cachet y trouve la clé de l'installation (`<racine>/.keys/…`). */
+  archivesPath: string;
   onFileMerged?: (filesDone: number) => void | Promise<void>;
 }
 
@@ -188,9 +215,11 @@ export async function persistMergedDocument(opts: PersistMergedOptions): Promise
       pageCount,
       ocrText: null,
       sortOrder: 0,
+      ...empreinte(bytes),
     },
   });
   await fileStore.write(file.fileId, '.pdf', Buffer.from(bytes));
+  await sealFreshDocument(document.documentId, opts.archivesPath);
 
   if (createdBy != null) {
     await grantConsultation(document.documentId, createdBy);

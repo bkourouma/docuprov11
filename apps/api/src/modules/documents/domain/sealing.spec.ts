@@ -1,3 +1,5 @@
+// Le domaine testé vit dans `@archivage/sealing` depuis le 2026-09-15 (API et worker le
+// partagent). Les tests restent ici : c'est `apps/api` qui porte le lanceur Jest du dépôt.
 import { generateKeyPairSync } from 'node:crypto';
 import {
   canonicalSealPayload,
@@ -8,7 +10,7 @@ import {
   sealTimestamp,
   signPayload,
   verifyPayload,
-} from './sealing';
+} from '@archivage/sealing';
 
 const at = (iso: string) => new Date(iso);
 

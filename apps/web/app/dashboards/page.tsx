@@ -8,7 +8,6 @@ import { PageHeader } from '../components/PageHeader';
 import { HeroBanner, heroGhostStyle } from '../components/HeroBanner';
 import { ModaleAjoutWidget } from '../components/dashboard/ModaleAjoutWidget';
 import { icons, iconDefaults } from '../theme/icons';
-import { fmtInt } from '../theme/charts';
 import { PeriodFilter, presetToPeriod, type PeriodState } from './components/PeriodFilter';
 import { rendreWidget, widgetConnu, type ContexteWidget } from './components/widget-registry';
 import {
@@ -187,7 +186,6 @@ export default function DashboardsPage() {
     }
   };
 
-  const k = data?.kpis;
   const ctx: ContexteWidget = { data, loading };
 
   return (
@@ -230,27 +228,11 @@ export default function DashboardsPage() {
       {!edition && (
         <HeroBanner
           title="Bienvenue sur Docu-Archives"
-          description={
-            <>
-              Tout le fonds est {fmtInt(k?.totalDocuments)} document(s), dont{' '}
-              {fmtInt(k?.documentsArchived)} archivé(s) et {fmtInt(k?.documentsPending)} en attente
-              d&apos;indexation.
-            </>
-          }
           actions={
             <>
               <Link href="/acquisition">
                 <Button icon={<icons.acquisition {...iconDefaults} size={16} />}>
                   Démarrer une acquisition
-                </Button>
-              </Link>
-              <Link href="/intercalaires">
-                <Button
-                  ghost
-                  style={heroGhostStyle}
-                  icon={<icons.intercalaires {...iconDefaults} size={16} />}
-                >
-                  Générer des intercalaires
                 </Button>
               </Link>
               <Link href="/search">

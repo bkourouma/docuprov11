@@ -18,10 +18,6 @@ const Pie = dynamic(() => import('@ant-design/plots').then((m) => m.Pie), {
   ssr: false,
   loading,
 }) as ComponentType<Record<string, unknown>>;
-const Treemap = dynamic(() => import('@ant-design/plots').then((m) => m.Treemap), {
-  ssr: false,
-  loading,
-}) as ComponentType<Record<string, unknown>>;
 const Column = dynamic(() => import('@ant-design/plots').then((m) => m.Column), {
   ssr: false,
   loading,
@@ -109,29 +105,6 @@ export function DistributionBars({
         },
         y: { labelFormatter: (v: number) => fmtInt(v), labelFill: t.label },
       }}
-      legend={false}
-    />
-  );
-}
-
-/** Treemap — où se concentre le volume par programme (sous-arbres de dossiers). */
-export function ProgrammeTreemap({
-  data,
-  height = 280,
-}: {
-  data: DistributionSlice[];
-  height?: number;
-}) {
-  const t = useChartTheme();
-  return (
-    <Treemap
-      data={{ name: 'Fonds', children: data }}
-      colorField="name"
-      valueField="value"
-      height={height}
-      autoFit
-      animate={false}
-      scale={{ color: { range: t.palette } }}
       legend={false}
     />
   );

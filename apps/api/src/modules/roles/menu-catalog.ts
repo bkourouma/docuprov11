@@ -90,6 +90,7 @@ export const MENU_CATALOG: MenuPermission[] = [
     section: 'Paramétrage Archives',
   },
 
+  { key: ARCHIVES_MENUS.integrity, label: 'Intégrité du fonds', section: 'Docu-Archives' },
   { key: ARCHIVES_MENUS.duaExpired, label: 'DUA expirés', section: 'Docu-Archives' },
   { key: ARCHIVES_MENUS.purged, label: 'Documents épurés', section: 'Docu-Archives' },
   { key: ARCHIVES_MENUS.communicate, label: 'Communiquer un document', section: 'Docu-Archives' },

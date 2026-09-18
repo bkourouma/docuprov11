@@ -9,7 +9,6 @@ import dayjs from 'dayjs';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { icons } from '../../theme/icons';
-import { fontSize } from '../../theme/tokens';
 import { complianceApi, type ComplianceResult, type ComplianceRow } from '../../lib/archives';
 
 const fmt = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY') : '—');
@@ -84,15 +83,12 @@ export default function DocumentsEpuresPage() {
       key: 'label',
       sorter: true,
       defaultSortOrder: 'ascend',
+      // Deux lignes par défaut, comme « DUA expirés » : les libellés portent le type, le lot et
+      // l'opération, et tiennent rarement sur une seule.
       render: (_, r) => (
-        <Space direction="vertical" size={0}>
-          <span>{r.label}</span>
-          {r.cote && (
-            <Typography.Text type="secondary" style={{ fontSize: fontSize.xs }}>
-              N° pièce {r.cote}
-            </Typography.Text>
-          )}
-        </Space>
+        <span title={r.label} className="line-clamp-2" style={{ maxWidth: 420 }}>
+          {r.label}
+        </span>
       ),
     },
     {

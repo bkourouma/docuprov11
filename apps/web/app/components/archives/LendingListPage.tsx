@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { App, Button, Card, Input, Popconfirm, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { TableColumnsType, TablePaginationConfig } from 'antd';
 import type { SorterResult } from 'antd/es/table/interface';
+import Link from 'next/link';
 import dayjs from 'dayjs';
 import { PageHeader } from '../PageHeader';
 import { EmptyState } from '../EmptyState';
 import { icons, type IconName } from '../../theme/icons';
-import { colors, fontSize } from '../../theme/tokens';
+import { colors } from '../../theme/tokens';
 import {
   lendingsApi,
   type LendingResult,
@@ -125,15 +126,27 @@ export function LendingListPage({
       title: 'Document',
       key: 'document',
       sorter: true,
+      // Le libellé ouvre la fiche du document (`/documents/:id`), d'où part la visionneuse —
+      // même geste que sur l'écran de recherche : une URL partageable plutôt qu'une popup, et
+      // la place d'afficher les métadonnées du type. L'accès reste vérifié par le serveur.
+      //
+      // Largeur bornée + retour à la ligne : `scroll: max-content` laisserait sinon ces libellés
+      // (type — îlot/lot — localité) tenir sur une seule ligne et repousser hors écran les
+      // colonnes suivantes.
+      //
+      // Bornés à DEUX lignes, comme « DUA expirés » et « Documents épurés » : au-delà, la hauteur
+      // des lignes variait du simple au triple selon la longueur du libellé et la liste devenait
+      // pénible à parcourir. Le `title` rend le libellé complet au survol — ce que la version
+      // sans troncature cherchait justement à garantir.
       render: (_, r) => (
-        <Space direction="vertical" size={0}>
-          <span>{r.documentLabel}</span>
-          {r.documentCote && (
-            <Typography.Text type="secondary" style={{ fontSize: fontSize.xs }}>
-              N° pièce {r.documentCote}
-            </Typography.Text>
-          )}
-        </Space>
+        <Link
+          href={`/documents/${r.documentId}`}
+          title={r.documentLabel}
+          className="line-clamp-2"
+          style={{ maxWidth: 360 }}
+        >
+          {r.documentLabel}
+        </Link>
       ),
     },
     // Masquable : sur « Mes documents communiqués », le bénéficiaire est toujours

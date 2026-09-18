@@ -284,10 +284,9 @@ d'acquisition interactif** (`Segmented` de phase + `BatchPipeline`).
 - **Ant Design** : `Row` / `Col`, `Typography`. Composants maison `ChartCard`, `CardsSkeleton`.
 - **En-tête** : `PageHeader` (icône `dashboard`) + KPI « documents archivés » en gros chiffre
   monospace vert.
-- **4 cartes graphiques** (2 × 2) :
+- **3 cartes graphiques** (type et dossier côte à côte, plan sur toute la largeur) :
   - « Répartition par type de document » — `TypeDonut` (anneau)
-  - « Concentration par programme » — `ProgrammeTreemap`
-  - « Répartition par localisation » — `DistributionBars`
+  - « Répartition par dossier » — `DistributionBars`
   - « Répartition par plan de classement » — `DistributionBars`
 - Chargement indépendant par carte : squelette animé, état vide « Aucune donnée pour cette
   période », toast d'erreur.
@@ -726,8 +725,8 @@ Entrée/blur, champ requis restauré si vidé). Suppression avec `Popconfirm`. P
 |---|---|---|
 | A5.1 | KPI principal | Nombre de documents archivés |
 | A5.2 | Répartition par type | Anneau (donut) |
-| A5.3 | Concentration par programme | **Treemap** — documents par sous-arbre de dossiers |
-| A5.4–5.5 | Répartitions | Par localisation et par plan de classement (barres) |
+| A5.3 | Répartition par dossier | Barres — documents rangés dans chaque dossier |
+| A5.4 | Répartition | Par plan de classement (barres) |
 | A5.6 | Chargement indépendant | Squelette par carte, état vide, toast d'erreur |
 | A5.7 | Bloc KPI complet côté API | Documents totaux/archivés/en attente/gelés, pages, octets, taux d'indexation, anomalies (`sansType`, `sansDossier`, `sansDate`, `sansCote`), objectif vs réalisé (`AnalyticsTarget`) |
 | ⚠️ A5.8 | Filtre de période **non branché** | Le composant `PeriodFilter` existe ; la page fige 30 j |

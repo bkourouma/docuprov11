@@ -1,10 +1,9 @@
 'use client';
 
-import { Alert, Col, Progress, Row, Skeleton, Space, Typography } from 'antd';
+import { Col, Row, Skeleton } from 'antd';
 import { StatTile } from '../../components/StatTile';
-import { fmtInt } from '../../theme/charts';
 import { ChartCard } from './ChartCard';
-import { CumulativeArea, DistributionBars, ProgrammeTreemap, TypeDonut } from './charts';
+import { CumulativeArea, DistributionBars, TypeDonut } from './charts';
 import type { AnalyticsOverview } from '../lib/api';
 
 /**
@@ -31,7 +30,6 @@ const SANS_CADRE = { padding: 0 } as const;
 export function ZoneKpis({ data, loading }: PropsZone) {
   if (loading && !data) return <Skeleton active paragraph={{ rows: 2 }} />;
   const k = data?.kpis;
-  const p = data?.pipeline;
 
   return (
     <Row gutter={[12, 12]} style={SANS_CADRE}>
@@ -47,20 +45,19 @@ export function ZoneKpis({ data, loading }: PropsZone) {
       <Col xs={12} lg={6}>
         <StatTile
           tone="violet"
-          label="En attente d'indexation"
-          value={k?.documentsPending ?? null}
-          icon="pending"
-          href="/acquisition"
+          label="Types de document"
+          value={k?.documentTypes ?? null}
+          icon="documentType"
+          href="/admin/document-types"
         />
       </Col>
       <Col xs={12} lg={6}>
         <StatTile
           tone="coral"
-          label="Lots en cours"
-          value={p?.ouverts ?? null}
-          hint={p ? `${fmtInt(p.echecs)} échec(s)` : undefined}
-          icon="acquisition"
-          href="/acquisition"
+          label="Dossiers"
+          value={k?.dossiers ?? null}
+          icon="dossier"
+          href="/admin/dossiers"
         />
       </Col>
       <Col xs={12} lg={6}>
@@ -73,42 +70,6 @@ export function ZoneKpis({ data, loading }: PropsZone) {
         />
       </Col>
     </Row>
-  );
-}
-
-export function ZoneAnomalies({ data, loading }: PropsZone) {
-  if (loading && !data) return <Skeleton active paragraph={{ rows: 1 }} />;
-  const a = data?.kpis.anomalies;
-  if (!a) return null;
-
-  const total = a.sansType + a.sansDossier + a.sansDate + a.sansCote;
-
-  // Comme les alertes de Docu-Courriers : à zéro, une ligne verte discrète plutôt qu'un tableau de
-  // compteurs vides — un fonds sain doit se lire d'un coup d'œil, pas occuper l'écran.
-  if (total === 0) {
-    return (
-      <Alert
-        type="success"
-        showIcon
-        message="Aucune anomalie : type, dossier, date et cote sont renseignés partout."
-      />
-    );
-  }
-
-  return (
-    <Alert
-      type="warning"
-      showIcon
-      message={`${fmtInt(total)} document(s) présentent une anomalie de qualité`}
-      description={
-        <Space size={16} wrap>
-          {a.sansType > 0 && <span>Sans type : {fmtInt(a.sansType)}</span>}
-          {a.sansDossier > 0 && <span>Sans dossier : {fmtInt(a.sansDossier)}</span>}
-          {a.sansDate > 0 && <span>Sans date : {fmtInt(a.sansDate)}</span>}
-          {a.sansCote > 0 && <span>Sans cote : {fmtInt(a.sansCote)}</span>}
-        </Space>
-      }
-    />
   );
 }
 
@@ -125,29 +86,16 @@ export function ZoneType({ data, loading }: PropsZone) {
   );
 }
 
-export function ZoneProgramme({ data, loading }: PropsZone) {
+export function ZoneDossier({ data, loading }: PropsZone) {
   return (
     <ChartCard
-      title="Par programme"
-      subtitle="Documents par sous-arbre de dossiers"
+      title="Par dossier"
+      subtitle="Documents rangés dans chaque dossier"
       height={240}
       loading={loading}
-      empty={!data?.byProgramme.length}
+      empty={!data?.byDossier.length}
     >
-      {data && <ProgrammeTreemap data={data.byProgramme} height={230} />}
-    </ChartCard>
-  );
-}
-
-export function ZoneLocalisation({ data, loading }: PropsZone) {
-  return (
-    <ChartCard
-      title="Par localisation"
-      height={240}
-      loading={loading}
-      empty={!data?.byLocation.length}
-    >
-      {data && <DistributionBars data={data.byLocation} height={230} />}
+      {data && <DistributionBars data={data.byDossier} height={230} />}
     </ChartCard>
   );
 }
@@ -183,98 +131,3 @@ export function ZoneEvolution({ data, loading }: PropsZone) {
   );
 }
 
-/** Objectif du mois. Autre bloc (`objective`) que l'API calculait sans que l'écran ne le montre. */
-export function ZoneObjectif({ data, loading }: PropsZone) {
-  if (loading && !data) return <Skeleton active paragraph={{ rows: 3 }} />;
-  const o = data?.objective;
-  if (!o) return null;
-
-  if (!o.hasTarget) {
-    return (
-      <Alert
-        type="info"
-        showIcon
-        message="Aucun objectif défini pour la période"
-        description="Renseignez une cible pour suivre l'avancement et le rythme quotidien nécessaire."
-      />
-    );
-  }
-
-  const unite = o.metric === 'pages' ? 'page(s)' : 'document(s)';
-  const pct = Math.round(o.pct * 100);
-
-  return (
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      <Progress percent={Math.min(100, pct)} status={pct >= 100 ? 'success' : 'active'} />
-      <Row gutter={[12, 12]}>
-        <Col span={12}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            Réalisé
-          </Typography.Text>
-          <div>
-            <Typography.Text strong style={{ fontSize: 18 }}>
-              {fmtInt(o.realized)}
-            </Typography.Text>{' '}
-            <Typography.Text type="secondary">
-              / {fmtInt(o.target)} {unite}
-            </Typography.Text>
-          </div>
-        </Col>
-        <Col span={12}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            Projection fin de mois
-          </Typography.Text>
-          <div>
-            <Typography.Text strong style={{ fontSize: 18 }}>
-              {fmtInt(o.projectedEndOfMonth)}
-            </Typography.Text>
-          </div>
-        </Col>
-      </Row>
-      {/* Le rythme requis est l'information ACTIONNABLE : le pourcentage dit où l'on en est, lui
-          dit ce qu'il reste à faire chaque jour pour y arriver. */}
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        Jour {o.dayOfMonth}/{o.daysInMonth} — il faut {fmtInt(Math.ceil(o.requiredDailyRate))}{' '}
-        {unite} par jour pour tenir l&apos;objectif.
-      </Typography.Text>
-    </Space>
-  );
-}
-
-/** Lots d'acquisition. Le taux d'échec est le chiffre qui déclenche une action, d'où sa mise en avant. */
-export function ZonePipeline({ data, loading }: PropsZone) {
-  if (loading && !data) return <Skeleton active paragraph={{ rows: 2 }} />;
-  const p = data?.pipeline;
-  if (!p) return null;
-
-  const tauxEchec = Math.round(p.failureRate * 100);
-
-  return (
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      <Row gutter={[12, 12]}>
-        <Col xs={12}>
-          <StatTile tone="sky" label="Lots terminés" value={p.termines} icon="validated" />
-        </Col>
-        <Col xs={12}>
-          <StatTile
-            tone="coral"
-            label="Lots ouverts"
-            value={p.ouverts}
-            icon="acquisition"
-            href="/acquisition"
-          />
-        </Col>
-      </Row>
-      {p.echecs > 0 ? (
-        <Alert
-          type="error"
-          showIcon
-          message={`${fmtInt(p.echecs)} lot(s) en échec — ${tauxEchec} % du total`}
-          description="Un lot en échec n'entre pas dans le fonds : ses documents restent invisibles à la recherche."
-        />
-      ) : (
-        <Alert type="success" showIcon message="Aucun lot en échec." />
-      )}
-    </Space>
-  );
-}

@@ -19,7 +19,7 @@ export function HeroBanner({
   actions,
 }: {
   title: string;
-  description: ReactNode;
+  description?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
@@ -40,9 +40,11 @@ export function HeroBanner({
         <Typography.Title level={4} style={{ color: 'var(--da-on-brand)', margin: 0 }}>
           {title}
         </Typography.Title>
-        <Typography.Text style={{ color: 'var(--da-on-brand-muted)' }}>
-          {description}
-        </Typography.Text>
+        {description && (
+          <Typography.Text style={{ color: 'var(--da-on-brand-muted)' }}>
+            {description}
+          </Typography.Text>
+        )}
       </div>
       {actions && <Space wrap>{actions}</Space>}
     </div>

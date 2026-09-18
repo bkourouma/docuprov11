@@ -165,16 +165,6 @@ export function AccessTab({
       key: 'label',
       render: (_, r) => <span style={{ whiteSpace: 'nowrap' }}>{r.label}</span>,
     },
-    ...(isGroup
-      ? []
-      : [
-          {
-            title: 'Groupe',
-            key: 'group',
-            width: 200,
-            render: (_: unknown, r: DocumentPermissionRow) => r.groupName ?? '—',
-          },
-        ]),
     {
       title: 'Niveau',
       key: 'level',
@@ -250,8 +240,8 @@ export function AccessTab({
             options={
               isGroup
                 ? groups.map((g) => ({ value: g.groupId, label: g.name }))
-                : // `Actor.label` vaut « Nom — Groupe » : on ne garde que la personne, le tableau
-                  // ci-dessous ayant déjà sa colonne « Groupe » pour la situer.
+                : // `Actor.label` vaut « Nom — Groupe » : on ne garde que la personne, le groupe
+                  // n'étant plus affiché nulle part sur cet onglet (colonne retirée le 2026-09-08).
                   actors.map((a) => ({ value: a.userGroupId, label: personName(a.label) }))
             }
             showSearch

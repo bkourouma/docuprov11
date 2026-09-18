@@ -359,11 +359,25 @@ export default function SearchPage() {
       dataIndex: 'label',
       key: 'label',
       sorter: true,
-      ellipsis: true,
+      // Libellé sur deux lignes au maximum, puis coupe avec « … ».
+      // Pas d'`ellipsis: true` : AntD poserait `white-space: nowrap` sur la cellule, ce qui
+      // interdit la seconde ligne. Et pas de `width` de colonne non plus : le tableau est en
+      // `scroll={{ x: 'max-content' }}`, donc la colonne se dimensionne sur le libellé le plus
+      // long rendu d'une seule traite (mesuré : 690 px) et rien ne revenait jamais à la ligne.
+      // C'est le `maxWidth` du contenu qui borne la contribution « max-content » de la colonne
+      // (mesuré : 436 px avec les marges internes) et provoque donc le retour à la ligne.
+      // `title` restitue le libellé entier au survol, comme le faisait `showTitle`.
       // Redirige vers la page de consultation dédiée (onglets Document/Métadonnées) au lieu
       // d'ouvrir une popup : URL partageable, et assez de place pour les métadonnées du type.
       render: (value: string, record) => (
-        <Link href={`/documents/${record.documentId}`}>{value}</Link>
+        <Link
+          href={`/documents/${record.documentId}`}
+          title={value}
+          className="line-clamp-2"
+          style={{ maxWidth: 420 }}
+        >
+          {value}
+        </Link>
       ),
     },
     {

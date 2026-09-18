@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { DiskFileStore } from '@archivage/storage';
@@ -18,7 +23,7 @@ import {
  * `fullName` vient du jeton ; il manque sur les jetons emis avant le 2026-09-08, d'ou le repli
  * sur l'identifiant de connexion — mieux vaut « admin » qu'un evenement sans auteur.
  */
-function actorName(user: AuthUser): string {
+export function actorName(user: AuthUser): string {
   return user.fullName?.trim() || user.username;
 }
 
@@ -36,25 +41,37 @@ export class DocumentsService {
    * confidentialité explicitement posée devient un vrai filtre. `/search` applique la même règle
    * (`SearchService.buildWhere`), pour ne pas lister ce qu'on ne peut pas ouvrir.
    *
-   * Les droits `document_permission`/`document_type_permission` (menu « Sécurité Documentaire »)
-   * restent eux administrés mais NON appliqués : cet axe suppose de décider quelle action exige
-   * quel `PermissionLevel`, ce qui reste à concevoir (cf. `AccessTab.tsx`, toujours honnête
-   * là-dessus).
+   * Accès par DROITS EXPLICITES (`document_permission`/`document_type_permission`, menu
+   * « Sécurité Documentaire ») : appliqué depuis le 2026-09-08 — voir `isVisibleByPermissions`.
+   * Les deux axes se cumulent : il faut passer la confidentialité ET les droits.
    *
    * Le CRÉATEUR garde toujours accès à sa propre pièce, même sous-habilité : sans ce garde-fou, un
    * agent qui numérise un type « Secret » sans être lui-même habilité « Secret » ne pourrait plus
    * indexer ni consulter ce qu'il vient de créer.
+   *
+   * Le créateur est la PERSONNE, pas le compte-groupe : `created_by` porte un `user_group_id` et
+   * un même utilisateur peut en avoir plusieurs, dont un seul est le défaut porté par le jeton.
+   * Comparer au seul `user.userGroupId` refusait donc l'accès à un créateur connecté sous un
+   * autre de ses groupes (corrigé le 2026-09-08, en même temps que l'ajout du même passe-droit
+   * dans `SearchService.buildWhere` — les deux règles doivent rester identiques).
    */
   async canAccess(documentId: number, user: AuthUser): Promise<boolean> {
     if (user.isAdmin || user.isScanAgent) return true;
 
     const doc = await this.prisma.document.findUnique({
       where: { documentId },
-      select: { confidentialiteId: true, createdBy: true },
+      select: { confidentialiteId: true, createdBy: true, documentTypeId: true },
     });
     if (!doc) return false;
+
+    if (!(await this.isVisibleByPermissions(documentId, doc.documentTypeId, doc.createdBy, user))) {
+      return false;
+    }
+
     if (doc.confidentialiteId == null) return true;
-    if (doc.createdBy != null && doc.createdBy === user.userGroupId) return true;
+    if (doc.createdBy != null && (await this.isCreator(doc.createdBy, user.userId))) return true;
+    // Dérogation par droit NOMINATIF : cf. `hasOwnDocumentGrant`.
+    if (await this.hasOwnDocumentGrant(documentId, user.userId)) return true;
 
     const required = await this.prisma.confidentialite.findUnique({
       where: { confidentialiteId: doc.confidentialiteId },
@@ -70,6 +87,133 @@ export class DocumentsService {
     });
     const userRank = appUser?.confidentialite?.rank ?? null;
     return userRank != null && userRank >= required.rank;
+  }
+
+  /** `createdBy` (un `user_group_id`) désigne-t-il l'un des comptes-groupes de cet utilisateur ? */
+  private async isCreator(createdBy: number, userId: number): Promise<boolean> {
+    const owned = await this.prisma.appUserGroup.count({
+      where: { userGroupId: createdBy, userId },
+    });
+    return owned > 0;
+  }
+
+  /** Comptes-groupes et profils de la PERSONNE (le jeton n'en porte qu'un, elle peut en avoir plusieurs). */
+  private async actorScope(
+    userId: number,
+  ): Promise<{ userGroupIds: number[]; groupIds: number[] }> {
+    const rows = await this.prisma.appUserGroup.findMany({
+      where: { userId },
+      select: { userGroupId: true, groupId: true },
+    });
+    return {
+      userGroupIds: rows.map((r) => r.userGroupId),
+      groupIds: rows.map((r) => r.groupId),
+    };
+  }
+
+  /** Fenêtre de validité d'un droit : `null` d'un côté = pas de borne de ce côté. */
+  private static inForce(now: Date) {
+    return {
+      AND: [
+        { OR: [{ startDate: null }, { startDate: { lte: now } }] },
+        { OR: [{ endDate: null }, { endDate: { gte: now } }] },
+      ],
+    };
+  }
+
+  /**
+   * L'utilisateur bénéficie-t-il d'un droit EN VIGUEUR sur CE document précis (par compte-acteur
+   * ou par profil) ?
+   *
+   * Sert aux DEUX axes : il autorise l'accès malgré le type, et il lève AUSSI l'exigence de
+   * confidentialité (2026-09-08). Accorder l'accès à une pièce nommée depuis les onglets « Accès
+   * par utilisateur »/« Accès par profil » est une décision délibérée et spécifique ; sans cette
+   * dérogation le droit restait sans effet dès que le document portait un niveau supérieur à
+   * l'habilitation, sans que l'administrateur puisse comprendre pourquoi. Un droit par TYPE reste
+   * générique et ne déroge pas.
+   */
+  private async hasOwnDocumentGrant(documentId: number, userId: number): Promise<boolean> {
+    const { userGroupIds, groupIds } = await this.actorScope(userId);
+    const n = await this.prisma.documentPermission.count({
+      where: {
+        documentId,
+        permissionLevelId: { gte: 2 },
+        ...DocumentsService.inForce(new Date()),
+        OR: [{ userGroupId: { in: userGroupIds } }, { groupId: { in: groupIds } }],
+      },
+    });
+    return n > 0;
+  }
+
+  /**
+   * VISIBILITÉ par droits explicites — appliquée depuis le 2026-09-08 à la demande du
+   * propriétaire du produit. Règle STRICTEMENT identique à `SearchService.permissionCondition`
+   * (qui l'exprime en SQL) : dès que les deux divergent, la recherche masque ce qui s'ouvre par
+   * URL, ou l'inverse.
+   *
+   *  1. un refus explicite (`Denied`, niveau 1) en vigueur masque la pièce — seul cas où une
+   *     ligne d'ACL RETIRE un accès, et il l'emporte sur le passe-droit du créateur ;
+   *  2. le créateur voit toujours sa pièce ;
+   *  3. un document dont ni lui ni son type ne porte de droit en vigueur n'est PAS restreint —
+   *     la majorité du fonds, où rien ne change ;
+   *  4. sinon, il faut bénéficier d'un droit en vigueur (niveau ≥ 2 : `Denied` n'est jamais
+   *     proposé à l'écran, « l'absence de droit EST le refus »).
+   */
+  private async isVisibleByPermissions(
+    documentId: number,
+    documentTypeId: number | null,
+    createdBy: number | null,
+    user: AuthUser,
+  ): Promise<boolean> {
+    const now = new Date();
+    const inForce = DocumentsService.inForce(now);
+    const { userGroupIds, groupIds } = await this.actorScope(user.userId);
+
+    const denied = await this.prisma.documentPermission.count({
+      where: {
+        documentId,
+        permissionLevelId: 1,
+        ...inForce,
+        OR: [{ userGroupId: { in: userGroupIds } }, { groupId: { in: groupIds } }],
+      },
+    });
+    if (denied > 0) return false;
+
+    if (createdBy != null && userGroupIds.includes(createdBy)) return true;
+
+    const [docGrants, typeGrants] = await Promise.all([
+      this.prisma.documentPermission.count({
+        where: { documentId, permissionLevelId: { gte: 2 }, ...inForce },
+      }),
+      documentTypeId != null
+        ? this.prisma.documentTypePermission.count({
+            where: { documentTypeId, permissionLevelId: { gte: 2 }, ...inForce },
+          })
+        : Promise.resolve(0),
+    ]);
+    if (docGrants === 0 && typeGrants === 0) return true;
+
+    const [mine, mineByType] = await Promise.all([
+      this.hasOwnDocumentGrant(documentId, user.userId),
+      documentTypeId != null
+        ? this.prisma.appUser
+            .findUnique({ where: { userId: user.userId }, select: { roleId: true } })
+            .then((a) =>
+              this.prisma.documentTypePermission.count({
+                where: {
+                  documentTypeId,
+                  permissionLevelId: { gte: 2 },
+                  ...inForce,
+                  OR: [
+                    { userGroupId: { in: userGroupIds } },
+                    ...(a?.roleId != null ? [{ roleId: a.roleId }] : []),
+                  ],
+                },
+              }),
+            )
+        : Promise.resolve(0),
+    ]);
+    return mine || mineByType > 0;
   }
 
   /**
@@ -104,7 +248,10 @@ export class DocumentsService {
     if (!document) return null;
 
     let level = 2;
-    if (document.createdBy != null && document.createdBy === user.userGroupId) {
+    // Même résolution du créateur que `canAccess` (la personne, pas le compte-groupe) : sans
+    // cela, un créateur connecté sous un autre de ses groupes ouvrirait sa pièce sans pouvoir
+    // l'indexer.
+    if (document.createdBy != null && (await this.isCreator(document.createdBy, user.userId))) {
       level = Math.max(level, 3);
     }
 
@@ -188,7 +335,13 @@ export class DocumentsService {
             versionNumber: true,
             files: {
               orderBy: { sortOrder: 'asc' },
-              select: { fileId: true, originalName: true, fileExtension: true, pageCount: true, sortOrder: true },
+              select: {
+                fileId: true,
+                originalName: true,
+                fileExtension: true,
+                pageCount: true,
+                sortOrder: true,
+              },
             },
           },
         },
@@ -385,7 +538,9 @@ export class DocumentsService {
   async deleteDocument(documentId: number, user: AuthUser) {
     const doc = await this.prisma.document.findUnique({
       where: { documentId },
-      select: { versions: { select: { files: { select: { fileId: true, fileExtension: true } } } } },
+      select: {
+        versions: { select: { files: { select: { fileId: true, fileExtension: true } } } },
+      },
     });
     if (!doc) throw new NotFoundException('Document introuvable');
 

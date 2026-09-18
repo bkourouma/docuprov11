@@ -41,11 +41,12 @@ export async function buildPageStream(
   files: IncomingFile[],
   tesseractLang: string,
   onFileProcessed?: (filesDone: number) => void | Promise<void>,
+  tesseractDataPath?: string,
 ): Promise<PageStream> {
   const sources: PDFDocument[] = [];
   const classifications: PageClassification[] = [];
   const pageText = new Map<string, string>();
-  const ocr = new TesseractOcr(tesseractLang);
+  const ocr = new TesseractOcr(tesseractLang, tesseractDataPath);
 
   try {
     for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {

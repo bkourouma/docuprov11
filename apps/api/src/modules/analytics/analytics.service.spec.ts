@@ -29,11 +29,19 @@ const internals = (s: AnalyticsService): Internals => s as unknown as Internals;
 describe('AnalyticsService', () => {
   // Admin → aclCond renvoie null (bypass ACL), ce qui simplifie les requêtes mockées.
   const admin = { isAdmin: true, userGroupId: 1 } as unknown as AuthUser;
-  let prisma: { $queryRaw: jest.Mock };
+  let prisma: {
+    $queryRaw: jest.Mock;
+    documentType: { count: jest.Mock };
+    dossier: { count: jest.Mock };
+  };
   let service: AnalyticsService;
 
   beforeEach(() => {
-    prisma = { $queryRaw: jest.fn() };
+    prisma = {
+      $queryRaw: jest.fn(),
+      documentType: { count: jest.fn().mockResolvedValue(12) },
+      dossier: { count: jest.fn().mockResolvedValue(7) },
+    };
     service = new AnalyticsService(prisma as never);
   });
 
@@ -69,6 +77,8 @@ describe('AnalyticsService', () => {
         documentsArchived: 60,
         documentsPending: 40,
         documentsFrozen: 5,
+        documentTypes: 12,
+        dossiers: 7,
         totalPages: 500,
         totalBytes: 123456,
         periodDocuments: 20,

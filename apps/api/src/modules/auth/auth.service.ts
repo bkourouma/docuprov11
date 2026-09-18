@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import type { JwtPayload } from './auth.types';
+import { effectiveMenuKeys } from './menu-access';
 
 export interface LoginResult {
   accessToken: string;
@@ -45,6 +46,73 @@ export class AuthService {
       accessToken: await this.jwt.signAsync(payload),
       mustChangePwd: user.mustChangePwd,
       isAdmin: user.isAdmin,
+    };
+  }
+
+  /**
+   * Fiche complete du compte connecte, pour l'ecran « Mon profil ».
+   *
+   * Distincte de `/auth/me`, appelee a CHAQUE chargement de page par le garde d'authentification :
+   * on n'y ajoute pas des jointures (role, organigramme, habilitation, profils) qui ne servent
+   * qu'a un seul ecran. Aucune permission de menu requise — un utilisateur consulte toujours
+   * son propre compte.
+   */
+  async getProfile(userId: number) {
+    const row = await this.prisma.appUser.findUnique({
+      where: { userId },
+      select: {
+        userId: true,
+        username: true,
+        firstName: true,
+        lastName: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        matricule: true,
+        isAdmin: true,
+        isDisabled: true,
+        mustChangePwd: true,
+        createdAt: true,
+        role: {
+          select: {
+            roleId: true,
+            name: true,
+            description: true,
+            isActive: true,
+            isSystem: true,
+            organigramme: { select: { organigrammeId: true, label: true, path: true } },
+            menus: { select: { menuKey: true } },
+          },
+        },
+        confidentialite: { select: { confidentialiteId: true, label: true, rank: true } },
+        userGroups: {
+          select: { userGroupId: true, isDefault: true, group: { select: { groupId: true, name: true } } },
+        },
+      },
+    });
+    if (!row) throw new UnauthorizedException('Compte introuvable');
+
+    const { role, userGroups, ...rest } = row;
+    return {
+      ...rest,
+      role: role
+        ? {
+            roleId: role.roleId,
+            name: role.name,
+            description: role.description,
+            isActive: role.isActive,
+            isSystem: role.isSystem,
+            organigramme: role.organigramme,
+          }
+        : null,
+      // Nombre de menus REELLEMENT accessibles : un admin les a tous, un role n'a que les siens.
+      menuCount: effectiveMenuKeys(row.isAdmin, role).length,
+      groups: userGroups.map((ug) => ({
+        userGroupId: ug.userGroupId,
+        groupId: ug.group.groupId,
+        name: ug.group.name,
+        isDefault: ug.isDefault,
+      })),
     };
   }
 

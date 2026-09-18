@@ -39,16 +39,6 @@ export const WIDGET_CATALOG: readonly WidgetDefinition[] = [
     minH: 4,
   },
   {
-    id: 'anomalies',
-    titre: 'Anomalies de qualité',
-    description: 'Documents sans type, sans dossier, sans date ou sans cote.',
-    menuRequis: MENU_DASHBOARD_ARCHIVES,
-    w: 12,
-    h: 4,
-    minW: 6,
-    minH: 3,
-  },
-  {
     id: 'type',
     titre: 'Répartition par type',
     description: 'Composition du fonds par type de document.',
@@ -59,19 +49,9 @@ export const WIDGET_CATALOG: readonly WidgetDefinition[] = [
     minH: 7,
   },
   {
-    id: 'programme',
-    titre: 'Concentration par programme',
-    description: 'Documents par sous-arbre de dossiers (treemap).',
-    menuRequis: MENU_DASHBOARD_ARCHIVES,
-    w: 6,
-    h: 9,
-    minW: 4,
-    minH: 7,
-  },
-  {
-    id: 'localisation',
-    titre: 'Répartition par localisation',
-    description: 'Où se trouve physiquement le fonds.',
+    id: 'dossier',
+    titre: 'Répartition par dossier',
+    description: 'Documents par dossier de classement.',
     menuRequis: MENU_DASHBOARD_ARCHIVES,
     w: 6,
     h: 9,
@@ -98,26 +78,6 @@ export const WIDGET_CATALOG: readonly WidgetDefinition[] = [
     minW: 6,
     minH: 7,
   },
-  {
-    id: 'objectif',
-    titre: 'Objectif vs réalisé',
-    description: "Avancement de l'objectif du mois et rythme quotidien nécessaire.",
-    menuRequis: MENU_DASHBOARD_ARCHIVES,
-    w: 6,
-    h: 7,
-    minW: 4,
-    minH: 6,
-  },
-  {
-    id: 'pipeline',
-    titre: "Lots d'acquisition",
-    description: "Lots terminés, ouverts, en échec et taux d'échec.",
-    menuRequis: MENU_DASHBOARD_ARCHIVES,
-    w: 6,
-    h: 7,
-    minW: 4,
-    minH: 6,
-  },
 ] as const;
 
 export const WIDGETS_PAR_ID: ReadonlyMap<string, WidgetDefinition> = new Map(
@@ -125,21 +85,16 @@ export const WIDGETS_PAR_ID: ReadonlyMap<string, WidgetDefinition> = new Map(
 );
 
 /**
- * Agencement par défaut. Il **reproduit la mise en page historique de l'écran** — chiffres clés,
- * anomalies, puis les quatre répartitions deux par deux — pour que l'ouverture du mode
- * personnalisable ne déplace rien de ce que les utilisateurs connaissent déjà. Les trois derniers
- * widgets exploitent des blocs que l'API calculait sans que l'écran ne les affiche.
+ * Agencement par défaut : chiffres clés, puis les répartitions. `plan` occupe toute la largeur
+ * plutôt que la moitié gauche — sans binôme depuis le retrait de « localisation », un demi-widget
+ * laisserait un trou à sa droite.
  */
 export const AGENCEMENT_PAR_DEFAUT: readonly PlacementWidget[] = [
   { id: 'kpis', x: 0, y: 0, w: 12, h: 5 },
-  { id: 'anomalies', x: 0, y: 5, w: 12, h: 4 },
-  { id: 'type', x: 0, y: 9, w: 6, h: 9 },
-  { id: 'programme', x: 6, y: 9, w: 6, h: 9 },
-  { id: 'localisation', x: 0, y: 18, w: 6, h: 9 },
-  { id: 'plan', x: 6, y: 18, w: 6, h: 9 },
-  { id: 'evolution', x: 0, y: 27, w: 12, h: 9 },
-  { id: 'objectif', x: 0, y: 36, w: 6, h: 7 },
-  { id: 'pipeline', x: 6, y: 36, w: 6, h: 7 },
+  { id: 'type', x: 0, y: 5, w: 6, h: 9 },
+  { id: 'dossier', x: 6, y: 5, w: 6, h: 9 },
+  { id: 'plan', x: 0, y: 14, w: 12, h: 9 },
+  { id: 'evolution', x: 0, y: 23, w: 12, h: 9 },
 ] as const;
 
 /**

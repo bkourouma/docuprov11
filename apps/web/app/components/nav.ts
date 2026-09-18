@@ -50,6 +50,12 @@ export const NAV: NavSection[] = [
         icon: 'search',
         keywords: ['rechercher', 'export', 'P3'],
       },
+      {
+        key: '/archives/integrite',
+        label: 'Intégrité du fonds',
+        icon: 'lock',
+        keywords: ['intégrité', 'empreinte', 'sha-256', 'cachet', 'scellement', 'contrôle', 'coffre'],
+      },
       // Cycle de vie documentaire et communication de documents (portage Docu-Archives).
       {
         key: '/archives/dua-expirees',
@@ -163,6 +169,15 @@ export const NAV: NavSection[] = [
       // « Géolocalisation » et « Catégories de dossier » sont volontairement absents : écrans
       // masqués (cf. HIDDEN_MENU_KEYS dans apps/api/src/modules/roles/menu-catalog.ts). Les
       // routes existent toujours et restent atteignables par URL directe.
+      // Ordre voulu : le TYPE d'abord, parce que c'est lui qui commande le reste — il porte le
+      // rangement par défaut (dossier + plan), la règle de cycle de vie et les métadonnées à
+      // saisir. On paramètre un type, puis on va voir où il range.
+      {
+        key: '/admin/document-types',
+        label: 'Types de document',
+        icon: 'documentType',
+        keywords: ['type'],
+      },
       {
         key: '/admin/classification-plans',
         label: 'Plan de classement',
@@ -170,12 +185,6 @@ export const NAV: NavSection[] = [
         keywords: ['plan', 'cote'],
       },
       { key: '/admin/dossiers', label: 'Dossiers', icon: 'dossier', keywords: ['chemise'] },
-      {
-        key: '/admin/document-types',
-        label: 'Types de document',
-        icon: 'documentType',
-        keywords: ['type'],
-      },
       {
         key: '/intercalaires',
         label: 'Intercalaires',
@@ -341,6 +350,15 @@ export function isActive(pathname: string, key: string): boolean {
 }
 
 /** Item de navigation correspondant le mieux au chemin courant. */
+/**
+ * Titre de barre superieure des ecrans qui n'ont PAS d'entree de menu (« Mon profil », ouvert
+ * depuis le menu utilisateur). Sans cette table `activeItem` ne trouve rien et la barre
+ * retombe sur « Docu-Archives », ce qui donne un titre faux.
+ */
+export const OFF_MENU_TITLES: Record<string, string> = {
+  '/profil': 'Mon profil',
+};
+
 export function activeItem(pathname: string): NavItem | undefined {
   // Le plus spécifique d'abord (clé la plus longue) pour éviter que '/' gagne.
   return [...NAV_FLAT]

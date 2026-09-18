@@ -11,10 +11,24 @@ export interface OcrEngine {
 export class TesseractOcr implements OcrEngine {
   private workerPromise: Promise<TesseractWorker> | null = null;
 
-  constructor(private readonly lang = 'fra+eng') {}
+  /**
+   * @param lang codes tesseract (`fra+eng`)
+   * @param dataPath dossier des `.traineddata.gz` pré-embarqués (prod). Sans lui,
+   *   tesseract.js télécharge depuis tessdata.projectnaptha.com au premier usage.
+   */
+  constructor(
+    private readonly lang = 'fra+eng',
+    private readonly dataPath?: string,
+  ) {}
 
   private worker(): Promise<TesseractWorker> {
-    this.workerPromise ??= createWorker(this.lang);
+    this.workerPromise ??= this.dataPath
+      ? createWorker(this.lang, 1, {
+          langPath: this.dataPath,
+          cachePath: this.dataPath,
+          gzip: true,
+        })
+      : createWorker(this.lang);
     return this.workerPromise;
   }
 

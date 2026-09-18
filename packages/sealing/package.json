@@ -1,0 +1,19 @@
+{
+  "name": "@archivage/sealing",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Cachet serveur : domaine pur Ed25519 (charge canonique, signature, horodatage) + chargement de la clé d'installation.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "echo \"(@archivage/sealing) tests portés par apps/api\""
+  },
+  "devDependencies": {
+    "@archivage/config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

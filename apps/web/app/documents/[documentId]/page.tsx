@@ -185,12 +185,21 @@ export default function DocumentDetailPage() {
   const level = detail.effectivePermissionLevel ?? PERMISSION_LEVEL.CONSULTATION;
   const canIndex = level >= PERMISSION_LEVEL.MODIFICATION;
   const canManageAccess = level >= PERMISSION_LEVEL.ADMINISTRATION;
+  // Onglet « Sécurité et conformité » (2026-09-15) : vérifier l'intégrité écrit un verdict et pose
+  // l'empreinte de référence — c'est une modification, pas une lecture ; sceller fonde la valeur
+  // probante et relève donc du même niveau que le cycle de vie.
+  const canSeal = level >= PERMISSION_LEVEL.ARCHIVISTIQUE;
 
   return (
     <div>
+      {/* Pas le libellé du document en titre d'écran (retiré le 2026-09-15) : il est déjà donné
+          par la ligne « Libellé » de l'onglet Information, et sur deux lignes il repoussait le
+          contenu utile vers le bas. L'en-tête garde un titre — `PageHeader` en exige un et une
+          page sans `<h1>/<h2>` n'est plus navigable au lecteur d'écran — mais un titre stable,
+          qui identifie la fiche par son numéro. */}
       <PageHeader
         icon="document"
-        title={detail.label}
+        title={`Document #${detail.documentId}`}
         breadcrumb={[{ label: 'Recherche', href: '/search' }, { label: `#${detail.documentId}` }]}
         actions={<Button onClick={backToList}>Retour à la recherche</Button>}
       />
@@ -328,7 +337,13 @@ export default function DocumentDetailPage() {
             {
               key: 'security',
               label: 'Sécurité et conformité',
-              children: <SecurityTab documentId={detail.documentId} />,
+              children: (
+                <SecurityTab
+                  documentId={detail.documentId}
+                  canVerify={canIndex}
+                  canSeal={canSeal}
+                />
+              ),
             },
             {
               key: 'history',

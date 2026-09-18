@@ -10,6 +10,7 @@ import { persistDocument, persistMergedDocument } from './ingestion';
 export interface AcquisitionEnv {
   archivesPath: string;
   tesseractLang: string;
+  tesseractDataPath?: string;
 }
 
 export function incomingDir(archivesPath: string, batchId: number): string {
@@ -73,11 +74,32 @@ export async function processBatch(batchId: number, env: AcquisitionEnv): Promis
   const batch = await prisma.acquisitionBatch.findUnique({ where: { batchId } });
   if (!batch) throw new Error(`Acquisition batch ${batchId} not found`);
 
+  // Les dépôts d'origine sont lus AVANT toute suppression. `clearBatchOutputs` détruit les
+  // documents du lot et leurs binaires sur disque, et rien de tout cela n'est transactionnel :
+  // si le dossier `_incoming` manque (lot restauré sans ses dépôts, `_incoming` purgé), l'ordre
+  // inverse effaçait le lot puis échouait sur ENOENT, sans aucun moyen de revenir en arrière.
+  const dir = incomingDir(env.archivesPath, batchId);
+  let names: string[];
+  try {
+    names = (await readdir(dir)).filter((n) => n.toLowerCase().endsWith('.pdf')).sort();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(
+        `Acquisition batch ${batchId}: dépôt introuvable (${dir}). Aucun document supprimé.`,
+      );
+    }
+    throw error;
+  }
+  // Un lot n'est mis en file qu'après le dépôt d'au moins un fichier : un dossier vide signale
+  // un dépôt perdu, pas un lot légitimement vide. Retraiter détruirait tout pour ne rien produire.
+  if (names.length === 0) {
+    throw new Error(
+      `Acquisition batch ${batchId}: aucun PDF dans ${dir}. Aucun document supprimé.`,
+    );
+  }
+
   const fileStore = new DiskFileStore(env.archivesPath);
   await clearBatchOutputs(batchId, fileStore);
-
-  const dir = incomingDir(env.archivesPath, batchId);
-  const names = (await readdir(dir)).filter((n) => n.toLowerCase().endsWith('.pdf')).sort();
 
   // Total connu dès le départ ; compteurs de progression remis à zéro.
   await prisma.acquisitionBatch.update({
@@ -100,6 +122,7 @@ export async function processBatch(batchId: number, env: AcquisitionEnv): Promis
       files,
       env.tesseractLang,
       (done) => setProcessed(done),
+      env.tesseractDataPath,
     );
     const plans = segmentPages(classifications, batch.dossierId);
     let seq = 0;
@@ -114,6 +137,7 @@ export async function processBatch(batchId: number, env: AcquisitionEnv): Promis
         sources,
         pageText,
         fileStore,
+        archivesPath: env.archivesPath,
         documentTypeId,
         planId,
         confidentialiteId,
@@ -148,6 +172,7 @@ export async function processBatch(batchId: number, env: AcquisitionEnv): Promis
       planId,
       confidentialiteId,
       fileStore,
+      archivesPath: env.archivesPath,
       onFileMerged: (done) => setProcessed(done),
     });
     await prisma.acquisitionBatch.update({

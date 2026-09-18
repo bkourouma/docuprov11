@@ -8,6 +8,8 @@ export interface KpiBlock {
   documentsArchived: number;
   documentsPending: number;
   documentsFrozen: number;
+  documentTypes: number;
+  dossiers: number;
   totalPages: number;
   totalBytes: number;
   periodDocuments: number;
@@ -23,12 +25,6 @@ export interface TimelinePoint {
 }
 
 export interface DistributionSlice {
-  name: string;
-  value: number;
-}
-
-export interface TreemapNode {
-  id: number;
   name: string;
   value: number;
 }
@@ -61,9 +57,8 @@ export interface AnalyticsOverview {
   timeline: TimelinePoint[];
   objective: ObjectiveBlock;
   byType: DistributionSlice[];
-  byLocation: DistributionSlice[];
+  byDossier: DistributionSlice[];
   byPlan: DistributionSlice[];
-  byProgramme: TreemapNode[];
   pipeline: PipelineBlock;
 }
 

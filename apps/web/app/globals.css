@@ -41,10 +41,23 @@
   --da-on-brand: #ffffff;
   --da-on-brand-muted: #c9d7ff;
 
-  /* Îlot top bar — constant entre les thèmes (marqueur n°1 Plus Admin). */
-  --da-topbar-bg: #0033c4;
-  --da-on-topbar: #ffffff;
-  --da-on-topbar-muted: #ffffff;
+  /* Top bar BLANCHE. Le chrome ne porte plus de couleur : l'accent est réservé à
+     l'item de menu courant. Les voiles qui l'habillaient étaient blancs — pensés
+     pour un fond bleu — et disparaissaient sur blanc : ils passent en sombre. */
+  --da-topbar-bg: #ffffff;
+  --da-on-topbar: #030303;
+  --da-on-topbar-muted: #313131;
+  /* Survol des boutons de la barre. */
+  --da-topbar-soft: rgba(3, 3, 3, 0.05);
+  /* Filets : limite basse de la barre, faux champ de recherche, touche Ctrl K. */
+  --da-topbar-line: #e4e9f0;
+  /* Le faux champ s'ASSOMBRIT là où il s'éclaircissait sur la barre bleue : dans
+     les deux cas il doit se détacher du fond de la barre. */
+  --da-topbar-field: #f4f6f9;
+  /* Seule touche de couleur de la barre — le bleu de marque, comme l'item de menu
+     courant. Le vert AGEF ne sort pas de l'écran de connexion. */
+  --da-topbar-avatar-bg: #0033c4;
+  --da-topbar-avatar-fg: #ffffff;
 
   /* Design plat : les cartes n'ont AUCUNE ombre ; popovers/modales seulement. */
   --da-shadow-card: none;
@@ -66,9 +79,15 @@
   --da-on-brand: #ffffff;
   --da-on-brand-muted: #c9d7ff;
 
+  /* Inchangé : le mode sombre est désactivé dans l'application. */
   --da-topbar-bg: #0033c4;
   --da-on-topbar: #ffffff;
   --da-on-topbar-muted: #b9c0d4;
+  --da-topbar-soft: rgba(255, 255, 255, 0.14);
+  --da-topbar-line: rgba(255, 255, 255, 0.35);
+  --da-topbar-field: rgba(255, 255, 255, 0.12);
+  --da-topbar-avatar-bg: #ffffff;
+  --da-topbar-avatar-fg: #0033c4;
 
   --da-shadow-card: none;
   --da-shadow-raised: none;
@@ -131,13 +150,16 @@ body {
   background: var(--da-topbar-bg);
   color: var(--da-on-topbar);
   font-weight: 300;
+  /* La barre bleue se détachait seule du fond de page ; blanche sur un fond de page
+     #f8f9fb, elle n'en diffère quasiment plus — ce filet porte seul la limite. */
+  border-bottom: 1px solid var(--da-topbar-line);
 }
 .da-topbar .ant-btn-text {
   color: var(--da-on-topbar) !important;
 }
 .da-topbar .ant-btn-text:hover,
 .da-topbar .ant-btn-text:active {
-  background: rgba(255, 255, 255, 0.14) !important;
+  background: var(--da-topbar-soft) !important;
   color: var(--da-on-topbar) !important;
 }
 /* Focus ring blanc sur fond bleu roi (9,25:1). */
@@ -533,4 +555,170 @@ a:not([href]) {
   white-space: normal !important;
   overflow: visible !important;
   text-overflow: clip !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Filigrane du logo client (colonne de connexion)
+
+   Le logo institutionnel est un PNG OPAQUE (fond blanc incrusté, aucun canal
+   alpha). `mix-blend-mode: multiply` est donc ce qui rend le motif possible :
+   le blanc du fichier devient neutre et seules les formes colorées teintent la
+   page — sans lui, on verrait une grille de vignettes blanches.
+
+   Le masque radial creuse le centre : le formulaire se lit sur un fond propre,
+   le motif ne subsiste que sur le pourtour.
+   --------------------------------------------------------------------------- */
+/* Le clip vit sur un calque à part, JAMAIS sur la colonne : celle-ci doit pouvoir
+   laisser déborder son formulaire (écran court, clavier virtuel) pour que la page
+   reste défilable — un `overflow: hidden` posé sur elle amputerait le bouton. */
+.da-client-watermark-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* `isolation` + fond plein : sans eux, le `mix-blend-mode` de la couche
+     remonte dans le contexte de la colonne et se recompose PAR-DESSUS la carte
+     du formulaire — le `backdrop-filter` de celle-ci n'a alors plus rien à
+     flouter et le motif ressort net sous le texte. Isolé ici, le mélange se
+     résout contre ce blanc, et la carte peut flouter le résultat. */
+  isolation: isolate;
+  background: var(--ant-color-bg-container, #fff);
+}
+
+.da-client-watermark {
+  position: absolute;
+  /* Débord : la couche est tournée, ses coins doivent rester hors cadre. */
+  inset: -35%;
+  background-repeat: repeat;
+  background-size: 165px auto;
+  transform: rotate(-14deg);
+  mix-blend-mode: multiply;
+  /* Couleurs de marque quasi intactes et opacité franche : le logo doit se LIRE,
+     pas se deviner. C'est le flou du conteneur de saisie, au-dessus, qui protège
+     la lisibilité du formulaire — le motif n'a donc plus à s'effacer. */
+  filter: grayscale(0.1);
+  opacity: 0.22;
+  pointer-events: none;
+  /* Aucun masque : le motif couvre toute la colonne. C'est la carte opaque du
+     formulaire, posée par-dessus, qui porte la lisibilité de la saisie. */
+}
+
+/* En sombre, `multiply` effacerait le motif : on inverse le fichier (le blanc
+   devient noir, donc neutre sous `screen`) et on le désature — un filigrane
+   coloré sur fond encre virerait au criard. */
+[data-theme='dark'] .da-client-watermark {
+  mix-blend-mode: screen;
+  filter: grayscale(1) invert(1);
+  opacity: 0.07;
+}
+
+/* ---------------------------------------------------------------------------
+   Conteneur du formulaire de connexion — verre dépoli
+
+   Volontairement TRANSLUCIDE : le filigrane du logo client doit rester visible
+   au travers. `backdrop-filter` est ce qui rend l'exercice tenable — il floute
+   le motif SOUS la carte, si bien que le texte garde son fond calme sans qu'on
+   ait à masquer l'image.
+
+   Sans `backdrop-filter` (navigateur ancien), le repli est un aplat quasi
+   opaque : mieux vaut perdre l'effet que la lisibilité des champs.
+   --------------------------------------------------------------------------- */
+.da-login-card {
+  border-radius: 12px; /* radii.card */
+  /* Dosage : à 0,58 d'opacité le motif restait lisible SOUS le texte (la carte
+     occupe presque toute la largeur sur mobile) et les libellés secondaires
+     devenaient pénibles. 0,66 avec un flou plus large garde l'effet de verre
+     — formes et couleurs du logo restent perceptibles — sans gêner la saisie. */
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 8px 32px rgba(0, 30, 90, 0.1);
+  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+  backdrop-filter: blur(22px) saturate(1.35);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .da-login-card {
+    background: rgba(255, 255, 255, 0.94);
+  }
+}
+
+/* Les champs suivent la carte : blancs pleins, ils y feraient des pavés opaques
+   et casseraient l'effet de transparence demandé. */
+.da-login-card :where(.ant-input-affix-wrapper, .ant-input) {
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.da-login-card :where(.ant-input-affix-wrapper .ant-input) {
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   Bouton « Se connecter » — vert AGEF
+
+   En CSS et non en style en ligne : un style en ligne gagnerait aussi sur les
+   états, et le bouton n'aurait plus ni survol, ni appui, ni focus visibles.
+   Le sélecteur double (`.da-login-cta.ant-btn-primary`) passe devant celui
+   d'Ant Design sans recourir à `!important`.
+
+   Le fond ne tranche pas sur le blanc de la carte (1,2:1) : c'est la BORDURE
+   qui délimite la cible, à 3,25:1 — le seuil exigé pour un élément d'interface.
+   Le libellé est en encre NEUTRE (17,1:1) et non en vert foncé : assorti au fond,
+   il se fondait dans la teinte du bouton au lieu de s'en détacher.
+   --------------------------------------------------------------------------- */
+.da-login-cta.ant-btn-primary {
+  background: #d8f0da;
+  border-color: #5f9c6b;
+  color: #030303;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+/* Les états reprennent la forme du sélecteur d'Ant Design, notre classe en plus :
+   sans cela le survol repasse au vert plein avec libellé blanc, imposé par
+   `.ant-btn-variant-solid:not(:disabled):not(.ant-btn-disabled):hover`. */
+.da-login-cta.ant-btn-variant-solid:not(:disabled):not(.ant-btn-disabled):hover {
+  background: #c2e7c8;
+  border-color: #4d8459;
+  color: #030303;
+}
+
+.da-login-cta.ant-btn-variant-solid:not(:disabled):not(.ant-btn-disabled):active {
+  background: #aedcb6;
+  border-color: #3f6f49;
+  color: #030303;
+}
+
+/* Anneau de focus assorti : le bleu par défaut du thème jurerait ici, et un
+   anneau clair serait invisible sur un bouton clair. */
+.da-login-cta.ant-btn-variant-solid:focus-visible {
+  outline: 2px solid #030303;
+  outline-offset: 2px;
+}
+
+/* Chargement : Ant Design ajoute son propre voile, qui délaverait un fond déjà
+   très clair au point de faire disparaître le libellé. */
+.da-login-cta.ant-btn-primary.ant-btn-loading {
+  background: #c2e7c8;
+  border-color: #5f9c6b;
+  color: #030303;
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Item de menu sélectionné
+
+   Le repère « vous êtes ici » ne tient plus à un aplat plein à texte blanc mais,
+   comme dans la référence du client, à un remplissage très pâle dont le LIBELLÉ
+   et l'ICÔNE portent l'accent — le bleu de marque, 7,96:1 sur ce remplissage.
+
+   Le remplissage seul ne tranche que de 1,21:1 sur le rail blanc : il ne peut
+   donc pas être le seul signal. La graisse vient en renfort de la couleur — un
+   indice non chromatique, lisible même sans percevoir la teinte (WCAG 1.4.1).
+
+   Rien ici pour l'icône : ce sont des glyphes lucide sans couleur propre, elles
+   héritent de `currentColor` — donc d'`itemSelectedColor`. Une règle qui les
+   viserait attraperait au passage les badges de comptage logés dans l'item.
+   --------------------------------------------------------------------------- */
+.ant-menu-item-selected {
+  font-weight: 600;
 }

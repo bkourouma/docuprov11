@@ -1,4 +1,6 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+// Même origine : le navigateur appelle /api, Next réécrit vers l'API (voir next.config.mjs).
+// En Docker, NEXT_PUBLIC_API_URL=/api est aussi posé au build (variable inlinée).
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 
 function authHeader(): Record<string, string> {
   const token = typeof window !== 'undefined' ? window.localStorage.getItem('token') : null;

@@ -1,0 +1,4 @@
+infra/**/*.sh text eol=lf
+infra/**/*.py text eol=lf
+infra/**/*.conf text eol=lf
+infra/compose/* text eol=lf

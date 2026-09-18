@@ -1,8 +1,9 @@
-import { createHash, type KeyObject } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { FileStore } from '@archivage/storage';
 import { PrismaService } from '../prisma/prisma.service';
-import { DocumentsService } from './documents.service';
+import { AuditService } from '../audit/audit.service';
+import { DocumentsService, actorName } from './documents.service';
 import {
   canonicalSealPayload,
   parseSealPayload,
@@ -10,14 +11,9 @@ import {
   signPayload,
   verifyPayload,
   SEAL_ALGORITHM,
-} from './domain/sealing';
+  type SealingKey,
+} from '@archivage/sealing';
 
-/** Clé de scellement résolue, fournie par `SealingKeyService` (le domaine reste pur). */
-interface SealingKey {
-  privateKey: KeyObject;
-  publicKey: KeyObject;
-  fingerprint: string;
-}
 import { computeDueDates, lifeCycleStartDate, toIsoDate } from '../archives/domain';
 import type { AuthUser } from '../auth/auth.types';
 import type { DocumentLifeCycleDto, DocumentPermissionDto } from './documents.dto';
@@ -32,6 +28,14 @@ const DATA_CHANGE_LABELS: Record<string, string> = {
   indexed: 'Indexation enregistrée',
   'indexed+validated': 'Indexation enregistrée et document validé',
   deleted: 'Document supprimé',
+  // Onglet « Sécurité et conformité » (2026-09-15). Le scellement et la vérification changent
+  // l'état probatoire du document : ils doivent laisser une trace au même titre qu'une indexation.
+  sealed: 'Cachet serveur apposé',
+  resealed: 'Cachet serveur renouvelé',
+  'integrity-ok': 'Intégrité vérifiée — conforme',
+  'integrity-failed': 'Intégrité vérifiée — NON conforme',
+  'integrity-imprinted': 'Empreintes de référence posées',
+  'integrity-empty': 'Intégrité vérifiée — aucun fichier à contrôler',
 };
 
 /**
@@ -39,21 +43,37 @@ const DATA_CHANGE_LABELS: Record<string, string> = {
  * historique. Séparé de `DocumentsService`, qui porte l'indexation et le cycle de vie du binaire :
  * ces quatre onglets ne partagent aucune règle métier entre eux, seulement leur document d'ancrage.
  *
- * Depuis le 2026-08-04 (cf. mémo `docupro-v6-permission-levels-enforcement`), `saveLifeCycle`
- * exige le niveau EFFECTIF de l'acteur sur ce document (`DocumentsService.getEffectivePermissionLevel`)
- * — Archivistique (5) pour le cycle de vie. `grantPermission`/`revokePermission` restent SANS
- * contrôle ici (voir leur commentaire respectif) : le niveau 4 Administration qu'ils exigent pour
- * l'onglet Accès est posé côté `DocumentsController`, pas ici, car `AccessInquiriesService.decide`
- * réutilise `grantPermission` sous une autre autorisation (menu). Le reste des onglets
- * (listPermissions en LECTURE, confidentialité, prêts, historique, scellement…) reste ouvert à
- * quiconque a déjà passé `canAccess` pour charger la page.
+ * Depuis le 2026-08-04 (cf. mémo `docupro-v6-permission-levels-enforcement`), les écritures
+ * exigent le niveau EFFECTIF de l'acteur sur ce document
+ * (`DocumentsService.getEffectivePermissionLevel`, via `assertLevel`) :
+ *  - `saveLifeCycle` — Archivistique (5) ;
+ *  - `sealDocument` — Archivistique (5), ajouté le 2026-09-15 : le cachet fonde la valeur probante ;
+ *  - `verifyIntegrity` — Modification (3), ajouté le 2026-09-15 : la vérification écrit un verdict
+ *    et POSE l'empreinte de référence au premier passage, ce n'est pas une lecture.
+ * `grantPermission`/`revokePermission` restent SANS contrôle ici (voir leur commentaire respectif) :
+ * le niveau 4 Administration qu'ils exigent pour l'onglet Accès est posé côté `DocumentsController`,
+ * pas ici, car `AccessInquiriesService.decide` réutilise `grantPermission` sous une autre
+ * autorisation (menu). Les LECTURES (listPermissions, confidentialité, prêts, historique, état
+ * d'intégrité et du cachet) restent ouvertes à quiconque a déjà passé `canAccess` pour charger la
+ * page — c'est la consultation de la fiche, pas une action sur elle.
  */
 @Injectable()
 export class DocumentTabsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly documents: DocumentsService,
+    private readonly audit: AuditService,
   ) {}
+
+  /**
+   * Garde de niveau EFFECTIF, factorisée : trois onglets en écriture la posent désormais avec
+   * exactement la même sémantique — 404 si le document n'existe pas, 403 s'il est hors de portée.
+   */
+  private async assertLevel(documentId: number, user: AuthUser, min: number, refus: string) {
+    const level = await this.documents.getEffectivePermissionLevel(documentId, user);
+    if (level == null) throw new NotFoundException('Document introuvable');
+    if (level < min) throw new ForbiddenException(refus);
+  }
 
   private async assertDocument(documentId: number) {
     const doc = await this.prisma.document.findUnique({
@@ -148,11 +168,12 @@ export class DocumentTabsService {
    */
   async saveLifeCycle(documentId: number, input: DocumentLifeCycleDto, user: AuthUser) {
     await this.assertDocument(documentId);
-    const level = await this.documents.getEffectivePermissionLevel(documentId, user);
-    if (level == null) throw new NotFoundException('Document introuvable');
-    if (level < 5) {
-      throw new ForbiddenException('Niveau Archivistique requis pour le cycle de vie de ce document');
-    }
+    await this.assertLevel(
+      documentId,
+      user,
+      5,
+      'Niveau Archivistique requis pour le cycle de vie de ce document',
+    );
     if (input.complianceLifespan < input.usefulnessLifespan) {
       // La conformité englobe l'utilité administrative : l'inverse rendrait la DUA inatteignable.
       throw new BadRequestException(
@@ -498,10 +519,38 @@ export class DocumentTabsService {
    * un document dont on n'a pas encore mesuré le contenu n'attesterait rien.
    *
    * Re-sceller remplace le cachet précédent : c'est le geste normal après une réindexation ou un
-   * remplacement de version. La trace du scellement précédent reste au journal d'audit.
+   * remplacement de version. Le cachet remplacé n'étant plus nulle part une fois écrasé, son
+   * empreinte de clé et sa date SIGNÉE partent en `oldValue` du journal (2026-09-15) — sans quoi
+   * un renouvellement effaçait silencieusement l'attestation précédente.
+   *
+   * Niveau Archivistique (5) requis, comme le cycle de vie : le cachet est l'acte qui FONDE la
+   * valeur probante du document, pas une opération d'indexation courante.
    */
   async sealDocument(documentId: number, key: SealingKey, user: AuthUser) {
     await this.assertDocument(documentId);
+    await this.assertLevel(
+      documentId,
+      user,
+      5,
+      'Niveau Archivistique requis pour sceller ce document',
+    );
+    return this.applySeal(documentId, key, user);
+  }
+
+  /**
+   * Cœur du scellement, SANS garde de document — même partage que `runIntegrityCheck`, et pour la
+   * même raison : trois appelants aux autorisations différentes doivent signer avec un seul code.
+   *  - `sealDocument` : geste d'archiviste sur une pièce, gardé au niveau 5 ;
+   *  - `sealIfNeeded` : scellement automatique à la validation de l'indexation, autorisé par la
+   *    validation elle-même (niveau 3) — exiger 5 ici rendrait l'automatisme inopérant pour
+   *    l'agent qui valide, c'est-à-dire dans le cas nominal ;
+   *  - `sealFonds` : rattrapage en lot, autorisé par le menu « Intégrité du fonds ».
+   */
+  private async applySeal(documentId: number, key: SealingKey, user: AuthUser) {
+    const previous = await this.prisma.documentSeal.findUnique({
+      where: { documentId },
+      select: { keyFingerprint: true, payload: true },
+    });
     const version = await this.prisma.documentVersion.findFirst({
       where: { documentId, isCurrent: true },
       select: { files: { select: { fileId: true, hash: true } } },
@@ -546,7 +595,115 @@ export class DocumentTabsService {
         sealedBy: user.userGroupId,
       },
     });
+    const remplace = previous
+      ? `${previous.keyFingerprint} @ ${parseSealPayload(previous.payload)?.sealedAt.toISOString() ?? '?'}`
+      : null;
+    await this.audit.dataChange({
+      userGroupId: user.userGroupId,
+      actorFullName: actorName(user),
+      objectRef: `document:${documentId}`,
+      oldValue: remplace ?? undefined,
+      newValue: previous ? 'resealed' : 'sealed',
+    });
+
     return { algorithm: seal.algorithm, keyFingerprint: seal.keyFingerprint, sealedAt: seal.sealedAt };
+  }
+
+  /**
+   * Le cachet du document couvre-t-il encore ses empreintes actuelles ?
+   *
+   * Sert aux deux automatismes : inutile de re-signer une pièce déjà attestée telle qu'elle est —
+   * cela produirait un nouveau cachet à chaque validation et à chaque passage en lot, en écrasant
+   * à chaque fois une attestation parfaitement valable et plus ancienne. Or en archivage, la date
+   * la plus ANCIENNE est celle qui a de la valeur : c'est elle qui prouve depuis quand la pièce
+   * existe sous cette forme.
+   */
+  private async sealCouvreLeContenu(documentId: number): Promise<boolean> {
+    const seal = await this.prisma.documentSeal.findUnique({
+      where: { documentId },
+      select: { payload: true },
+    });
+    if (!seal) return false;
+    const signed = parseSealPayload(seal.payload);
+    if (!signed) return false;
+    const version = await this.prisma.documentVersion.findFirst({
+      where: { documentId, isCurrent: true },
+      select: { files: { select: { fileId: true, hash: true } } },
+    });
+    const files = (version?.files ?? []).filter((f) => f.hash);
+    if (files.length === 0) return false;
+    const actuel = canonicalSealPayload({
+      documentId,
+      files: files.map((f) => ({ fileId: f.fileId, hash: f.hash! })),
+      sealedAt: signed.sealedAt,
+    });
+    return actuel === seal.payload;
+  }
+
+  /**
+   * Scelle un document si — et seulement si — il ne l'est pas déjà pour son contenu actuel.
+   *
+   * Appelé à la VALIDATION de l'indexation (2026-09-15). Les documents acquis depuis cette date
+   * sont déjà scellés par le worker : ce passage est alors un non-événement. Il sert au fonds
+   * antérieur et aux pièces dont le binaire a changé depuis leur scellement.
+   *
+   * Ne lève jamais : une validation d'indexation réussie ne doit pas être annulée parce que le
+   * cachet a échoué. Le rattrapage en lot repassera.
+   */
+  async sealIfNeeded(documentId: number, key: SealingKey, user: AuthUser): Promise<boolean> {
+    try {
+      if (await this.sealCouvreLeContenu(documentId)) return false;
+      await this.applySeal(documentId, key, user);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Scelle en lot les documents qui ne le sont pas encore — rattrapage du fonds antérieur.
+   *
+   * Même découpage en tranches que le balayage d'intégrité, et pour la même raison : sur un fonds
+   * volumineux, tout signer d'un coup tiendrait la requête ouverte trop longtemps. Les candidats
+   * sont les documents porteurs d'au moins un fichier avec empreinte — sans empreinte, il n'y a
+   * rien à attester, et le balayage d'intégrité doit passer d'abord.
+   */
+  async sealFonds(key: SealingKey, user: AuthUser, limit: number) {
+    // `seal: null` — les documents JAMAIS scellés, et eux seuls. Deux raisons de ne pas élargir
+    // aux cachets devenus obsolètes :
+    //  - la progression : chaque passage retire ses documents du filtre, donc relancer avance.
+    //    Sur un critère que SQL ne sait pas exprimer, on réexaminerait les mêmes indéfiniment ;
+    //  - la prudence : un cachet qui ne couvre plus le contenu peut signaler un binaire ALTÉRÉ.
+    //    Re-signer automatiquement reviendrait à attester la falsification. Ce cas relève d'une
+    //    décision humaine, pièce par pièce, ce que l'écran du document demande explicitement.
+    const candidats = await this.prisma.document.findMany({
+      where: {
+        seal: null,
+        versions: { some: { isCurrent: true, files: { some: { hash: { not: null } } } } },
+      },
+      select: { documentId: true },
+      orderBy: { documentId: 'asc' },
+      take: limit,
+    });
+
+    let scelles = 0;
+    const echecs: { documentId: number; erreur: string }[] = [];
+    for (const { documentId } of candidats) {
+      try {
+        await this.applySeal(documentId, key, user);
+        scelles += 1;
+      } catch (e) {
+        echecs.push({ documentId, erreur: e instanceof Error ? e.message : 'erreur inconnue' });
+      }
+    }
+
+    const restants = await this.prisma.document.count({
+      where: {
+        seal: null,
+        versions: { some: { isCurrent: true, files: { some: { hash: { not: null } } } } },
+      },
+    });
+    return { examines: candidats.length, scelles, echecs, restants };
   }
 
   /**
@@ -628,9 +785,47 @@ export class DocumentTabsService {
    * vérification la POSE (`imprinted`) au lieu de conclure à tort à une non-conformité. C'est le
    * seul moyen d'amorcer un fonds déjà numérisé — mais cela ne prouve rien sur le passé du
    * fichier, et l'écran le dit.
+   *
+   * Niveau Modification (3) requis (2026-09-15) : ce n'est pas une lecture. La vérification écrit
+   * le verdict sur le document et, au premier passage, POSE l'empreinte de référence — décider ce
+   * qui fait foi pour toutes les vérifications suivantes ne peut pas rester ouvert à un simple
+   * consultant. Lire l'onglet (`getIntegrity`) reste, lui, accessible à qui peut ouvrir la fiche.
    */
-  async verifyIntegrity(documentId: number, store: FileStore) {
+  async verifyIntegrity(documentId: number, store: FileStore, user: AuthUser) {
     await this.assertDocument(documentId);
+    await this.assertLevel(
+      documentId,
+      user,
+      3,
+      'Niveau Modification requis pour vérifier l’intégrité de ce document',
+    );
+    return this.runIntegrityCheck(documentId, store, user);
+  }
+
+  /**
+   * Cœur de la vérification, SANS garde de document (2026-09-15).
+   *
+   * Deux appelants aux autorisations différentes le partagent, et il ne doit pas exister deux
+   * implémentations d'un contrôle probatoire — deux codes qui divergent, c'est un écran et un
+   * balayage qui se contredisent sur la même pièce :
+   *  - `verifyIntegrity` : geste d'un agent SUR UN document, gardé par son niveau effectif ;
+   *  - `sweepIntegrity` : balayage du fonds, autorisé par le MENU « Intégrité du fonds » — y
+   *    appliquer le niveau document par document le rendrait inopérant, puisqu'un archiviste n'a
+   *    pas de droit nominatif sur chacune des pièces qu'il a la charge de contrôler.
+   */
+  private async runIntegrityCheck(
+    documentId: number,
+    store: FileStore,
+    user: AuthUser,
+    /**
+     * `always` pour un geste humain sur une pièce : la trace doit exister même quand tout va bien,
+     * c'est la preuve que le contrôle a eu lieu. `notable` pour un balayage : n'inscrire au journal
+     * que les non-conformités et les empreintes posées — 5 000 lignes « conforme » par passage
+     * noieraient les quelques-unes qui demandent une action, et `dateLastVerified` porte déjà la
+     * preuve qu'un document a été contrôlé.
+     */
+    journalisation: 'always' | 'notable' = 'always',
+  ) {
     const version = await this.prisma.documentVersion.findFirst({
       where: { documentId, isCurrent: true },
       select: {
@@ -684,7 +879,122 @@ export class DocumentTabsService {
       data: { dateLastVerified: verifiedAt, integrityOk },
     });
 
+    // Un seul événement par passage, pas un par fichier : le journal doit rester lisible. Le code
+    // retenu dit ce qui s'est joué — une non-conformité prime sur tout, une pose d'empreinte prime
+    // sur un simple « conforme » car elle a CRÉÉ la référence au lieu de la contrôler.
+    const code =
+      integrityOk === null
+        ? 'integrity-empty'
+        : integrityOk === false
+          ? 'integrity-failed'
+          : results.some((r) => r.status === 'imprinted')
+            ? 'integrity-imprinted'
+            : 'integrity-ok';
+    if (journalisation === 'always' || code === 'integrity-failed' || code === 'integrity-imprinted') {
+      await this.audit.dataChange({
+        userGroupId: user.userGroupId,
+        actorFullName: actorName(user),
+        objectRef: `document:${documentId}`,
+        newValue: code,
+      });
+    }
+
     return { dateLastVerified: verifiedAt, integrityOk, files: results };
+  }
+
+  // =========================================================================
+  // Écran « Intégrité du fonds » — contrôle en lot
+  // =========================================================================
+
+  /**
+   * Couverture du fonds : combien de documents sont réellement protégés, et depuis quand.
+   *
+   * C'est le chiffre qui manquait — l'onglet d'une fiche dit l'état d'UNE pièce, jamais celui du
+   * fonds. Sans lui, « nos archives sont contrôlées » est une affirmation invérifiable.
+   *
+   * `jamaisVerifies` compte les documents dont `dateLastVerified` est nul. Un document peut porter
+   * une empreinte SANS avoir jamais été vérifié : depuis le 2026-09-15 l'empreinte est posée à
+   * l'ingestion, ce qui protège la pièce dès son entrée mais ne constate rien. Les deux chiffres
+   * répondent donc à deux questions distinctes — « est-ce mesurable ? » et « l'a-t-on mesuré ? ».
+   */
+  async integrityCoverage() {
+    const [documents, fichiers, fichiersAvecEmpreinte, jamaisVerifies, nonConformes, scelles] =
+      await Promise.all([
+        this.prisma.document.count(),
+        this.prisma.documentFile.count({ where: { version: { isCurrent: true } } }),
+        this.prisma.documentFile.count({ where: { version: { isCurrent: true }, hash: { not: null } } }),
+        this.prisma.document.count({ where: { dateLastVerified: null } }),
+        this.prisma.document.count({ where: { integrityOk: false } }),
+        this.prisma.documentSeal.count(),
+      ]);
+    return {
+      documents,
+      fichiers,
+      fichiersAvecEmpreinte,
+      jamaisVerifies,
+      verifies: documents - jamaisVerifies,
+      conformes: documents - jamaisVerifies - nonConformes,
+      nonConformes,
+      scelles,
+    };
+  }
+
+  /**
+   * Balaie le fonds par tranches : vérifie jusqu'à `limit` documents et rend un compte rendu.
+   *
+   * Ordre de passage délibéré — `dateLastVerified` croissant, NULLS FIRST : les documents jamais
+   * contrôlés d'abord, puis les plus anciennement contrôlés. Relancer le balayage reprend donc là
+   * où il s'est arrêté sans qu'on ait à suivre un curseur, et un fonds entier finit par être
+   * couvert en répétant le même geste. Un passage tout-en-un a été écarté : sur plusieurs milliers
+   * de binaires il relirait des dizaines de gigaoctets et tiendrait une requête HTTP ouverte
+   * pendant des minutes.
+   *
+   * Une pièce en échec n'interrompt pas le balayage : un fichier absent du coffre est précisément
+   * ce que l'on cherche, pas une raison d'abandonner les suivantes.
+   */
+  async sweepIntegrity(store: FileStore, user: AuthUser, limit: number) {
+    const cibles = await this.prisma.document.findMany({
+      where: { versions: { some: { isCurrent: true, files: { some: {} } } } },
+      select: { documentId: true },
+      orderBy: [{ dateLastVerified: { sort: 'asc', nulls: 'first' } }, { documentId: 'asc' }],
+      take: limit,
+    });
+
+    let conformes = 0;
+    let nonConformes = 0;
+    let empreintesPosees = 0;
+    const echecs: { documentId: number; erreur: string }[] = [];
+
+    for (const { documentId } of cibles) {
+      try {
+        const res = await this.runIntegrityCheck(documentId, store, user, 'notable');
+        if (res.integrityOk === false) nonConformes += 1;
+        else conformes += 1;
+        if (res.files.some((f) => f.status === 'imprinted')) empreintesPosees += 1;
+      } catch (e) {
+        echecs.push({ documentId, erreur: e instanceof Error ? e.message : 'erreur inconnue' });
+      }
+    }
+
+    const restants = await this.prisma.document.count({
+      where: { dateLastVerified: null, versions: { some: { isCurrent: true, files: { some: {} } } } },
+    });
+    return { traites: cibles.length, conformes, nonConformes, empreintesPosees, echecs, restants };
+  }
+
+  /** Documents actuellement en échec d'intégrité — la liste sur laquelle il faut agir. */
+  async listNonCompliant(limit = 200) {
+    const rows = await this.prisma.document.findMany({
+      where: { integrityOk: false },
+      select: { documentId: true, label: true, dateLastVerified: true },
+      orderBy: { dateLastVerified: 'desc' },
+      take: limit,
+    });
+    return rows.map((r) => ({
+      documentId: r.documentId,
+      label: r.label,
+      dateLastVerified: r.dateLastVerified,
+    }));
   }
 
   // =========================================================================
@@ -839,7 +1149,10 @@ export class DocumentTabsService {
           at: c.changedAt,
           kind: 'change' as const,
           action: readable ?? c.auditAction?.description ?? 'Modification',
-          details: readable ? null : (c.newValue ?? c.oldValue ?? null),
+          // Avec un libellé lisible, `newValue` ne serait qu'un doublon technique de ce libellé —
+          // mais `oldValue` porte, lui, ce que l'action a REMPLACÉ (2026-09-15 : le cachet écrasé
+          // par un renouvellement). Le taire aurait rendu la trace inutile là où elle compte.
+          details: readable ? (c.oldValue ?? null) : (c.newValue ?? c.oldValue ?? null),
           // Le nom fige a l'ecriture prime : il dit qui a agi CE JOUR-LA. La jointure ne sert
           // que de repli pour les lignes anterieures au 2026-09-08, qui ne le portent pas.
           actor: c.actorFullName || c.userGroup?.user?.fullName || c.userGroup?.user?.username || null,

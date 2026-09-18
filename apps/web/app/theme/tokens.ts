@@ -23,7 +23,17 @@ export const colors = {
   primarySoft: '#e8eefc', // remplissage discret (survol nav, sélection)
 
   // Fond de l'item de menu actif (sidebar) et de la catégorie active (intercalaires).
+  // NE PAS confondre avec `menuSelectedBg` : `menuActiveBg` a débordé de son nom et
+  // remplit désormais les badges de comptage, les étiquettes d'état et de document
+  // (cf. CountBadge, StatusBadge, tags). Il reste bleu, et porte toujours du blanc.
   menuActiveBg: '#1a55e3', // blanc dessus : 6,08:1
+
+  // Item de menu sélectionné — teinte pâle + libellé dans l'accent, et non plus un
+  // aplat plein à texte blanc : c'est le LIBELLÉ coloré qui signale l'écran courant.
+  // L'accent est le bleu de marque : le vert AGEF ne sort pas de l'écran de
+  // connexion, le chrome de l'application reste blanc et bleu.
+  menuSelectedBg: '#e8eefc', // = primarySoft, le remplissage discret de la palette
+  menuSelectedColor: '#0033c4', // 7,96:1 sur le remplissage, 9,25:1 sur le blanc du rail
 
   bgLayout: '#f8f9fb',
   bgContainer: '#ffffff',
@@ -70,9 +80,13 @@ export const colors = {
   onBrandMuted: '#c9d7ff',
 
   // Îlot top bar — constant entre les thèmes (marqueur n°1 Plus Admin).
-  topbarBg: '#0033c4',
-  onTopbar: '#ffffff',
-  onTopbarMuted: '#ffffff',
+  // Barre du haut BLANCHE : le chrome ne porte plus de couleur, l'accent ne sert
+  // qu'à désigner l'écran courant (cf. `menuSelected*`).
+  topbarBg: '#ffffff',
+  onTopbar: '#030303', // 19,8:1
+  onTopbarMuted: '#313131', // 12,4:1
+  /** Pastille de l'avatar : seule touche de couleur de la barre — blanc dessus à 9,25:1. */
+  topbarAvatarBg: '#0033c4',
 } as const;
 
 /** Palette mode sombre (overrides ; le darkAlgorithm d'AntD fait le reste). */
@@ -83,6 +97,9 @@ export const colorsDark = {
   primarySoft: '#2c3247',
 
   menuActiveBg: '#1a55e3', // conservé — texte blanc 6,08:1
+
+  menuSelectedBg: '#2c3247', // = primarySoft du thème sombre
+  menuSelectedColor: '#5a85ff',
 
   bgLayout: '#111115',
   bgContainer: '#252529',
@@ -123,9 +140,12 @@ export const colorsDark = {
   onBrand: '#ffffff',
   onBrandMuted: '#c9d7ff',
 
+  // Inchangé : le mode sombre est désactivé dans l'application (cf. Providers), on
+  // n'y livre pas un habillage qu'on ne peut pas vérifier à l'écran.
   topbarBg: '#0033c4',
   onTopbar: '#ffffff',
   onTopbarMuted: '#b9c0d4', // 5,09:1 sur #0033c4
+  topbarAvatarBg: '#ffffff',
 } as const;
 
 export type ColorScheme = Record<keyof typeof colors, string>;

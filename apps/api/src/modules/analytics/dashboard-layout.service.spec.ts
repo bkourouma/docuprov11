@@ -69,7 +69,7 @@ describe('DashboardLayoutService (Docu-Archives)', () => {
       expect((await service.getForUser(user)).parDefaut).toBe(true);
     });
 
-    it('reproduit la mise en page historique : les quatre répartitions restent deux par deux', async () => {
+    it('range les répartitions : type et dossier côte à côte, plan sur toute la largeur', async () => {
       avecMenus(MENU_DASHBOARD_ARCHIVES);
       stocke(null);
 
@@ -77,9 +77,10 @@ describe('DashboardLayoutService (Docu-Archives)', () => {
 
       // Ouvrir le mode personnalisable ne doit rien déplacer de ce que les utilisateurs connaissent.
       expect(parId.get('type')).toMatchObject({ x: 0, w: 6 });
-      expect(parId.get('programme')).toMatchObject({ x: 6, w: 6 });
-      expect(parId.get('type')!.y).toBe(parId.get('programme')!.y);
-      expect(parId.get('localisation')!.y).toBe(parId.get('plan')!.y);
+      expect(parId.get('dossier')).toMatchObject({ x: 6, w: 6 });
+      expect(parId.get('type')!.y).toBe(parId.get('dossier')!.y);
+      // Sans binôme, un demi-widget laisserait un trou à sa droite.
+      expect(parId.get('plan')).toMatchObject({ x: 0, w: 12 });
     });
   });
 

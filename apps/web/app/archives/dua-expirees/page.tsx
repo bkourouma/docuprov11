@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   App,
   Button,
   Card,
@@ -20,7 +19,7 @@ import dayjs from 'dayjs';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
 import { icons } from '../../theme/icons';
-import { colors, fontSize } from '../../theme/tokens';
+import { colors } from '../../theme/tokens';
 import { complianceApi, type ComplianceResult, type ComplianceRow } from '../../lib/archives';
 import { InfoTooltip } from '../../components/InfoTooltip';
 
@@ -139,15 +138,12 @@ export default function DuaExpireesPage() {
       title: 'Document',
       key: 'label',
       sorter: true,
+      // Deux lignes par défaut : les libellés portent le type, le lot et l'opération, et tiennent
+      // rarement sur une seule. Même traitement que la colonne « Libellé » de la recherche.
       render: (_, r) => (
-        <Space direction="vertical" size={0}>
-          <span>{r.label}</span>
-          {r.cote && (
-            <Typography.Text type="secondary" style={{ fontSize: fontSize.xs }}>
-              N° pièce {r.cote}
-            </Typography.Text>
-          )}
-        </Space>
+        <span title={r.label} className="line-clamp-2" style={{ maxWidth: 420 }}>
+          {r.label}
+        </span>
       ),
     },
     {
@@ -218,13 +214,6 @@ export default function DuaExpireesPage() {
 
       <Card>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Alert
-            type="info"
-            showIcon
-            message="L'épuration ne supprime rien"
-            description="Elle fait passer le document à l'état « Épuré » : il quitte les listes courantes et reste consultable dans « Documents épurés ». La destruction physique est une opération distincte, guidée par le mode de destruction."
-          />
-
           <Space wrap>
             <Select
               style={{ minWidth: 220 }}

@@ -15,6 +15,7 @@
     "@archivage/ocr": "workspace:*",
     "@archivage/pdf": "workspace:*",
     "@archivage/qr": "workspace:*",
+    "@archivage/sealing": "workspace:*",
     "@archivage/storage": "workspace:*",
     "@archivage/types": "workspace:*",
     "@prisma/client": "^6.1.0",

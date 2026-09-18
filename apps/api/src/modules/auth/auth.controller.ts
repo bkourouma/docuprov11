@@ -36,6 +36,12 @@ export class AuthController {
     return { changed: true };
   }
 
+  /** Fiche complète du compte connecté (écran « Mon profil »). */
+  @Get('profile')
+  profile(@CurrentUser() user: AuthUser) {
+    return this.auth.getProfile(user.userId);
+  }
+
   @Get('me')
   async me(@CurrentUser() user: AuthUser) {
     const row = await this.prisma.appUser.findUnique({

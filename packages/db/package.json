@@ -24,7 +24,11 @@
     "db:seed:confidentialites": "tsx prisma/seed-confidentialites.ts",
     "db:migrate:permission-levels": "tsx prisma/migrate-permission-levels.ts",
     "db:seed:dashboard": "tsx prisma/seed-dashboard-demo.ts",
-    "db:grant:dashboard": "tsx prisma/grant-dashboard-menu.ts"
+    "db:grant:dashboard": "tsx prisma/grant-dashboard-menu.ts",
+    "db:seed:agef": "tsx prisma/seed-agef.ts",
+    "db:seed:agef:acquisition": "tsx prisma/seed-agef-acquisition.ts",
+    "db:seed:agef:prets": "tsx prisma/seed-agef-prets.ts",
+    "db:seed:agef:epuration": "tsx prisma/seed-agef-epuration.ts"
   },
   "prisma": {
     "schema": "prisma"

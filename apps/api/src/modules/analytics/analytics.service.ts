@@ -11,6 +11,8 @@ export interface KpiBlock {
   documentsArchived: number; // is_archived = true (validés)
   documentsPending: number; // is_archived = false (en attente QA)
   documentsFrozen: number; // is_frozen = true (gelés)
+  documentTypes: number; // types actifs du référentiel (pas une mesure du fonds)
+  dossiers: number; // dossiers actifs du référentiel, tous niveaux de l'arbre
   totalPages: number;
   totalBytes: number;
   periodDocuments: number;
@@ -28,12 +30,6 @@ export interface TimelinePoint {
 export interface DistributionSlice {
   name: string;
   value: number;
-}
-
-export interface TreemapNode {
-  id: number;
-  name: string;
-  value: number; // documents du sous-arbre (rollup via path)
 }
 
 export interface ObjectiveBlock {
@@ -64,9 +60,8 @@ export interface AnalyticsOverview {
   timeline: TimelinePoint[];
   objective: ObjectiveBlock;
   byType: DistributionSlice[];
-  byLocation: DistributionSlice[];
+  byDossier: DistributionSlice[];
   byPlan: DistributionSlice[];
-  byProgramme: TreemapNode[];
   pipeline: PipelineBlock;
 }
 
@@ -183,6 +178,13 @@ export class AnalyticsService {
       FROM document d
       ${where}`);
 
+    // Volumétrie des RÉFÉRENTIELS : ni les filtres de dimension ni la période ne s'y appliquent —
+    // ce qui est proposé au classement ne dépend pas de la tranche de fonds regardée.
+    const [documentTypes, dossiers] = await Promise.all([
+      this.prisma.documentType.count({ where: { isActive: true } }),
+      this.prisma.dossier.count({ where: { isActive: true } }),
+    ]);
+
     const [files] = await this.prisma.$queryRaw<Array<{ pages: number; bytes: bigint }>>(Prisma.sql`
       SELECT COALESCE(SUM(f.page_count), 0)::int AS pages, COALESCE(SUM(f.byte_length), 0)::bigint AS bytes
       FROM document d
@@ -196,6 +198,8 @@ export class AnalyticsService {
       documentsArchived: counts?.archived ?? 0,
       documentsPending: counts?.pending ?? 0,
       documentsFrozen: counts?.frozen ?? 0,
+      documentTypes,
+      dossiers,
       totalPages: files?.pages ?? 0,
       totalBytes: Number(files?.bytes ?? 0),
       periodDocuments: counts?.period ?? 0,
@@ -337,23 +341,6 @@ export class AnalyticsService {
     return out;
   }
 
-  private async queryByProgramme(params: AnalyticsFilterDto, user: AuthUser): Promise<TreemapNode[]> {
-    const acl = this.aclCond(user);
-    const aclWhere = acl ? Prisma.sql`AND ${acl}` : Prisma.empty;
-    // Rollup ensembliste par sous-arbre via la materialized path (path indexée).
-    // Le suffixe '/' de la path racine évite les faux préfixes (/3/ ne matche pas /30/).
-    const rows = await this.prisma.$queryRaw<Array<{ id: number; name: string; value: number }>>(Prisma.sql`
-      SELECT r.dossier_id AS id, r.label AS name,
-        (SELECT count(*)::int
-           FROM document d
-           JOIN dossier s ON s.dossier_id = d.dossier_id AND s.path LIKE r.path || '%'
-           WHERE TRUE ${aclWhere}) AS value
-      FROM dossier r
-      WHERE r.parent_id IS NULL AND r.is_active
-      ORDER BY value DESC, r.label ASC`);
-    return rows.filter((r) => r.value > 0);
-  }
-
   private async queryPipeline(
     params: AnalyticsFilterDto,
     from: string,
@@ -383,7 +370,7 @@ export class AnalyticsService {
   /** Agrégat « Vue d'ensemble » : toutes les requêtes en parallèle. */
   async overview(params: AnalyticsFilterDto, user: AuthUser): Promise<AnalyticsOverview> {
     const period = this.resolvePeriod(params);
-    const [kpis, timeline, objective, byType, byLocation, byPlan, byProgramme, pipeline] =
+    const [kpis, timeline, objective, byType, byDossier, byPlan, pipeline] =
       await Promise.all([
         this.queryKpis(params, user, period.from, period.to),
         this.queryTimeline(params, user, period.from, period.to),
@@ -394,16 +381,15 @@ export class AnalyticsService {
           noneLabel: '— Sans type —',
         }),
         this.queryDistribution(params, user, {
-          join: Prisma.raw('LEFT JOIN location loc ON loc.location_id = d.location_id'),
-          label: Prisma.raw('loc.label'),
-          noneLabel: '— Sans localisation —',
+          join: Prisma.raw('LEFT JOIN dossier dos ON dos.dossier_id = d.dossier_id'),
+          label: Prisma.raw('dos.label'),
+          noneLabel: '— Sans dossier —',
         }),
         this.queryDistribution(params, user, {
           join: Prisma.raw('LEFT JOIN classification_plan cp ON cp.plan_id = d.plan_id'),
           label: Prisma.raw('cp.label'),
           noneLabel: '— Sans plan —',
         }),
-        this.queryByProgramme(params, user),
         this.queryPipeline(params, period.from, period.to),
       ]);
     return {
@@ -414,9 +400,8 @@ export class AnalyticsService {
       timeline,
       objective,
       byType,
-      byLocation,
+      byDossier,
       byPlan,
-      byProgramme,
       pipeline,
     };
   }
@@ -518,7 +503,7 @@ export class AnalyticsService {
     );
   }
 
-  /** Lignes pour l'export (cohérent avec les filtres) : synthèse KPI + répartition par type. */
+  /** Lignes pour l'export (cohérent avec les filtres) : synthèse KPI + répartitions type/dossier. */
   async overviewRows(params: AnalyticsFilterDto, user: AuthUser): Promise<Array<Record<string, unknown>>> {
     const o = await this.overview(params, user);
     const rows: Array<Record<string, unknown>> = [
@@ -530,7 +515,7 @@ export class AnalyticsService {
       { section: 'Synthèse', libelle: "Taux d'échec des lots", valeur: `${Math.round(o.pipeline.failureRate * 100)}%` },
     ];
     for (const t of o.byType) rows.push({ section: 'Par type', libelle: t.name, valeur: t.value });
-    for (const p of o.byProgramme) rows.push({ section: 'Par programme', libelle: p.name, valeur: p.value });
+    for (const d of o.byDossier) rows.push({ section: 'Par dossier', libelle: d.name, valeur: d.value });
     return rows;
   }
 }

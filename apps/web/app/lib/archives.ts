@@ -457,6 +457,52 @@ export interface DocumentHistoryRow {
   actor: string | null;
 }
 
+/**
+ * Couverture d'intégrité du FONDS (et non d'un document) — écran « Intégrité du fonds ».
+ *
+ * `fichiersAvecEmpreinte` et `verifies` ne disent pas la même chose : une empreinte rend la pièce
+ * mesurable (elle est posée à l'ingestion depuis le 2026-09-15), une vérification constate qu'elle
+ * est encore conforme. Un fonds peut être entièrement mesurable sans avoir jamais été mesuré.
+ */
+export interface IntegrityCoverage {
+  documents: number;
+  fichiers: number;
+  fichiersAvecEmpreinte: number;
+  jamaisVerifies: number;
+  verifies: number;
+  conformes: number;
+  nonConformes: number;
+  scelles: number;
+}
+
+export interface IntegritySweepResult {
+  traites: number;
+  conformes: number;
+  nonConformes: number;
+  empreintesPosees: number;
+  echecs: { documentId: number; erreur: string }[];
+  /** Documents encore jamais vérifiés après ce passage — de quoi savoir s'il faut relancer. */
+  restants: number;
+}
+
+/**
+ * Résultat d'une tranche de scellement en lot. `examines` peut dépasser `scelles` en cas d'échec
+ * sur une pièce — un document sans binaire lisible, par exemple — sans que le lot s'interrompe.
+ */
+export interface SealFondsResult {
+  examines: number;
+  scelles: number;
+  echecs: { documentId: number; erreur: string }[];
+  /** Documents encore jamais scellés après cette tranche. */
+  restants: number;
+}
+
+export interface NonCompliantRow {
+  documentId: number;
+  label: string;
+  dateLastVerified: string | null;
+}
+
 export const documentsApi = {
   detail: (documentId: number) => apiJson<DocumentDetail>(`/documents/${documentId}`),
   /** Réindexation complète : classement + métadonnées (onglet « Indexation »). */
@@ -517,6 +563,23 @@ export const documentsApi = {
     apiJson<{ algorithm: string; fingerprint: string; publicKeyPem: string }>(
       '/documents/sealing/public-key',
     ),
+
+  // --- Écran « Intégrité du fonds » : contrôle en lot (2026-09-15) ---
+  integrityCoverage: () => apiJson<IntegrityCoverage>('/documents/integrity/coverage'),
+  integrityNonCompliant: () =>
+    apiJson<NonCompliantRow[]>('/documents/integrity/non-compliant'),
+  /** Balaie une tranche du fonds. Relancer reprend là où le passage précédent s'est arrêté. */
+  sweepIntegrity: (limit: number) =>
+    apiJson<IntegritySweepResult>('/documents/integrity/sweep', {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    }),
+  /** Scelle une tranche des documents jamais scellés (rattrapage du fonds antérieur). */
+  sealFonds: (limit: number) =>
+    apiJson<SealFondsResult>('/documents/integrity/seal-fonds', {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    }),
 
   history: (documentId: number) => apiJson<DocumentHistoryRow[]>(`/documents/${documentId}/history`),
 };

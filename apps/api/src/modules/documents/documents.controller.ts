@@ -19,6 +19,9 @@ import { DiskFileStore } from '@archivage/storage';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AdminGuard } from '../auth/admin.guard';
+import { MenuPermissionGuard } from '../auth/menu-permission.guard';
+import { RequireMenu } from '../auth/require-menu.decorator';
+import { ARCHIVES_MENUS } from '../archives/archives.menus';
 import type { AuthUser } from '../auth/auth.types';
 import { SearchService } from '../search/search.service';
 import { DocumentsService } from './documents.service';
@@ -90,13 +93,28 @@ export class DocumentsController {
     return this.documents.findDuplicateCotes(body?.cotes ?? [], body?.excludeBatchId);
   }
 
+  /**
+   * Indexation, et scellement automatique quand elle VALIDE le document (2026-09-15).
+   *
+   * Le scellement est déclenché ici et non dans `DocumentsService` : c'est `DocumentTabsService`
+   * qui porte le cachet, et il dépend déjà de `DocumentsService` pour le niveau effectif — les
+   * faire s'appeler l'un l'autre créerait un cycle. Le contrôleur, qui a les deux sous la main,
+   * est le point de couture naturel.
+   *
+   * `sealIfNeeded` ne re-signe pas un document déjà attesté tel qu'il est, et ne lève jamais : une
+   * indexation validée avec succès ne doit pas être annulée parce que le cachet a échoué.
+   */
   @Patch(':id/indexation')
-  indexation(
+  async indexation(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(indexationSchema)) body: IndexationDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.documents.indexDocument(id, body, user);
+    const res = await this.documents.indexDocument(id, body, user);
+    if (body.validate) {
+      await this.tabs.sealIfNeeded(id, await this.sealingKey.get(), user);
+    }
+    return res;
   }
 
   @Get(':id')
@@ -172,18 +190,76 @@ export class DocumentsController {
     return this.tabs.listLendings(id);
   }
 
+  // ---------------------------------------------------------------------------
+  // Écran « Intégrité du fonds » — contrôle en lot
+  //
+  // Autorisées par le MENU (règle maison « accès au menu ⟹ accès aux données »), pas par le
+  // niveau effectif sur chaque pièce : contrôler le fonds est une responsabilité d'archiviste
+  // sur l'ensemble, un droit nominatif document par document n'aurait aucun sens ici.
+  // Déclarées avant les routes « :id/… » : aucune ne peut les capturer (le nombre de segments
+  // diffère), mais les garder groupées en tête évite qu'un futur « :id/x/y » s'intercale.
+  // ---------------------------------------------------------------------------
+
+  /** Couverture du fonds : combien de documents sont mesurables, mesurés, conformes, scellés. */
+  @Get('integrity/coverage')
+  @UseGuards(MenuPermissionGuard)
+  @RequireMenu(ARCHIVES_MENUS.integrity)
+  integrityCoverage() {
+    return this.tabs.integrityCoverage();
+  }
+
+  /** Documents actuellement en échec d'intégrité. */
+  @Get('integrity/non-compliant')
+  @UseGuards(MenuPermissionGuard)
+  @RequireMenu(ARCHIVES_MENUS.integrity)
+  integrityNonCompliant() {
+    return this.tabs.listNonCompliant();
+  }
+
+  /**
+   * Balaie une tranche du fonds (jamais vérifiés d'abord, puis les plus anciens).
+   * `limit` est borné à 500 : au-delà, la requête HTTP resterait ouverte trop longtemps — on
+   * relance le balayage, qui reprend tout seul là où il s'est arrêté.
+   */
+  @Post('integrity/sweep')
+  @HttpCode(200)
+  @UseGuards(MenuPermissionGuard)
+  @RequireMenu(ARCHIVES_MENUS.integrity)
+  sweepIntegrity(@CurrentUser() user: AuthUser, @Body() body: { limit?: number }) {
+    const limit = Math.min(Math.max(Number(body?.limit) || 50, 1), 500);
+    const store = new DiskFileStore(this.config.getOrThrow<string>('ARCHIVES_PATH'));
+    return this.tabs.sweepIntegrity(store, user, limit);
+  }
+
+  /**
+   * Scelle une tranche des documents jamais scellés — rattrapage du fonds antérieur au scellement
+   * automatique. Même autorisation et même plafond que le balayage d'intégrité.
+   */
+  @Post('integrity/seal-fonds')
+  @HttpCode(200)
+  @UseGuards(MenuPermissionGuard)
+  @RequireMenu(ARCHIVES_MENUS.integrity)
+  async sealFonds(@CurrentUser() user: AuthUser, @Body() body: { limit?: number }) {
+    const limit = Math.min(Math.max(Number(body?.limit) || 50, 1), 500);
+    return this.tabs.sealFonds(await this.sealingKey.get(), user, limit);
+  }
+
   /** État d'intégrité connu — lecture seule, sans relire les binaires du coffre. */
   @Get(':id/integrity')
   integrity(@Param('id', ParseIntPipe) id: number) {
     return this.tabs.getIntegrity(id);
   }
 
-  /** Vérification effective : relit chaque binaire, recalcule et compare son empreinte. */
+  /**
+   * Vérification effective : relit chaque binaire, recalcule et compare son empreinte.
+   * Niveau Modification (3) exigé par le service — elle écrit un verdict, et pose l'empreinte de
+   * référence au premier passage.
+   */
   @Post(':id/integrity/verify')
   @HttpCode(200)
-  verifyIntegrity(@Param('id', ParseIntPipe) id: number) {
+  verifyIntegrity(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     const store = new DiskFileStore(this.config.getOrThrow<string>('ARCHIVES_PATH'));
-    return this.tabs.verifyIntegrity(id, store);
+    return this.tabs.verifyIntegrity(id, store, user);
   }
 
   /** État du cachet (signature + horodatage) — vérifié à la lecture, sans relire les binaires. */
@@ -192,7 +268,7 @@ export class DocumentsController {
     return this.tabs.verifySeal(id, await this.sealingKey.get());
   }
 
-  /** Appose (ou renouvelle) le cachet serveur sur le document. */
+  /** Appose (ou renouvelle) le cachet serveur. Niveau Archivistique (5) exigé par le service. */
   @Post(':id/seal')
   @HttpCode(200)
   async applySeal(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {

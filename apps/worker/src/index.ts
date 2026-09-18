@@ -68,7 +68,11 @@ async function startReminders(
 function main(): void {
   const env = loadEnv();
   const connection = createRedis(env.REDIS_URL);
-  const acquisitionEnv = { archivesPath: env.ARCHIVES_PATH, tesseractLang: env.TESSERACT_LANG };
+  const acquisitionEnv = {
+    archivesPath: env.ARCHIVES_PATH,
+    tesseractLang: env.TESSERACT_LANG,
+    tesseractDataPath: env.TESSERACT_DATA_PATH,
+  };
 
   // Ensure the disk vault exists at startup (don't wait for the first acquisition).
   mkdirSync(acquisitionEnv.archivesPath, { recursive: true });

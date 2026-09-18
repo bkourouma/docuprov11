@@ -1,0 +1,2148 @@
+{
+  "dossiers": [
+    {
+      "code": "OPE",
+      "label": "Opérations foncières",
+      "enfants": [
+        {
+          "code": "OPE-ACQ",
+          "label": "Acquisition et purge des droits coutumiers"
+        },
+        {
+          "code": "OPE-LOT",
+          "label": "Études et lotissement"
+        },
+        {
+          "code": "OPE-VRD",
+          "label": "Viabilisation et travaux"
+        },
+        {
+          "code": "OPE-TIT",
+          "label": "Morcellement et titres"
+        }
+      ]
+    },
+    {
+      "code": "CLI",
+      "label": "Dossiers clients et titres délivrés",
+      "enfants": [
+        {
+          "code": "CLI-AGEF",
+          "label": "Fonds AGEF"
+        },
+        {
+          "code": "CLI-SETU",
+          "label": "Fonds hérité ex-SETU"
+        },
+        {
+          "code": "CLI-REC",
+          "label": "Comptes et recouvrement"
+        }
+      ]
+    },
+    {
+      "code": "CTX",
+      "label": "Affaires juridiques et contentieux",
+      "enfants": [
+        {
+          "code": "CTX-PRE",
+          "label": "Précontentieux et qualification"
+        },
+        {
+          "code": "CTX-INS",
+          "label": "Instances judiciaires et expertises"
+        },
+        {
+          "code": "CTX-REL",
+          "label": "Réclamations des usagers"
+        }
+      ]
+    },
+    {
+      "code": "ING",
+      "label": "Prestations d'ingénierie foncière",
+      "enfants": [
+        {
+          "code": "ING-MIS",
+          "label": "Missions en cours"
+        },
+        {
+          "code": "ING-CLO",
+          "label": "Missions clôturées et quitus"
+        }
+      ]
+    },
+    {
+      "code": "MP",
+      "label": "Marchés publics",
+      "enfants": [
+        {
+          "code": "MP-PASS",
+          "label": "Passation"
+        },
+        {
+          "code": "MP-EXEC",
+          "label": "Exécution et suivi"
+        }
+      ]
+    },
+    {
+      "code": "FIN",
+      "label": "Finances et comptabilité",
+      "enfants": [
+        {
+          "code": "FIN-COMPTA",
+          "label": "Comptabilité générale"
+        },
+        {
+          "code": "FIN-FISC",
+          "label": "Fiscalité et déclarations"
+        },
+        {
+          "code": "FIN-DOM",
+          "label": "Droits domaniaux et recettes"
+        }
+      ]
+    },
+    {
+      "code": "DIR",
+      "label": "Direction et gouvernance",
+      "enfants": [
+        {
+          "code": "DIR-ACTE",
+          "label": "Actes constitutifs et vie sociale"
+        },
+        {
+          "code": "DIR-INST",
+          "label": "Instances et réunions"
+        },
+        {
+          "code": "DIR-CPT",
+          "label": "Comptes annuels et commissariat aux comptes"
+        },
+        {
+          "code": "DIR-PAT",
+          "label": "Patrimoine propre de l'agence"
+        }
+      ]
+    },
+    {
+      "code": "RH",
+      "label": "Ressources humaines",
+      "enfants": [
+        {
+          "code": "RH-PERS",
+          "label": "Dossiers individuels du personnel"
+        },
+        {
+          "code": "RH-PAIE",
+          "label": "Paie"
+        },
+        {
+          "code": "RH-SOC",
+          "label": "Déclarations sociales et fiscales"
+        }
+      ]
+    },
+    {
+      "code": "ARC",
+      "label": "Gestion des archives",
+      "enfants": [
+        {
+          "code": "ARC-NUM",
+          "label": "Numérisation et contrôle qualité"
+        }
+      ]
+    }
+  ],
+  "plan": [
+    {
+      "code": "1",
+      "label": "Constitution des réserves foncières",
+      "enfants": [
+        {
+          "code": "1.1",
+          "label": "Purge des droits coutumiers"
+        },
+        {
+          "code": "1.2",
+          "label": "Recensement et indemnisation"
+        },
+        {
+          "code": "1.3",
+          "label": "Compensation en nature"
+        }
+      ]
+    },
+    {
+      "code": "2",
+      "label": "Aménagement et lotissement",
+      "enfants": [
+        {
+          "code": "2.1",
+          "label": "Approbation des lotissements"
+        },
+        {
+          "code": "2.2",
+          "label": "Topographie, bornage et morcellement"
+        },
+        {
+          "code": "2.3",
+          "label": "Viabilisation et réseaux divers"
+        },
+        {
+          "code": "2.4",
+          "label": "Réception et rétrocession des ouvrages"
+        }
+      ]
+    },
+    {
+      "code": "3",
+      "label": "Propriété foncière et titres",
+      "enfants": [
+        {
+          "code": "3.1",
+          "label": "Instruction des dossiers de concession définitive"
+        },
+        {
+          "code": "3.2",
+          "label": "Immatriculation et titre foncier"
+        },
+        {
+          "code": "3.3",
+          "label": "Origine et titres antérieurs"
+        }
+      ]
+    },
+    {
+      "code": "4",
+      "label": "Commercialisation et clientèle",
+      "enfants": [
+        {
+          "code": "4.1",
+          "label": "Attribution et réservation"
+        },
+        {
+          "code": "4.2",
+          "label": "Encaissement et suivi des comptes"
+        },
+        {
+          "code": "4.3",
+          "label": "Recouvrement des créances"
+        }
+      ]
+    },
+    {
+      "code": "5",
+      "label": "Affaires juridiques et contentieux",
+      "enfants": [
+        {
+          "code": "5.1",
+          "label": "Sécurisation et défense des titres"
+        },
+        {
+          "code": "5.2",
+          "label": "Instances et expertises"
+        },
+        {
+          "code": "5.3",
+          "label": "Réclamations des usagers"
+        }
+      ]
+    },
+    {
+      "code": "6",
+      "label": "Commande publique",
+      "enfants": [
+        {
+          "code": "6.1",
+          "label": "Passation des marchés"
+        },
+        {
+          "code": "6.2",
+          "label": "Exécution et suivi des marchés"
+        }
+      ]
+    },
+    {
+      "code": "7",
+      "label": "Gestion financière",
+      "enfants": [
+        {
+          "code": "7.1",
+          "label": "Comptabilité et états financiers"
+        },
+        {
+          "code": "7.2",
+          "label": "Fiscalité et déclarations"
+        },
+        {
+          "code": "7.3",
+          "label": "Droits domaniaux"
+        }
+      ]
+    },
+    {
+      "code": "8",
+      "label": "Gouvernance et contrôle",
+      "enfants": [
+        {
+          "code": "8.1",
+          "label": "Textes constitutifs et vie sociale"
+        },
+        {
+          "code": "8.2",
+          "label": "Instances de décision"
+        },
+        {
+          "code": "8.3",
+          "label": "Commissariat aux comptes et audit"
+        }
+      ]
+    },
+    {
+      "code": "9",
+      "label": "Ressources humaines",
+      "enfants": [
+        {
+          "code": "9.1",
+          "label": "Recrutement et carrière"
+        },
+        {
+          "code": "9.2",
+          "label": "Rémunération"
+        },
+        {
+          "code": "9.3",
+          "label": "Déclarations sociales"
+        }
+      ]
+    },
+    {
+      "code": "10",
+      "label": "Patrimoine et archives",
+      "enfants": [
+        {
+          "code": "10.1",
+          "label": "Patrimoine immobilier de l'agence"
+        },
+        {
+          "code": "10.2",
+          "label": "Numérisation et dématérialisation des actes"
+        }
+      ]
+    },
+    {
+      "code": "11",
+      "label": "Prestations d'ingénierie foncière",
+      "enfants": [
+        {
+          "code": "11.1",
+          "label": "Engagement contractuel"
+        },
+        {
+          "code": "11.2",
+          "label": "Clôture, quitus et reddition"
+        }
+      ]
+    }
+  ],
+  "locations": [
+    {
+      "label": "Magasin central",
+      "enfants": [
+        {
+          "label": "Salle 1 — Archives courantes",
+          "enfants": [
+            {
+              "label": "Travée D — RH et administration"
+            }
+          ]
+        },
+        {
+          "label": "Salle 2 — Archives intermédiaires",
+          "enfants": [
+            {
+              "label": "Travée B — Clients et recouvrement"
+            },
+            {
+              "label": "Travée C — Marchés, finance et gouvernance"
+            }
+          ]
+        },
+        {
+          "label": "Salle 3 — Archives définitives et fonds hérités",
+          "enfants": [
+            {
+              "label": "Travée A — Foncier et titres"
+            }
+          ]
+        },
+        {
+          "label": "Salle des plans",
+          "enfants": [
+            {
+              "label": "Meuble à plans MP-1"
+            }
+          ]
+        },
+        {
+          "label": "Coffre — originaux sensibles",
+          "enfants": [
+            {
+              "label": "Casier CF-1"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": [
+    {
+      "label": "Numéro de dossier",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Opération d'aménagement",
+      "dataType": "Liste",
+      "valeurs": [
+        "Yopougon Niangon Nord",
+        "Yopougon Ananeraie",
+        "Yopougon Kouté",
+        "Cocody II Plateaux 1re tranche",
+        "Cocody II Plateaux 2e tranche",
+        "Cocody II Plateaux 3e tranche",
+        "Cocody II Plateaux 4e tranche",
+        "Cocody II Plateaux 5e tranche",
+        "Cocody II Plateaux 6e tranche",
+        "Cocody II Plateaux 7e tranche",
+        "Riviera 4 Beverly Hills",
+        "Cocody Bessikoi",
+        "Banco Nord tranche 1",
+        "Banco Nord tranche 2",
+        "Banco Nord tranche 3",
+        "Banco recasement",
+        "Koumassi Nord-Est tranche 1",
+        "Biétry zone 4C",
+        "Riviera Africaine zone 2 Golf",
+        "Bongouanou-Exception",
+        "Songon Ayiwayi",
+        "Bingerville Blanchon",
+        "Plateau Vert",
+        "Hors opération",
+        "Opération à identifier"
+      ]
+    },
+    {
+      "label": "District ou région",
+      "dataType": "Liste",
+      "valeurs": [
+        "District autonome d'Abidjan",
+        "District autonome de Yamoussoukro",
+        "Région du Gbêkê",
+        "Région du Poro",
+        "Région de l'Indénié-Djuablin",
+        "Région de San-Pédro",
+        "Région des Grands-Ponts",
+        "Région de l'Agnéby-Tiassa",
+        "Autre région"
+      ]
+    },
+    {
+      "label": "Commune",
+      "dataType": "Liste",
+      "valeurs": [
+        "Abobo",
+        "Adjamé",
+        "Attécoubé",
+        "Cocody",
+        "Koumassi",
+        "Le Plateau",
+        "Marcory",
+        "Port-Bouët",
+        "Treichville",
+        "Yopougon",
+        "Anyama",
+        "Bingerville",
+        "Songon",
+        "Grand-Bassam",
+        "Dabou",
+        "Jacqueville",
+        "Alépé",
+        "Azaguié",
+        "Bonoua",
+        "Bouaké",
+        "Yamoussoukro",
+        "Korhogo",
+        "San-Pédro",
+        "Abengourou",
+        "Daloa",
+        "Gagnoa",
+        "Man",
+        "Divo",
+        "Soubré",
+        "Agboville",
+        "Adzopé",
+        "Oumé",
+        "Tiébissou",
+        "Autre commune"
+      ]
+    },
+    {
+      "label": "Îlot",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Lot de terrain",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Superficie (m²)",
+      "dataType": "Entier"
+    },
+    {
+      "label": "Contenance portée au titre",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Village ou communauté villageoise",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Usage autorisé du terrain",
+      "dataType": "Liste",
+      "valeurs": [
+        "Habitation",
+        "Commerce",
+        "Industrie",
+        "Équipement collectif",
+        "Usage mixte",
+        "Non déterminé"
+      ]
+    },
+    {
+      "label": "Identifiant unique du foncier",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Numéro de titre foncier",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Nature du titre détenu",
+      "dataType": "Liste",
+      "valeurs": [
+        "Lettre d'attribution",
+        "Arrêté de concession provisoire",
+        "Acte administratif de vente",
+        "Arrêté de concession définitive",
+        "Attestation de droit d'usage coutumier",
+        "Attestation villageoise",
+        "Certificat foncier (domaine rural)",
+        "Titre foncier",
+        "Sans titre",
+        "Non déterminé"
+      ]
+    },
+    {
+      "label": "Circonscription foncière compétente",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Référence de l'arrêté d'approbation du lotissement",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Structure productrice d'origine",
+      "dataType": "Liste",
+      "valeurs": [
+        "AGEF",
+        "SETU",
+        "Autre structure (à préciser en observations)",
+        "Non déterminée"
+      ]
+    },
+    {
+      "label": "Nature de l'exemplaire",
+      "dataType": "Liste",
+      "valeurs": [
+        "Original",
+        "Copie",
+        "Copie certifiée conforme",
+        "Duplicata",
+        "Exemplaire unique délivré en vue de nantissement"
+      ]
+    },
+    {
+      "label": "Support et format",
+      "dataType": "Liste",
+      "valeurs": [
+        "Papier A4",
+        "Registre relié",
+        "Calque ou contre-calque",
+        "Tirage grand format A0/A1",
+        "Photographie",
+        "Numérique natif"
+      ]
+    },
+    {
+      "label": "État de conservation du support",
+      "dataType": "Liste",
+      "valeurs": [
+        "Bon",
+        "Moyen",
+        "Dégradé",
+        "Très dégradé"
+      ]
+    },
+    {
+      "label": "Régime réglementaire applicable",
+      "dataType": "Liste",
+      "valeurs": [
+        "Régime de purge antérieur à 1996",
+        "Décret n 96-884 du 25 octobre 1996",
+        "Décret n 2013-224 modifié par le décret n 2014-25",
+        "Décret n 2023-769 du 28 septembre 2023",
+        "Régime de lotissement antérieur à 2021 (à préciser)",
+        "Décret n 2021-784 du 8 décembre 2021",
+        "Décret n 2013-482 du 2 juillet 2013 (dossiers de concession antérieurs à 2022)",
+        "Décret n 2021-785 du 8 décembre 2021 (procédure de concession définitive)",
+        "Régime non déterminé"
+      ]
+    },
+    {
+      "label": "Tiers concerné (nom ou raison sociale)",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Qualité du tiers",
+      "dataType": "Liste",
+      "valeurs": [
+        "Personne physique",
+        "Personne morale",
+        "Ayant droit ou succession",
+        "Notaire mandataire",
+        "Détenteur de droits coutumiers",
+        "Collectivité territoriale",
+        "État de Côte d'Ivoire",
+        "Banque ou établissement financier",
+        "Entreprise titulaire de marché",
+        "Occupant sans titre",
+        "Agent de l'agence"
+      ]
+    },
+    {
+      "label": "Signataire",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Qualité du signataire",
+      "dataType": "Liste",
+      "valeurs": [
+        "Ministre chargé de la Construction et de l'Urbanisme",
+        "Ministre chargé du Budget et du Portefeuille de l'État",
+        "Ministre chargé de l'Environnement",
+        "Préfet",
+        "Sous-préfet",
+        "Maire",
+        "Conservateur de la propriété foncière et des hypothèques",
+        "Président du tribunal",
+        "Géomètre-expert agréé",
+        "Urbaniste agréé",
+        "Huissier de justice",
+        "Notaire",
+        "Chef de village",
+        "Commission administrative",
+        "Directeur général de l'agence",
+        "Arrêté conjoint (plusieurs signataires)"
+      ]
+    },
+    {
+      "label": "Direction ou service producteur",
+      "dataType": "Liste",
+      "valeurs": [
+        "Direction générale",
+        "Direction des Ressources Humaines (DRH)",
+        "Direction Financière et Comptable (DFC)",
+        "Direction du Contrôle de Gestion et de l'Audit Interne",
+        "Direction Technique (DT)",
+        "Direction des Affaires Juridiques et du Contentieux (DAJC)",
+        "Direction Commerciale et du Marketing (DCM)",
+        "Service Informatique"
+      ]
+    },
+    {
+      "label": "Organisme externe concerné",
+      "dataType": "Liste",
+      "valeurs": [
+        "Guichet Unique du Foncier et de l'Habitat",
+        "Conservation de la propriété foncière et des hypothèques",
+        "Cadastre",
+        "Ministère chargé de la Construction et de l'Urbanisme",
+        "Ministère chargé du Budget et du Portefeuille de l'État",
+        "ANDE",
+        "DGMP",
+        "ARCOP",
+        "Cour des comptes",
+        "Inspection Générale d'État",
+        "Inspection Générale des Finances",
+        "DGI",
+        "CNPS",
+        "IPS-CNAM",
+        "FDFP",
+        "Inspection du Travail et des Lois Sociales",
+        "CIE",
+        "SODECI",
+        "ONAD",
+        "Opérateur de télécommunications",
+        "Collectivité territoriale",
+        "Compagnie d'assurance",
+        "Commissaire aux comptes",
+        "Ministère chargé de l'emploi",
+        "Service de santé au travail",
+        "Sans objet"
+      ]
+    },
+    {
+      "label": "Numéro de référence",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Date de signature",
+      "dataType": "Date"
+    },
+    {
+      "label": "Date d'échéance",
+      "dataType": "Date"
+    },
+    {
+      "label": "Date de réunion",
+      "dataType": "Date"
+    },
+    {
+      "label": "Exercice",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Montant",
+      "dataType": "Entier"
+    },
+    {
+      "label": "Devise",
+      "dataType": "Liste",
+      "valeurs": [
+        "XOF",
+        "EUR",
+        "USD"
+      ]
+    },
+    {
+      "label": "Nature du montant",
+      "dataType": "Liste",
+      "valeurs": [
+        "Prix de cession",
+        "Montant du marché",
+        "Montant d'un avenant",
+        "Montant d'un décompte",
+        "Montant d'une garantie",
+        "Indemnité ou compensation",
+        "Solde dû",
+        "Droits et taxes",
+        "Honoraires et frais",
+        "Enjeu du litige",
+        "Rémunération brute",
+        "Retenue ou cotisation sociale",
+        "Frais de mission",
+        "Prime d'assurance",
+        "Droit de tirage formation"
+      ]
+    },
+    {
+      "label": "Barème de purge appliqué au mètre carré",
+      "dataType": "Entier"
+    },
+    {
+      "label": "Nature de la compensation",
+      "dataType": "Liste",
+      "valeurs": [
+        "En nature (lots de compensation)",
+        "En numéraire",
+        "Mixte",
+        "Non déterminée"
+      ]
+    },
+    {
+      "label": "Source de financement",
+      "dataType": "Liste",
+      "valeurs": [
+        "Ressources propres de l'agence",
+        "Budget de l'État",
+        "Collectivité territoriale",
+        "Partenaire technique et financier",
+        "Emprunt bancaire",
+        "Maîtrise d'ouvrage déléguée"
+      ]
+    },
+    {
+      "label": "Statut",
+      "dataType": "Liste",
+      "valeurs": [
+        "En cours",
+        "Validé",
+        "Clôturé",
+        "Annulé"
+      ]
+    },
+    {
+      "label": "Identifiant du compte réservataire",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Numéro de marché",
+      "dataType": "Texte"
+    },
+    {
+      "label": "Juridiction saisie",
+      "dataType": "Liste",
+      "valeurs": [
+        "Tribunal de première instance",
+        "Section détachée de tribunal",
+        "Tribunal de commerce",
+        "Cour d'appel",
+        "Cour d'appel de commerce",
+        "Cour de cassation",
+        "Conseil d'État",
+        "Cour Suprême - Chambre administrative (affaires antérieures à 2018)",
+        "CCJA (OHADA)",
+        "Juridiction non encore saisie"
+      ]
+    },
+    {
+      "label": "Objet",
+      "dataType": "Texte long"
+    },
+    {
+      "label": "Observations",
+      "dataType": "Texte long"
+    }
+  ],
+  "types": [
+    {
+      "label": "Convention de purge des droits coutumiers",
+      "code": "CONV-PURGE",
+      "description": "Convention ou document final de purge conclu sur un périmètre délimité, portant sur la nature et le montant de la compensation, signé par les autorités compétentes et les parties intéressées. Acte pivot : c'est lui que réclament la Conservation foncière, le Guichet Unique et toute juridiction saisie d'un litige coutumier.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret n°2023-769 du 28 septembre 2023, art. 11 : les services du ministère chargé de l'Urbanisme « préparent le document ou la convention portant sur la nature et le montant de la purge », soumis à la signature du ministre chargé de l'Urbanisme, du ministre chargé du Budget, des structures et parties intéressées. Art. 4 du même décret et art. 275 de la loi n°2020-624 du 14 août 2020 : la purge est exercée par l'État représenté par le ministre chargé de l'Urbanisme, par les collectivités territoriales et par tout autre organisme créé à cet effet. Textes lus au Journal officiel.",
+      "dossier": "OPE-ACQ",
+      "plan": "1.1",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Superficie (m²)",
+        "Village ou communauté villageoise",
+        "Régime réglementaire applicable",
+        "Barème de purge appliqué au mètre carré",
+        "Nature de la compensation",
+        "Signataire",
+        "Qualité du signataire",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "État des terres et des détenteurs de droits coutumiers",
+      "code": "ETAT-DDC",
+      "description": "État nominatif COLLECTIF dressé par la commission : terres et superficies à purger, détenteurs recensés, compensations proposées, accords et désaccords enregistrés. Pièce collective : elle se recherche par opération, par village et par agrégat, jamais par le nom d'un bénéficiaire — la recherche nominative se fait sur la décharge individuelle et sur la fiche de recensement.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret n°2023-769 du 28 septembre 2023, art. 10 : la Commission « dresse un état comprenant la liste des terres et des superficies devant faire l'objet de purge, des détenteurs des droits coutumiers ». Contient des données à caractère personnel au sens de la loi n°2013-450 du 19 juin 2013, d'où l'accès restreint. Texte lu au Journal officiel.",
+      "dossier": "OPE-ACQ",
+      "plan": "1.1",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Superficie (m²)",
+        "Village ou communauté villageoise",
+        "Régime réglementaire applicable",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Procès-verbal de la Commission administrative de purge",
+      "code": "PV-CAPDC",
+      "description": "Procès-verbal signé par les membres de la commission constatant l'enquête contradictoire, l'identification des terres et le recensement des détenteurs de droits coutumiers du périmètre.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret n°2023-769 du 28 septembre 2023, art. 10 : la Commission procède, après enquête contradictoire, à l'identification des terres et au recensement des détenteurs, propose la compensation à partir du barème, et dresse un état qui « fait l'objet d'un procès-verbal signé par les membres de la Commission » ; art. 11 : le procès-verbal est transmis au ministre chargé de l'Urbanisme. Régimes antérieurs : décret n°96-884 du 25 octobre 1996, puis décret n°2013-224 du 22 mars 2013 modifié par le décret n°2014-25 du 22 janvier 2014, abrogés par l'article 13 du décret de 2023. Texte lu au Journal officiel.",
+      "dossier": "OPE-ACQ",
+      "plan": "1.1",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Village ou communauté villageoise",
+        "Date de réunion",
+        "Régime réglementaire applicable",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "État de paiement des indemnités et compensations",
+      "code": "ETAT-IND",
+      "description": "État nominatif COLLECTIF de règlement des compensations : bénéficiaires, montants, références de règlement. Seule pièce établissant que la purge a été PAYÉE au niveau de l'opération : elle est conservée aussi longtemps que la convention de purge qu'elle solde.",
+      "confidentialite": "Secret",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Conservation décennale comptable et fiscale (Acte uniforme OHADA relatif au droit comptable et à l'information financière ; Livre de procédures fiscales — articles à confirmer) pour la DUA ; loi n°2013-450 du 19 juin 2013 pour l'accès restreint. L'obligation comptable est un MINIMUM de conservation : elle n'impose aucune destruction à l'échéance, et la chaîne probatoire de la purge interdit ici l'élimination.",
+      "dossier": "OPE-ACQ",
+      "plan": "1.2",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Village ou communauté villageoise",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Barème de purge appliqué au mètre carré",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Répertoire des bénéficiaires de lots de compensation",
+      "code": "REP-LOTCOMP",
+      "description": "Répertoire COLLECTIF des détenteurs de droits coutumiers bénéficiaires de lots de compensation, établi sur la clé de répartition convenue : identification, îlot et lot attribué, superficie. Fonde l'attribution de chaque lot et la délivrance des attestations de droit d'usage coutumier.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Le décret n°2023-769 du 28 septembre 2023 fixe la purge en VALEUR (art. 6 à 8) et confie à la convention le soin de définir « la nature et le montant de la purge » (art. 11) : la compensation en nature par attribution de lots n'est donc pas nommée par le décret et relève de la convention. Aucune disposition ne fonde directement ce répertoire — fondement conventionnel, à confirmer en atelier de cadrage. Conservation permanente retenue comme choix de gestion : le répertoire est le titre d'origine de chaque lot de compensation.",
+      "dossier": "OPE-ACQ",
+      "plan": "1.3",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Superficie (m²)",
+        "Village ou communauté villageoise",
+        "Nature de la compensation",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Arrêté d'approbation du plan de lotissement",
+      "code": "LOT-ARRETE-APPRO",
+      "description": "Acte approuvant le plan de lotissement, identifiant le périmètre par les sommets de sa polygonale et le système de coordonnées, et emportant l'ensemble des parcelles loties et des espaces affectés. Pièce pivot de toute la chaîne foncière en aval. Étape réelle : Études et lotissement.",
+      "confidentialite": "Public",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret n° 2021-784 du 8 décembre 2021 (texte vérifié ; articles non vérifiés, non cités) ; loi n° 2020-624 du 14 août 2020 modifiée par la loi n° 2024-351 du 6 juin 2024 (publication et affichage). Conservation définitive : sans plan de lotissement approuvé, aucun acte domanial ne peut être délivré sur le périmètre ; la pièce conditionne la validité de tous les titres délivrés en aval. DUA de 5 ans : règle du domaine, alignée sur le référentiel existant des arrêtés.",
+      "dossier": "OPE-LOT",
+      "plan": "2.1",
+      "champs": [
+        "Opération d'aménagement",
+        "District ou région",
+        "Commune",
+        "Superficie (m²)",
+        "Référence de l'arrêté d'approbation du lotissement",
+        "Régime réglementaire applicable",
+        "Signataire",
+        "Qualité du signataire",
+        "Date de signature",
+        "Nature de l'exemplaire",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Plan parcellaire du lotissement",
+      "code": "LOT-PLAN-PARCEL",
+      "description": "Projet de lotissement établi par un urbaniste agréé sur le fond d'état des lieux du géomètre-expert, découpant le périmètre en îlots et en lots et réservant les emprises de voirie et d'équipements. Étape réelle : Études et lotissement.",
+      "confidentialite": "Interne",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret n° 2021-784 du 8 décembre 2021 (projet dressé par un urbaniste agréé sur fond d'état des lieux ; support de l'arrêté d'approbation — articles non vérifiés, non cités). Conservation définitive : le plan porte le découpage que l'arrêté approuve. DUA de 10 ans : dérogation motivée (géométrie).",
+      "dossier": "OPE-LOT",
+      "plan": "2.1",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Superficie (m²)",
+        "Référence de l'arrêté d'approbation du lotissement",
+        "Support et format",
+        "État de conservation du support",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "État parcellaire (tableau des lots)",
+      "code": "LOT-ETAT-PARCEL",
+      "description": "Répertoire numéroté de tous les lots de l'opération, avec îlot, superficie, affectation et réserves administratives (voirie, équipements, espaces verts). Pièce de récolement qui permet de contrôler la complétude d'une opération : c'est elle, et non un numéro d'îlot posé sur un plan d'ensemble, qui dit ce que couvre le lotissement. Étape réelle : Morcellement et titres.",
+      "confidentialite": "Interne",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Aucun texte ne l'impose nommément ; pièce de gestion constante des opérations de lotissement. Conservation définitive : seul document qui donne l'inventaire exhaustif des lots d'une opération et permet un récolement — pratique métier. DUA de 10 ans : dérogation motivée (pièce parcellaire réinterrogée à chaque mutation).",
+      "dossier": "OPE-LOT",
+      "plan": "2.1",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Superficie (m²)",
+        "Usage autorisé du terrain",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Procès-verbal de bornage contradictoire",
+      "code": "TOPO-PV-BORNAGE",
+      "description": "Procès-verbal de la délimitation contradictoire des limites d'un lot, matérialisées par des bornes de type réglementaire, dressé par le géomètre en présence des parties et des riverains. Libellé consolidé de la synthèse transverse (un seul type pour les quatre domaines qui le proposaient). Étape réelle : Bornage et implantation.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret n° 2021-784 du 8 décembre 2021 (matérialisation de chaque lot par des bornes réglementaires ; articles non vérifiés, non cités) ; décret du 26 juillet 1932 portant réorganisation du régime de la propriété foncière, texte de base du livre foncier (numéros d'articles retirés, non vérifiés). Confidentialité relevée au rang 20 : le procès-verbal contradictoire nomme et fait signer les parties et les riverains — pièce nominative au sens de la loi n° 2013-450 du 19 juin 2013. Conservation définitive fondée sur l'obligation propre de l'AGEF (garantie des limites due à l'acquéreur), et non sur l'obligation d'archivage de la Conservation foncière. DUA de 10 ans : dérogation motivée (géométrie).",
+      "dossier": "OPE-LOT",
+      "plan": "2.2",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Superficie (m²)",
+        "Contenance portée au titre",
+        "Signataire",
+        "Qualité du signataire",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Cahier des charges du lotissement",
+      "code": "LOT-CDC",
+      "description": "Cahier des charges de l'aménagement annexé à l'arrêté d'approbation et opposable aux acquéreurs de lots. Type éclaté du composite initial : le cahier des charges, inscrit au livre foncier, n'a pas la même vie juridique que le règlement d'urbanisme. Étape réelle : Études et lotissement.",
+      "confidentialite": "Public",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret n° 2021-784 du 8 décembre 2021 (pièce du dossier d'approbation, annexée à l'arrêté) et décret n° 2021-785 du 8 décembre 2021 (inscription du cahier des charges au livre foncier — à confirmer : seul le décret n° 2021-784 a pu être vérifié en ligne). Conservation définitive : document opposable lié à la vie du titre foncier. DUA de 5 ans : règle du domaine.",
+      "dossier": "OPE-LOT",
+      "plan": "2.1",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Usage autorisé du terrain",
+        "Référence de l'arrêté d'approbation du lotissement",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Fiche de demande d'ACD",
+      "code": "DEM-ACD",
+      "description": "Formulaire de demande d'arrêté de concession définitive renseigné par le demandeur et enregistré au dépôt. Pièce d'ouverture du dossier : elle porte l'identité du demandeur, le lot visé et la nature du titre d'origine produit.",
+      "confidentialite": "Interne",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret n° 2021-785 du 8 décembre 2021 déterminant la procédure de délivrance de l'arrêté de concession définitive (existence et objet vérifiés en ligne) : le dossier est déposé au service du Guichet Unique du Foncier, qui l'enregistre et lui affecte un numéro d'identification (contenu vérifié ; numéro d'article à confirmer). La composition exacte du dossier technique est renvoyée à un arrêté ministériel NON RETROUVÉ à ce jour. TYPE ÉCLATÉ : la liasse composite d'origine (fiche + chemise + fiche cadastrale + copies de pièces d'identité + statuts + titre d'origine) ne pouvait pas porter un sort final unique.",
+      "dossier": "OPE-TIT",
+      "plan": "3.1",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Nature du titre détenu",
+        "Régime réglementaire applicable",
+        "Statut",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Attestation de droit d'usage coutumier (ADU)",
+      "code": "ADU",
+      "description": "Attestation sécurisée portant l'identifiant unique du foncier du lot, à triple signature (chef de village, président du comité villageois de gestion foncière rurale, lotisseur), enregistrée dans le Système Intégré de Gestion du Foncier Urbain. Reconnaissance provisoire du droit coutumier ouvrant l'accès à l'arrêté de concession définitive ; ce n'est pas un titre de propriété. TYPE MUTUALISÉ avec le domaine Ingénierie/Titres.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret n° 2021-784 du 8 décembre 2021 relatif aux plans de lotissement (existence vérifiée en ligne ; numéro d'article à confirmer) ; Code de l'Urbanisme et du Domaine foncier urbain, art. 275 nouveau — l'article 275 figure bien parmi les quinze articles modifiés par la loi n° 2024-351 du 6 juin 2024 (liste vérifiée en ligne), son contenu exact restant à lire sur le Journal officiel n° 14 du 2 juillet 2024. Conservation définitive : pièce probante opposable dans tout contentieux coutumier.",
+      "dossier": "OPE-TIT",
+      "plan": "3.3",
+      "champs": [
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Village ou communauté villageoise",
+        "Signataire",
+        "Qualité du signataire",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Réquisition d'immatriculation",
+      "code": "REQ-IMMAT",
+      "description": "Demande d'immatriculation d'un immeuble au Livre foncier déposée par le requérant, qui ouvre la procédure d'immatriculation et le délai d'opposition.",
+      "confidentialite": "Interne",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret du 26 juillet 1932 portant réorganisation du régime de la propriété foncière en AOF, toujours en vigueur (vérifié en ligne) — articles de la procédure d'immatriculation À CONFIRMER. Conservation définitive : la réquisition est la pièce d'ouverture du dossier d'archives attaché au titre. Classée Interne : dans le fonds de l'agence, le requérant est l'État ou l'aménageur, non une personne privée. TYPE AJOUTÉ (manque signalé).",
+      "dossier": "OPE-TIT",
+      "plan": "3.2",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Circonscription foncière compétente",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Copie de titre foncier",
+      "code": "COPIE-TF",
+      "description": "Copie exacte et complète du titre foncier délivrée par le conservateur au propriétaire, qui matérialise l'immatriculation de la parcelle au Livre foncier et l'état des droits inscrits à la date de délivrance.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret du 26 juillet 1932 portant réorganisation du régime de la propriété foncière en AOF, toujours en vigueur en Côte d'Ivoire (VÉRIFIÉ en ligne), dont l'article 21 pose que la propriété et les droits réels ne sont conservés et n'ont d'effet à l'égard des tiers que s'ils sont publiés au Livre foncier (contenu vérifié). Les articles relatifs à la délivrance de la copie et au caractère définitif du titre sont À CONFIRMER : la proposition initiale citait l'article 121, que la littérature situe ailleurs. Code de l'Urbanisme et du Domaine foncier urbain, art. 162 nouveau (article figurant dans la liste des quinze articles modifiés par la loi n° 2024-351 — liste vérifiée, contenu à lire). Conservation définitive : droit perpétuel.",
+      "dossier": "OPE-TIT",
+      "plan": "3.2",
+      "champs": [
+        "Numéro de titre foncier",
+        "Identifiant unique du foncier",
+        "Contenance portée au titre",
+        "Circonscription foncière compétente",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Support et format",
+        "État de conservation du support",
+        "Nature de l'exemplaire",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Plan du titre foncier",
+      "code": "PLAN-TF",
+      "description": "Plan certifié de l'immeuble immatriculé, délivré avec la copie du titre foncier, qui porte la géométrie et la contenance de la parcelle sans mention d'identité.",
+      "confidentialite": "Interne",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret du 26 juillet 1932 (délivrance de la copie du plan avec la copie du titre — article à confirmer). TYPE SÉPARÉ de la copie du titre : producteur, support et format différents, et le plan est classé Interne parce qu'il ne porte que la géométrie du lot, sans identité nominative. Conservation définitive : le plan est la seule représentation opposable des limites.",
+      "dossier": "OPE-TIT",
+      "plan": "3.2",
+      "champs": [
+        "Numéro de titre foncier",
+        "Contenance portée au titre",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Support et format",
+        "État de conservation du support",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Lettre d'attribution",
+      "code": "LETTRE-ATTRIB",
+      "description": "Acte administratif par lequel l'État signifiait à un attributaire son intention de lui concéder une parcelle de son domaine privé moyennant paiement d'un prix et engagement de mise en valeur. Titre d'origine du fonds hérité, à convertir en arrêté de concession définitive.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Loi n°2020-624 du 14 août 2020 modifiée par la loi n°2024-351 du 6 juin 2024 (Code de l'urbanisme et du domaine foncier urbain), qui a abrogé l'ordonnance n°2013-481 du 2 juillet 2013 sous l'empire de laquelle la plupart de ces lettres ont été régularisées. Conservation définitive : titre d'origine d'une chaîne de droits dont le contentieux n'est pas prescrit.",
+      "dossier": "CLI-SETU",
+      "plan": "4.1",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Superficie (m²)",
+        "Structure productrice d'origine",
+        "Support et format",
+        "État de conservation du support",
+        "Nature de l'exemplaire",
+        "Date de signature",
+        "Nature du titre détenu",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Contrat de réservation de lot",
+      "code": "CONTRAT-RESA",
+      "description": "Acte contractuel par lequel un réservataire réserve un lot auprès de l'agence (ou, pour le fonds hérité, auprès de la SETU) et s'engage à en payer le prix. Pièce fondatrice de la créance ET du droit du réservataire : c'est elle que le détenteur, son notaire ou son ayant droit produira dix, vingt ou quarante ans plus tard pour obtenir l'attestation de fin de paiement puis la consolidation de son titre.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Loi n°2020-624 du 14 août 2020 instituant Code de l'urbanisme et du domaine foncier urbain, modifiée par la loi n°2024-351 du 6 juin 2024 (cadre d'acquisition de la propriété des terrains urbains ; ce Code abroge l'ordonnance n°2013-481 du 2 juillet 2013). Conservation définitive fondée sur la valeur probatoire de la pièce dans la chaîne de droits, non sur une obligation de conservation à la charge de l'aménageur.",
+      "dossier": "CLI-AGEF",
+      "plan": "4.1",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Superficie (m²)",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Date de signature",
+        "Statut",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Arrêté de concession provisoire (ACP)",
+      "code": "ACP",
+      "description": "Acte de concession provisoire antérieur à la réforme domaniale de 2013, produit à l'appui d'une demande de concession définitive et exposé à la procédure de déchéance en cas de non-mise en valeur.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Loi n°2020-624 du 14 août 2020 modifiée (régime d'acquisition de la propriété des terrains urbains). Conservation définitive au titre de la valeur probatoire du titre d'origine.",
+      "dossier": "CLI-SETU",
+      "plan": "4.1",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Signataire",
+        "Qualité du signataire",
+        "Date de signature",
+        "Nature de l'exemplaire",
+        "Structure productrice d'origine",
+        "Nature du titre détenu",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Arrêté de concession définitive (ACD)",
+      "code": "ACD",
+      "description": "Acte administratif qui transfère la propriété d'une parcelle urbaine du domaine privé de l'État au bénéficiaire et qui est obligatoirement publié au Livre foncier. L'agence en conserve la copie retirée au Guichet Unique, enregistrée par la Direction des Affaires Juridiques et du Contentieux et numérisée par le service chargé de la numérisation avant remise de l'original au titulaire.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Loi n°2020-624 du 14 août 2020 instituant Code de l'urbanisme et du domaine foncier urbain, modifiée par la loi n°2024-351 du 6 juin 2024 (l'ordonnance n°2013-481 du 2 juillet 2013 qui régissait antérieurement l'ACD est abrogée par ce Code). Conservation définitive : acte translatif de propriété publié au livre foncier.",
+      "dossier": "CLI-AGEF",
+      "plan": "3.1",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Numéro de titre foncier",
+        "Identifiant unique du foncier",
+        "Signataire",
+        "Qualité du signataire",
+        "Date de signature",
+        "Nature de l'exemplaire",
+        "Régime réglementaire applicable",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Attestation de fin de paiement",
+      "code": "ATT-FIN-PAIE",
+      "description": "Acte délivré par l'agence attestant que le prix du lot est intégralement soldé, sur demande d'un notaire, du détenteur de droit ou d'un ayant droit, et ouvrant la voie à la consolidation du titre. Type consolidé au niveau transverse (Commercialisation et Recouvrement, qui en proposaient deux DUA différentes).",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Loi n°2020-624 du 14 août 2020 modifiée (conditions d'acquisition de la propriété des terrains urbains, dont le paiement du prix). Conservation définitive au titre de la valeur probatoire : l'attestation est la pièce qui ferme le volet financier de la chaîne de droits.",
+      "dossier": "CLI-SETU",
+      "plan": "4.2",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Identifiant du compte réservataire",
+        "Structure productrice d'origine",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Fiche de compte réservataire",
+      "code": "FICHE-CPT-RES",
+      "description": "Relevé individuel du compte d'un réservataire : prix de cession, versements encaissés, pénalités, solde dû à la date d'édition. PIÈCE PIVOT du dossier, rééditée à chaque évolution ; c'est la seule pièce qui porte l'état courant de la créance (métadonnées « Statut » et « Qualification comptable de la créance »), afin que les autres pièces du dossier ne figent pas un état périmé.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Valeur probante permanente : la fiche de compte est la reconstitution opposable de l'historique des versements, condition de délivrance de l'attestation de fin de paiement et pièce de défense de l'agence en cas de contestation de solde. Durée assumée dans le tableau de gestion, à valider ; AUDCIF art. 24 (vérifié) pour le seul volet comptable.",
+      "dossier": "CLI-REC",
+      "plan": "4.2",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Identifiant du compte réservataire",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Statut",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "État des créances sur réservataires",
+      "code": "ETAT-CREANCES",
+      "description": "État périodique AGRÉGÉ par opération et par tranche d'antériorité de solde, SANS ventilation nominative : c'est le tableau de pilotage du recouvrement et de l'arrêté des comptes. Le détail nominatif relève de la balance âgée, classée un rang de confidentialité au-dessus. RÈGLE DE TRI ÉCRITE : conserver l'état arrêté au 31 décembre annexé aux états financiers ; éliminer les états mensuels après certification.",
+      "confidentialite": "Interne",
+      "duaAnnees": 11,
+      "conformiteAnnees": 11,
+      "sortFinal": "Tri",
+      "modeDestruction": "Broyage",
+      "baseLegale": "AUDCIF art. 24 (dix ans, vérifié), plus une année de marge fiscale. Le caractère non nominatif de l'état est ce qui justifie le rang « Interne » et non « Confidentiel » : il est la seule pièce du domaine réellement communicable au-delà du cercle des gestionnaires de comptes.",
+      "dossier": "CLI-REC",
+      "plan": "4.3",
+      "champs": [
+        "Opération d'aménagement",
+        "Exercice",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Mise en demeure",
+      "code": "MISE-DEMEURE",
+      "description": "Acte sommant le réservataire défaillant de régler son solde dans un délai imparti, sous peine de poursuites. Type consolidé au niveau transverse (Commercialisation, Recouvrement, Contentieux). RÈGLE DE TRI ÉCRITE : conservation intégrale, avec sa preuve de notification, tant que la créance n'est pas éteinte ; élimination après extinction constatée et délivrance de l'attestation de fin de paiement.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Tri",
+      "modeDestruction": "Broyage",
+      "baseLegale": "AUDCG art. 16 (vérifié) : la mise en demeure interrompt la prescription quinquennale et sa conservation conditionne la recevabilité de l'action — motif de conservation LONGUE, non de DUA courte. AUDCIF art. 24 (vérifié) pour le versement au dossier justificatif.",
+      "dossier": "CLI-REC",
+      "plan": "4.3",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Identifiant du compte réservataire",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Date d'échéance",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Plan d'apurement de créance",
+      "code": "PLAN-APUREMENT",
+      "description": "Nouvel échéancier accordé à un réservataire défaillant pour apurer progressivement son arriéré, après relance, mise en demeure ou sommation. Conservé y compris une fois soldé : c'est la preuve de l'extinction régulière de la créance.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "AUDCG art. 16 (vérifié) pour l'effet interruptif attaché à la reconnaissance de dette qu'il emporte ; AUDCIF art. 24 (vérifié) pour le volet comptable. Conservation définitive assumée : le plan soldé est la pièce qui éteint le différend et ouvre l'attestation de fin de paiement.",
+      "dossier": "CLI-REC",
+      "plan": "4.3",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Identifiant du compte réservataire",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Date d'échéance",
+        "Statut",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Dossier des ouvrages exécutés (DOE) et plans de recolement",
+      "code": "VRD-DOE",
+      "description": "Plans de recolement et notices techniques des réseaux réellement exécutés — voirie, drainage, assainissement, adduction d'eau, électrification — remis à la réception pour toute intervention ultérieure sur les ouvrages.",
+      "confidentialite": "Interne",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Aucune obligation ivoirienne identifiée : ni le Code de l'urbanisme, ni le décret n°2021-784, ni le Code des marchés publics ne prévoient de dossier des ouvrages exécutés. Les analogies avec le décret foncier du 26 juillet 1932 (art. 13 et art. 121) invoquées par la proposition initiale sont RETIRÉES : un dossier d'ouvrages exécutés n'est pas un plan d'immeuble annexé à un titre foncier, et l'AGEF n'est pas la Conservation de la propriété foncière. La conservation permanente se justifie techniquement : durée de vie des réseaux enterrés et obligation de les localiser avant tout terrassement ultérieur. DUA RAMENÉE DE 30 À 5 ANS : une durée d'utilité administrative de trente ans est un contresens — elle mesure l'utilité au service producteur avant versement ; la permanence est portée par le SORT FINAL.",
+      "dossier": "OPE-VRD",
+      "plan": "2.3",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Numéro de marché",
+        "Support et format",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Procès-verbal de levée des réserves",
+      "code": "VRD-PV-LEVEE",
+      "description": "Procès-verbal constatant contradictoirement l'exécution des travaux de reprise et la levée des réserves consignées à la réception provisoire.",
+      "confidentialite": "Interne",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Type AJOUTÉ : la levée des réserves était annoncée dans le contenu du dossier « Réceptions et levée des réserves » sans type, alors qu'un booléen « Réserves levées » prétendait en porter l'information. Une information probatoire se porte par une pièce, pas par une case à cocher. Conditionne la réception définitive, la restitution des garanties et la rétrocession de l'ouvrage.",
+      "dossier": "OPE-VRD",
+      "plan": "2.4",
+      "champs": [
+        "Opération d'aménagement",
+        "Numéro de marché",
+        "Date de signature",
+        "Statut",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Procès-verbal de remise des ouvrages au concessionnaire ou à la collectivité",
+      "code": "VRD-PV-RETRO",
+      "description": "Procès-verbal de remise contradictoire des ouvrages de viabilisation à l'entité qui en assurera l'exploitation : concessionnaire de réseau, établissement public ou collectivité territoriale.",
+      "confidentialite": "Interne",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Aucun texte ivoirien identifié décrivant la remise d'ouvrages de viabilisation à un concessionnaire : pratique métier, à confirmer auprès de l'AGEF. Conservation définitive : le procès-verbal marque le transfert de la charge d'exploitation et d'entretien, et détermine qui répond d'un sinistre sur le réseau.",
+      "dossier": "OPE-VRD",
+      "plan": "2.4",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Organisme externe concerné",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Fiche de qualification de litige foncier",
+      "code": "CTX-QUALIF",
+      "description": "Fiche établie par la direction juridique avec le service technique producteur, qualifiant le litige (double attribution, superposition d'emprises, empiètement, occupation sans titre, défaut de mise en valeur) et récapitulant les titres en concours avec leurs dates d'inscription au Livre foncier. La nature du litige est portée par la métadonnée « Nature du litige », pas par le libellé du type.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Versement aux archives",
+      "modeDestruction": "Broyage",
+      "baseLegale": "Pièce interne de qualification, sans texte l'instituant. Durée de conservation : pratique métier, à valider par le service juridique et le service d'archives ; alignée sur celle de l'affaire.",
+      "dossier": "CTX-PRE",
+      "plan": "5.1",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Nature du titre détenu",
+        "Statut",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Décision de justice",
+      "code": "CTX-DECJUST",
+      "description": "Arrêt, jugement ou ordonnance rendu par une juridiction dans une affaire intéressant l'AGEF, avec sa formule exécutoire le cas échéant. RÈGLE DE PARTAGE avec le type générique « Décision » déjà semé : « Décision » désigne un acte de décision interne de l'agence ; « Décision de justice » désigne exclusivement un acte juridictionnel émanant d'une juridiction.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Loi n° 2020-624 du 14 août 2020 instituant Code de l'Urbanisme et du Domaine Foncier Urbain, modifiée par la loi n° 2024-351 du 6 juin 2024, dont l'article 222 (radiation conséquente des mentions du Livre foncier) figure parmi les articles modifiés (VÉRIFIÉ pour numéro, date et liste d'articles modifiés). Décret du 26 juillet 1932 portant réorganisation du régime de la propriété foncière, cité sans numéro d'article. Conservation sans terme : la décision fixe l'état des droits sur un lot.",
+      "dossier": "CTX-INS",
+      "plan": "5.2",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Juridiction saisie",
+        "Date de signature",
+        "Montant",
+        "Devise",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Protocole d'accord transactionnel",
+      "code": "CTX-PROTO",
+      "description": "Protocole signé mettant fin à un litige — réattribution d'un lot, remboursement, indemnisation d'impenses, désistement d'instance — avec ses annexes financières, les coordonnées de règlement du bénéficiaire et les pièces d'identité des signataires. Type consolidé au niveau transverse : il remplace les propositions concurrentes des domaines Recouvrement et Commercialisation.",
+      "confidentialite": "Secret",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Le protocole éteint définitivement un droit revendiqué sur un lot et emporte désistement : sa conservation sans terme se justifie par cet effet extinctif, opposable aussi longtemps que subsiste le titre concerné. Les justificatifs de règlement qui y sont annexés relèvent par ailleurs des dix ans de l'article 24 de l'Acte uniforme OHADA relatif au droit comptable et à l'information financière. AUCUNE force authentique n'est revendiquée : la transaction est un contrat sous seing privé.",
+      "dossier": "CTX-INS",
+      "plan": "5.2",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Rapport d'expertise judiciaire",
+      "code": "CTX-EXPJ",
+      "description": "Rapport du géomètre-expert ou du collège d'experts commis par le juge, établissant les limites, la superposition des emprises ou la valeur des impenses, avec ses plans et annexes.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Loi n° 2020-624 du 14 août 2020 instituant Code de l'Urbanisme et du Domaine Foncier Urbain, modifiée par la loi n° 2024-351 du 6 juin 2024 (VÉRIFIÉ : numéros, dates et intitulés ; le Code de la Construction et de l'Habitat est un texte distinct, loi n° 2019-576 du 26 juin 2019). Les numéros d'articles avancés dans la proposition initiale ne sont PAS repris, faute de vérification sur le texte consolidé. Conservation sans terme : le rapport fixe des limites opposables, dont la remise en cause n'est enfermée dans aucun délai.",
+      "dossier": "CTX-INS",
+      "plan": "5.2",
+      "champs": [
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Juridiction saisie",
+        "Signataire",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Convention de prestation d'ingénierie foncière",
+      "code": "ING-CONV-PREST",
+      "description": "Contrat signé entre l'AGEF et le tiers : objet, livrables attendus, obligations des parties, prix, échéancier de règlement, durée, responsabilité et résiliation. Acte fondateur de la mission, auquel se rattachent toutes les autres pièces. Lorsque le cocontractant est un actionnaire, un administrateur ou un dirigeant, la convention relève en outre du rapport spécial des commissaires aux comptes (loi n°2020-886 du 21 octobre 2020, art. 33).",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "AUDCIF OHADA, art. 24 (pièces justificatives conservées dix ans) ; prescription quinquennale de l'art. 16 de l'AUDCG comme plancher. La conservation définitive au-delà de la DUA est une décision interne de l'AGEF : aucun texte ivoirien ne fixe de sort final, la Côte d'Ivoire n'ayant pas de loi sur les archives et le décret n°76-314 ne comportant aucun tableau de gestion.",
+      "dossier": "ING-MIS",
+      "plan": "11.1",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Date de signature",
+        "Date d'échéance",
+        "Statut",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Quitus de fin de mission d'ingénierie",
+      "code": "ING-QUITUS-MISSION",
+      "description": "Document signé du client constatant que la mission est achevée, les livrables reçus et les comptes soldés, et libérant l'AGEF de ses obligations au titre de la convention. Pièce de clôture du dossier de mission, également utilisée comme référence commerciale pour les consultations ultérieures.",
+      "confidentialite": "Interne",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Pratique métier. Preuve de la libération des obligations de l'AGEF, conservée au-delà de la prescription quinquennale des obligations commerciales (AUDCG, art. 16) et de la durée décennale des pièces justificatives (AUDCIF, art. 24). Aucune obligation ivoirienne de conservation définitive : décision interne assumée.",
+      "dossier": "ING-CLO",
+      "plan": "11.2",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Date de signature",
+        "Statut",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Statuts et actes modificatifs de la société",
+      "code": "STATUTS",
+      "description": "Acte constitutif notarié de la société anonyme et ses avenants successifs (augmentation de capital, changement de siège, modification de l’objet social), avec les immatriculations modificatives au RCCM et les annonces légales correspondantes.",
+      "confidentialite": "Public",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Décret n°99-186 de février 1999 portant participation de l’État au capital de l’AGEF (attesté). Objet social : loi n°97-524 du 4 septembre 1997 et décret n°97-620 du 22 octobre 1997 sur la concession d’aménagement foncier (attestés). AUCUN texte ivoirien ne fixe de durée de conservation pour les actes sociaux : la conformité de 30 ans est le plafond conventionnel du dépôt (seed-life-cycles.ts), le sens réel étant porté par le sort final. Public : les statuts sont déposés au greffe et publiés par annonce légale — la confidentialité proposée « Interne » contredisait la publicité légale de l’acte.",
+      "dossier": "DIR-ACTE",
+      "plan": "8.1",
+      "champs": [
+        "Objet",
+        "Date de signature",
+        "Signataire",
+        "Nature de l'exemplaire",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Procès-verbal de séance du Conseil d’administration",
+      "code": "PV-CA",
+      "description": "Procès-verbal des délibérations du Conseil d’administration, communiqué aux administrateurs et aux ministres de tutelle. Spécialisation assumée du type générique « Procès-verbal » (voir PV-AG).",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Loi n°2020-886 du 21 octobre 2020 et décret n°2021-29 du 20 janvier 2021 (régime confirmé par la fiche AGEF de la DGPE), sans durée fixée. Conformité au plafond conventionnel de 30 ans du dépôt. Confidentiel : délibérations non publiques, souvent nominatives (nominations, rémunérations) ou porteuses d’un secret d’affaires — au sens de l’usage du rang 20 fixé par la synthèse transverse.",
+      "dossier": "DIR-INST",
+      "plan": "8.2",
+      "champs": [
+        "Objet",
+        "Date de réunion",
+        "Signataire",
+        "Exercice",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "États financiers annuels",
+      "code": "EFS",
+      "description": "Liasse annuelle au référentiel SYSCOHADA révisé (bilan, compte de résultat, tableau des flux de trésorerie, notes annexes), arrêtée par le Conseil d’administration et approuvée par la tutelle financière. LIBELLÉ CONSOLIDÉ imposé par la synthèse transverse : il absorbe EFS (Gouvernance), FIN-ETATS-FIN (Finance) et le type générique « État financier » déjà semé — ce dernier doit être DÉSACTIVÉ (is_active=false) avant tout chargement, faute de quoi deux cycles de vie contradictoires cohabiteront.",
+      "confidentialite": "Public",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Article 24 de l’AUDCIF (vérifié) : dix ans. Public : la version CERTIFIÉE ET PUBLIÉE des comptes relève de la publicité légale — la classer Confidentiel revenait à restreindre l’accès d’un document dont le texte invoqué impose la publication. Les versions de travail antérieures à l’arrêté du Conseil ne s’archivent pas.",
+      "dossier": "DIR-CPT",
+      "plan": "7.1",
+      "champs": [
+        "Exercice",
+        "Montant",
+        "Devise",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Rapport général du commissaire aux comptes",
+      "code": "RAP-CAC-GEN",
+      "description": "Rapport de certification des comptes annuels présenté à l’assemblée générale. Type ÉCLATÉ de l’ancien « Rapports du commissaire aux comptes », dont le libellé au pluriel trahissait l’agrégation de deux pièces de nature et de confidentialité différentes.",
+      "confidentialite": "Interne",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Article 24 de l’AUDCIF (vérifié) : pièce adossée aux comptes annuels, dix ans.",
+      "dossier": "DIR-CPT",
+      "plan": "8.3",
+      "champs": [
+        "Exercice",
+        "Signataire",
+        "Date de signature",
+        "Organisme externe concerné",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Livres comptables obligatoires",
+      "code": "FIN-LIV",
+      "description": "Livre-journal, journaux auxiliaires (achats, ventes, banque, caisse, opérations diverses, à-nouveaux), grand-livre général, balances périodiques et livre d'inventaire. Un seul type pour les quatre livres, la ventilation étant portée par la métadonnée « Journal comptable ». Libellé volontairement court : il sert de valeur de liste à l'indexation et d'étiquette sur l'intercalaire QR.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 11,
+      "conformiteAnnees": 11,
+      "sortFinal": "Versement aux archives",
+      "modeDestruction": "Broyage",
+      "baseLegale": "OHADA, Acte uniforme relatif au droit comptable et à l'information financière (AUDCIF), art. 24 : les livres comptables ou documents qui en tiennent lieu et les pièces justificatives sont conservés dix ans — vérifié en ligne le 11 septembre 2026 (ohada.org, biblio.ohada.org). Corroboré par le Livre de Procédures Fiscales ivoirien, art. 33 (conservation dix ans des documents sur lesquels s'exerce le droit de communication) — vérifié le 11 septembre 2026 via le Portail des agrégateurs fiscaux ; édition consolidée à joindre au dossier de cadrage.",
+      "dossier": "FIN-COMPTA",
+      "plan": "7.1",
+      "champs": [
+        "Exercice",
+        "Support et format",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Déclaration Statistique et Fiscale (DSF)",
+      "code": "FIN-DSF",
+      "description": "Déclaration annuelle de résultat et liasse fiscale déposée auprès du centre des impôts de rattachement, avec les tableaux SYSCOHADA et les tableaux supplémentaires, et l'accusé de dépôt électronique.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 11,
+      "conformiteAnnees": 11,
+      "sortFinal": "Versement aux archives",
+      "modeDestruction": "Broyage",
+      "baseLegale": "Livre de Procédures Fiscales ivoirien, art. 33 (conservation dix ans des documents sur lesquels s'exerce le droit de communication) — vérifié le 11 septembre 2026 ; OHADA AUDCIF, art. 24. La liasse annuelle agrège l'ensemble des déclarations périodiques : son rang de confidentialité ne peut pas être inférieur au leur.",
+      "dossier": "FIN-FISC",
+      "plan": "7.2",
+      "champs": [
+        "Exercice",
+        "Organisme externe concerné",
+        "Montant",
+        "Devise",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Ordre de recettes des droits domaniaux",
+      "code": "FIN-ORD",
+      "description": "Titre de perception délivré au dépôt du dossier, représentant la taxe domaniale ou les frais de dépôt dus préalablement à la délivrance de l'acte. Ce n'est pas une preuve de paiement : la quittance de versement l'atteste séparément.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 11,
+      "conformiteAnnees": 11,
+      "sortFinal": "Versement aux archives",
+      "modeDestruction": "Broyage",
+      "baseLegale": "OHADA AUDCIF, art. 24 (pièce de recette). La conservation longue est motivée par ce que la pièce EST : un maillon de la chaîne de paiement d'un dossier de cession, à conserver aussi longtemps que le dossier du lot — arbitrage à confirmer avec le domaine foncier. La justification antérieure par le caractère « définitif et inattaquable » du titre foncier est RETIRÉE : un arrêté de concession définitive n'est pas un titre foncier, et l'article cité n'a pas pu être vérifié.",
+      "dossier": "FIN-DOM",
+      "plan": "7.3",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Organisme externe concerné",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Facture",
+      "code": "FIN-FACT-F",
+      "description": "TYPE DÉJÀ EN BASE — RÉUTILISER, ne pas recréer. Arbitrage : le type générique semé « Facture » porte la facture fournisseur et prestataire (géomètre-expert, urbaniste, bureau d'études, entreprise de travaux). Il n'englobe PAS le bon de commande ni le procès-verbal de service fait, qui sont des types autonomes déjà semés. La facture adressée au client fait l'objet d'un type distinct pour des raisons de confidentialité et de sort final.",
+      "confidentialite": "Interne",
+      "duaAnnees": 11,
+      "conformiteAnnees": 11,
+      "sortFinal": "Destruction",
+      "modeDestruction": "Broyage",
+      "baseLegale": "DUA alignée sur la durée de conformité : le sort final étant « Destruction », une DUA plus courte proposerait à l'épuration une pièce que la loi oblige encore à conserver. OHADA AUDCIF, art. 24 ; Livre de Procédures Fiscales ivoirien, art. 33 (dix ans à compter de l'exercice de comptabilisation).",
+      "dossier": "FIN-COMPTA",
+      "plan": "7.1",
+      "champs": [
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Exercice",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Dossier d'appel d'offres (DAO)",
+      "code": "DAO",
+      "description": "Liasse de consultation authentifiée : instructions aux soumissionnaires, spécifications techniques des travaux de VRD, cadre du bordereau des prix, critères d'attribution et exigences de cautionnement.",
+      "confidentialite": "Interne",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Destruction",
+      "modeDestruction": "Broyage",
+      "baseLegale": "DUA alignée sur la durée de conformité : le sort final étant « Destruction », une DUA plus courte proposerait à l'épuration une pièce que la loi oblige encore à conserver. Pièce de la procédure de passation prévue par le Code des marchés publics (ordonnance n° 2019-679, vérifiée). Aucune durée d'archivage fixée par ce texte. DUA calée sur la prescription quinquennale (AUDCG art. 16, vérifié) ; conformité de 10 ans lorsque la consultation a abouti à un marché (AUDCIF art. 24, vérifié). Les dossiers types DTAO de 2013 ne sont pas invoqués : pris sous l'empire du code de 2009, leur applicabilité après 2019 n'est pas établie.",
+      "dossier": "MP-PASS",
+      "plan": "6.1",
+      "champs": [
+        "Numéro de marché",
+        "Objet",
+        "Exercice",
+        "Source de financement",
+        "Montant",
+        "Devise",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Procès-verbal de jugement des offres (COJO)",
+      "code": "PV-JUG",
+      "description": "Procès-verbal signé en séance par les membres à voix délibérative : attributaire, prix, délais et variantes retenus, soumissionnaires non retenus et motifs de rejet.",
+      "confidentialite": "Interne",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Acte collégial de la commission d'ouverture des plis et de jugement des offres (ordonnance n° 2019-679). Conservation définitive retenue en doctrine interne : pièce maîtresse de tout recours en régulation ou contentieux d'attribution. Doctrine interne, non imposée par un texte ivoirien : à valider en atelier de cadrage.",
+      "dossier": "MP-PASS",
+      "plan": "6.1",
+      "champs": [
+        "Numéro de marché",
+        "Objet",
+        "Date de réunion",
+        "Statut",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Marché public signé et approuvé",
+      "code": "MARCHE",
+      "description": "Contrat écrit conclu à titre onéreux par l'agence pour ses besoins en travaux, fournitures, services courants ou prestations intellectuelles, revêtu des signatures et du visa d'approbation. La nature de la prestation est portée en métadonnée, non dupliquée en types distincts.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 13,
+      "conformiteAnnees": 13,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Pièce justificative comptable conservée 10 ans (AUDCIF art. 24, vérifié) ; conformité portée à 13 ans pour couvrir, depuis la date de signature, la durée moyenne d'exécution et de garantie d'un marché de travaux d'aménagement — le Code des marchés publics ne fixant aucune durée d'archivage et le moteur ne sachant partir que de la date du document. Conservation définitive en doctrine interne pour la mémoire contractuelle de l'agence.",
+      "dossier": "MP-EXEC",
+      "plan": "6.2",
+      "champs": [
+        "Numéro de marché",
+        "Objet",
+        "Tiers concerné (nom ou raison sociale)",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Source de financement",
+        "Date de signature",
+        "Date d'échéance",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Contrat de travail",
+      "code": "RH-CONTRAT",
+      "description": "Contrat écrit liant l'AGEF à un agent et ses avenants successifs : catégorie professionnelle, rémunération, lieu d'affectation, durée de l'engagement. REPRISE DU TYPE GÉNÉRIQUE DÉJÀ ACTIF EN BASE sous ce libellé exact : on amende son paramétrage, on ne crée pas un second type concurrent.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Loi n°2015-532 du 20 juillet 2015 portant Code du travail (le CDI est la forme normale et générale de la relation de travail). Conservation définitive retenue au titre de la reconstitution de carrière et de la liquidation des droits sociaux — PRATIQUE MÉTIER, non imposée par un texte. La DUA court depuis document_date (date de signature de l'acte), seule date lue par le moteur : elle ne court PAS depuis la fin de la relation de travail, que le moteur ne connaît pas.",
+      "dossier": "RH-PERS",
+      "plan": "9.1",
+      "champs": [
+        "Tiers concerné (nom ou raison sociale)",
+        "Date de signature",
+        "Date d'échéance",
+        "Signataire",
+        "Statut",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Bulletin de paie",
+      "code": "RH-BULLETIN",
+      "description": "Double du bulletin individuel de paie remis à l'agent. REPRISE DU TYPE GÉNÉRIQUE DÉJÀ ACTIF EN BASE. Pièce INDIVIDUELLE, une par agent et par mois : l'état collectif relève du type « Journal de paie mensuel ». Rupture de régime à signaler en démonstration : les bulletins antérieurs à 2024 portent les anciens impôts sur salaires, ceux de 2024 et après portent la retenue CNPS, la part salariale de la couverture maladie universelle et l'ITS unique.",
+      "confidentialite": "Secret",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Code du travail, article 32.5 (les pièces de paiement du salaire sont conservées dans les mêmes conditions que les pièces comptables) — À CONFIRMER, article non relu cette session. AUDCIF (OHADA) article 24, conservation dix ans des livres et pièces justificatives — À CONFIRMER sur le texte. Ordonnance n°2023-719 du 13 septembre 2023 pour la structure du bulletin depuis le 1er janvier 2024 — RÉFÉRENCE VÉRIFIÉE ; la seconde ordonnance citée précédemment (n°2023-718) est retirée faute de vérification. Conservation définitive au titre de la reconstitution de carrière — PRATIQUE MÉTIER. État de rémunération nominatif : classé Secret par la règle transverse.",
+      "dossier": "RH-PAIE",
+      "plan": "9.2",
+      "champs": [
+        "Tiers concerné (nom ou raison sociale)",
+        "Exercice",
+        "Montant",
+        "Devise",
+        "Nature du montant",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Déclaration individuelle des salaires annuels (DISA) et déclaration annuelle des salaires et des cotisations",
+      "code": "RH-DISA",
+      "description": "Liasse annuelle déposée à la CNPS : déclaration individuelle des salaires annuels, transmise sur support électronique (e-DISA), accompagnée de la déclaration annuelle des salaires et des cotisations signée et cachetée. Les deux imprimés sont publiés par la CNPS et déposés ensemble : un seul type, un seul cycle de vie. Le sigle « DASC », employé par des sources secondaires mais non repris tel quel sur l'imprimé, a été retiré du libellé.",
+      "confidentialite": "Secret",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Imprimés publiés par la CNPS (cnps.ci) — DOCUMENTS VÉRIFIÉS. Dépôt au plus tard le 31 mars de l'année suivant l'exercice clos ; obligation rattachée à l'article 26 de la loi n°99-477 du 2 août 1999 portant modification du Code de prévoyance sociale par des sources secondaires concordantes — numéro d'article À CONFIRMER au Journal officiel. Conservation définitive au titre du suivi des carrières et de l'ouverture des droits — PRATIQUE MÉTIER. État de rémunération nominatif : classé Secret.",
+      "dossier": "RH-SOC",
+      "plan": "9.3",
+      "champs": [
+        "Exercice",
+        "Organisme externe concerné",
+        "Montant",
+        "Devise",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Réclamation écrite d'usager",
+      "code": "RECL-COU",
+      "description": "Courrier, courriel ou requête déposée par un souscripteur, un acquéreur, un ayant droit, un détenteur de droits coutumiers, un riverain ou leur conseil, contestant un acte, un délai, un montant, une limite de parcelle ou une prestation de l'AGEF. Inclut la mise en demeure adressée par un avocat et la réclamation transmise par une autorité de tutelle. Pièce d'entrée principale du domaine.",
+      "confidentialite": "Confidentiel",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Versement aux archives",
+      "modeDestruction": "Broyage",
+      "baseLegale": "Décret n°76-314 du 4 juin 1976 portant règlement général des Archives nationales, art. 1er d) : les documents produits par les sociétés contrôlées par l'État sont des archives publiques. Durées : pratique métier — usage courant de 5 ans, conservation portée à 10 ans pour couvrir la prescription quinquennale de l'AUDCG art. 16 à compter du dernier acte.",
+      "dossier": "CTX-REL",
+      "plan": "5.3",
+      "champs": [
+        "Numéro de dossier",
+        "Tiers concerné (nom ou raison sociale)",
+        "Qualité du tiers",
+        "Opération d'aménagement",
+        "Commune",
+        "Îlot",
+        "Lot de terrain",
+        "Objet",
+        "Statut",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Titre de propriété d'un immeuble de l'agence",
+      "code": "PAT-TITRE",
+      "description": "Acte établissant la propriété de l'AGEF sur un immeuble qu'elle occupe ou exploite pour son propre compte : arrêté de concession définitive au nom de l'AGEF, titre foncier, acte notarié d'acquisition, certificat de mutation de propriété foncière, et l'acte de cession lorsque l'agence se dessaisit de l'immeuble. FRONTIÈRE À TENIR AVEC LE FONCIER COMMERCIALISÉ, qui est la raison d'être de ce domaine : les ACD et titres instruits POUR DES RÉSERVATAIRES relèvent du domaine Ingénierie foncière et titres et se rangent sous la racine CLI ; ici l'AGEF est propriétaire occupante, pas aménageur-vendeur. Le siège de Cocody II Plateaux 7e tranche, rue L169, est situé dans un périmètre que l'agence a elle-même aménagé : c'est précisément le cas où la confusion se produit, et le critère de tri est le titulaire du droit, jamais la localisation.",
+      "confidentialite": "Interne",
+      "duaAnnees": 30,
+      "conformiteAnnees": 30,
+      "sortFinal": "Conservation définitive",
+      "modeDestruction": null,
+      "baseLegale": "Aucune durée de conservation n'est fixée par le droit ivoirien : le décret n°76-314 du 4 juin 1976 portant règlement général des Archives nationales — seul texte archivistique ivoirien, la « loi 94-427 » du seed n'existant pas — range bien les documents de l'AGEF parmi les archives publiques (art. 1er, d : sociétés contrôlées par l'État) mais ne fixe ni DUA ni sort final. Le fondement du sort final est la nature de l'acte : le titre foncier est « définitif et inattaquable » (décret du 26 juillet 1932, art. 121, texte vérifié) et l'ACD est publié au Livre foncier (décret n°2021-785 du 8 décembre 2021, art. 7). La conformité de 30 ans est le plafond conventionnel du dépôt, pas une obligation.",
+      "dossier": "DIR-PAT",
+      "plan": "10.1",
+      "champs": [
+        "Numéro de titre foncier",
+        "Commune",
+        "Superficie (m²)",
+        "Contenance portée au titre",
+        "Nature de l'exemplaire",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    },
+    {
+      "label": "Bordereau de lot de numérisation et fiche de contrôle qualité",
+      "code": "SI-NUMBORD",
+      "description": "Bordereau d'un lot numérisé par le Service Informatique : provenance et contenu de la liasse, nombre de pièces et de pages, opérateur, matériel, date de capture, paramètres appliqués, anomalies et rejets, résultat du contrôle qualité, et décharge de restitution des originaux au service versant. C'est le document qui relie une image à la liasse papier dont elle provient et la seule preuve que le protocole a été suivi sur ce lot précis.",
+      "confidentialite": "Interne",
+      "duaAnnees": 10,
+      "conformiteAnnees": 10,
+      "sortFinal": "Versement aux archives",
+      "modeDestruction": "Broyage",
+      "baseLegale": "Corollaire opératoire de l'article 4 du décret n° 2016-851 : le protocole établit la méthode, le bordereau prouve qu'elle a été « régulièrement suivie » pour un lot donné. Le circuit de numérisation est attesté par l'AGEF elle-même dans sa procédure ACD publiée : « L'acte est enregistré par la DAJC dans la base de données et une copie est transmise au Service Informatique (SI) pour numérisation. » Aucune durée n'est fixée : DUA de 5 ans alignée sur la prescription quinquennale (AUDCG art. 16), conformité de 10 ans sur le plancher de l'article 40 de la loi n° 2013-546, versement au service d'archives interne parce que la série des bordereaux constitue l'inventaire de la campagne. POINT DE DROIT À NE PAS FRANCHIR : aucun texte ivoirien lu — loi n° 2013-546 (52 articles), décret n° 2014-106 (13 articles), décret n° 2016-851 (35 articles) — n'autorise la destruction de l'original papier après numérisation. La métadonnée « Original papier conservé après numérisation » doit rester à vrai par défaut ; le sort de l'original se décide dans le domaine qui porte l'acte, et la destruction non autorisée d'archives publiques est pénalement sanctionnée (décret n° 76-314 du 4 juin 1976, titre VI).",
+      "dossier": "ARC-NUM",
+      "plan": "10.2",
+      "champs": [
+        "Opération d'aménagement",
+        "Exercice",
+        "Support et format",
+        "État de conservation du support",
+        "Date de signature",
+        "Numéro de référence",
+        "Direction ou service producteur",
+        "Observations"
+      ]
+    }
+  ],
+  "motifsPret": [
+    "Consultation sur place",
+    "Instruction d'un dossier de titre (ACD, mutation, duplicata)",
+    "Dépôt ou retrait au Guichet Unique du Foncier",
+    "Opération technique sur site (bornage, implantation, réception, constat)",
+    "Expertise judiciaire ou expertise technique",
+    "Production en justice",
+    "Recouvrement d'une créance sur réservataire",
+    "Réponse à une réclamation d'un usager ou d'un agent",
+    "Contrôle externe (Cour des comptes, IGE, DGI, CNPS, ARCOP)",
+    "Audit interne et commissariat aux comptes",
+    "Préparation d'une instance (Conseil d'administration, AG, COJO)",
+    "Délivrance d'une copie certifiée ou d'une attestation à un tiers",
+    "Mainlevée ou restitution d'une garantie",
+    "Rétrocession d'ouvrages à un concessionnaire ou à une collectivité",
+    "Traitement d'archives (numérisation, récolement, reconditionnement)"
+  ],
+  "motifsSortie": [
+    "Versement au service d'archives",
+    "Transmission définitive à un organisme extérieur",
+    "Remise définitive de l'original au titulaire contre décharge",
+    "Rétrocession d'ouvrages à un concessionnaire ou à une collectivité",
+    "Clôture du dossier (affaire soldée, lot titré, marché soldé)",
+    "Reclassement ou fusion de dossiers",
+    "Élimination validée (procès-verbal d'élimination)",
+    "Perte ou destruction accidentelle constatée",
+    "Communication à une juridiction sans retour prévu"
+  ]
+}

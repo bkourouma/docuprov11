@@ -6,6 +6,7 @@ import { Open_Sans } from 'next/font/google';
 import { Providers } from './components/Providers';
 import { AuthShell } from './components/AuthShell';
 import './globals.css';
+import { CLIENT_BRAND } from './theme/client-brand';
 
 // Open Sans — famille unique Plus Admin (relook 002). Sous-ensemble latin
 // étendu pour les diacritiques français ; swap pour éviter le FOUT. Les
@@ -19,7 +20,9 @@ const openSans = Open_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'DocuPro',
+  // Onglet co-brandé quand l'instance est dédiée à une organisation : c'est le
+  // premier repère visible en vidéoprojection, avant même le contenu de la page.
+  title: CLIENT_BRAND ? `DocuPro — ${CLIENT_BRAND.shortName}` : 'DocuPro',
   description: "Génération d'intercalaires, acquisition par lot, recherche & export",
 };
 

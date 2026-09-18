@@ -9,7 +9,9 @@
     "JWT_EXPIRES_IN",
     "TESSERACT_LANG",
     "TESSERACT_DATA_PATH",
-    "PORT"
+    "PORT",
+    "API_INTERNAL_URL",
+    "NEXT_PUBLIC_API_URL"
   ],
   "tasks": {
     "build": {

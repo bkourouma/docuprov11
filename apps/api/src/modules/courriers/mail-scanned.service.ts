@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { DiskFileStore } from '@archivage/storage';
@@ -218,6 +218,11 @@ export class MailScannedDocumentsService {
           originalName: scan.fileName,
           fileExtension: ext,
           byteLength: BigInt(buffer.byteLength),
+          // Empreinte de référence posée dès la création (2026-09-15), comme à l'ingestion des
+          // archives : un courrier classé au coffre doit être protégé sans attendre qu'un agent
+          // pense à lancer un contrôle. Calculée sur le buffer écrit juste après sur le coffre.
+          hash: createHash('sha256').update(buffer).digest('hex'),
+          hashComputedAt: new Date(),
         },
       });
       return doc.documentId;

@@ -16,6 +16,7 @@
     "@archivage/mailer": "workspace:^",
     "@archivage/pdf": "workspace:*",
     "@archivage/qr": "workspace:*",
+    "@archivage/sealing": "workspace:*",
     "@archivage/storage": "workspace:*",
     "@archivage/types": "workspace:*",
     "@nestjs/common": "^11.0.0",

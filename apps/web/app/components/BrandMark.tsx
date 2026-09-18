@@ -2,6 +2,8 @@
 
 import type { CSSProperties } from 'react';
 
+import { CLIENT_BRAND } from '../theme/client-brand';
+
 const LOGO_SRC = '/DocuPro.png';
 const LOGO_RATIO = 200 / 50; // largeur / hauteur du lockup
 // Le pictogramme (pile de documents) occupe ~26 % de la largeur du lockup.
@@ -53,6 +55,56 @@ export function LogoIcon({ size = 32, style }: { size?: number; style?: CSSPrope
         alt=""
         style={{ height: size, width: 'auto', maxWidth: 'none', display: 'block' }}
       />
+    </span>
+  );
+}
+
+/**
+ * Logo de l'organisation cliente (co-branding). Rien n'est rendu quand l'instance
+ * est générique (`CLIENT_BRAND === null`).
+ *
+ * `onDark` pose le logo sur une pastille claire : les logos institutionnels sont
+ * presque toujours livrés en PNG opaque à fond blanc, illisibles sinon sur le
+ * panneau « Encre ». La pastille est volontairement blanche (et non un token de
+ * thème) : c'est le fond pour lequel le logo du client a été dessiné.
+ */
+export function ClientLogo({
+  height = 32,
+  onDark = false,
+  style,
+}: {
+  height?: number;
+  onDark?: boolean;
+  style?: CSSProperties;
+}) {
+  if (!CLIENT_BRAND) return null;
+
+  const img = (
+    <img
+      src={CLIENT_BRAND.logoSrc}
+      alt={CLIENT_BRAND.longName}
+      width={Math.round(height * CLIENT_BRAND.logoRatio)}
+      height={height}
+      style={{ height, width: 'auto', display: 'block' }}
+    />
+  );
+
+  if (!onDark || !CLIENT_BRAND.logoNeedsPlate) {
+    return <span style={{ display: 'inline-flex', ...style }}>{img}</span>;
+  }
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        background: '#fff',
+        borderRadius: 10,
+        padding: `${Math.round(height * 0.18)}px ${Math.round(height * 0.28)}px`,
+        ...style,
+      }}
+    >
+      {img}
     </span>
   );
 }

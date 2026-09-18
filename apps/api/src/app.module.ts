@@ -20,8 +20,10 @@ import { QueueModule } from './modules/queue/queue.module';
 import { ReferentialsModule } from './modules/referentials/referentials.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { UsersModule } from './modules/users/users.module';
+import { HealthController } from './health.controller';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,

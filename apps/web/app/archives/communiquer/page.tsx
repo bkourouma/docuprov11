@@ -125,8 +125,18 @@ export default function CommuniquerPage() {
     () => motives.map((m) => ({ value: m.lendingMotiveId, label: m.label })),
     [motives],
   );
+  /**
+   * Le serveur libelle un acteur « Nom — Groupe » (le groupe lève l'ambiguïté quand une même
+   * personne appartient à plusieurs groupes, cf. `MailsService.listActors`). Ici on n'affiche
+   * QUE le nom complet : la valeur transmise reste le `userGroupId`, le prêt vise donc toujours
+   * la même identité qu'avant.
+   */
   const actorOptions = useMemo(
-    () => actors.map((a) => ({ value: a.userGroupId, label: a.label })),
+    () =>
+      actors.map((a) => ({
+        value: a.userGroupId,
+        label: a.label.split(' — ')[0]?.trim() || a.label,
+      })),
     [actors],
   );
 
@@ -309,22 +319,10 @@ export default function CommuniquerPage() {
                 />
               </NewItemField>
 
-              {/* Un SEUL encart d'état : les deux Alertes empilées se répondaient à
-                    moitié (« N sélectionnés » sous « À compléter »). */}
-              {problems.length > 0 ? (
-                <Alert
-                  type="warning"
-                  showIcon
-                  message="À compléter"
-                  description={
-                    <ul style={{ margin: 0, paddingLeft: 18 }}>
-                      {problems.map((p) => (
-                        <li key={p}>{p}</li>
-                      ))}
-                    </ul>
-                  }
-                />
-              ) : (
+              {/* Un SEUL encart d'état, et seulement quand le formulaire est complet : la liste
+                    « À compléter » a été retirée à la demande de l'utilisateur. Ce qui manque reste
+                    signalé par les champs requis et par le bouton « Communiquer » désactivé. */}
+              {problems.length === 0 && (
                 <Alert
                   type="success"
                   showIcon

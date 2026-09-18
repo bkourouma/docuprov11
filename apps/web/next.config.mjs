@@ -7,12 +7,12 @@ const nextConfig = {
   transpilePackages: ['@archivage/ui', '@archivage/types'],
   eslint: { ignoreDuringBuilds: true },
   // Proxy même-origine : le navigateur appelle /api sur l'adresse par laquelle il est arrivé
-  // (LAN, Tailscale, …) et Next route en interne vers l'API locale sur le port 3001.
-  // → l'app est joignable depuis n'importe quelle IP sans rebuild, et seul le port 5000 doit être exposé.
+  // (LAN, Tailscale, Docker, …) et Next route en interne vers l'API.
+  // En local : 127.0.0.1:3001. En compose : http://docupro-demo-api:3001 (API_INTERNAL_URL).
+  // Next.js 15 sérialise les rewrites au `next build` : poser API_INTERNAL_URL dans l'image web.
   async rewrites() {
-    return [
-      { source: '/api/:path*', destination: 'http://127.0.0.1:3001/api/:path*' },
-    ];
+    const api = (process.env.API_INTERNAL_URL || 'http://127.0.0.1:3001').replace(/\/$/, '');
+    return [{ source: '/api/:path*', destination: `${api}/api/:path*` }];
   },
 };
 

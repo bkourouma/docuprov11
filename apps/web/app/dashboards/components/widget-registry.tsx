@@ -2,14 +2,10 @@
 
 import type { ReactNode } from 'react';
 import {
-  ZoneAnomalies,
+  ZoneDossier,
   ZoneEvolution,
   ZoneKpis,
-  ZoneLocalisation,
-  ZoneObjectif,
-  ZonePipeline,
   ZonePlan,
-  ZoneProgramme,
   ZoneType,
 } from './zones';
 import type { AnalyticsOverview } from '../lib/api';
@@ -33,14 +29,10 @@ type Rendu = (ctx: ContexteWidget) => ReactNode;
 
 const REGISTRE: Record<string, Rendu> = {
   kpis: (c) => <ZoneKpis {...c} />,
-  anomalies: (c) => <ZoneAnomalies {...c} />,
   type: (c) => <ZoneType {...c} />,
-  programme: (c) => <ZoneProgramme {...c} />,
-  localisation: (c) => <ZoneLocalisation {...c} />,
+  dossier: (c) => <ZoneDossier {...c} />,
   plan: (c) => <ZonePlan {...c} />,
   evolution: (c) => <ZoneEvolution {...c} />,
-  objectif: (c) => <ZoneObjectif {...c} />,
-  pipeline: (c) => <ZonePipeline {...c} />,
 };
 
 export function rendreWidget(id: string, ctx: ContexteWidget): ReactNode {

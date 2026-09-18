@@ -271,9 +271,8 @@ dégradé « Bienvenue sur Docu-Archives » rappelant le volume du fonds et prop
 Enregistrer. Le serveur renvoie l'agencement re-filtré selon les droits et c'est **sa** version
 qui est adoptée. Tous les widgets se nourrissent d'un **unique** `POST /analytics/overview`.
 
-**Widgets** (catalogue `dashboard-widgets.ts`) : `kpis`, `anomalies`, `type` (par type de
-document), `programme` (sous-arbre de dossiers), `localisation`, `plan` (plan de classement),
-`evolution` (croissance cumulée du fonds), `objectif` (cible), `pipeline`.
+**Widgets** (catalogue `dashboard-widgets.ts`) : `kpis`, `type` (par type de document), `dossier`
+(dossier de classement), `plan` (plan de classement), `evolution` (croissance cumulée du fonds).
 
 #### `/acquisition` — Acquisition par lot (P2)
 

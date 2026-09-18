@@ -1,10 +1,10 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Avatar, Button, Dropdown, Grid, Typography, type MenuProps } from 'antd';
 import { icons } from '../theme/icons';
 import { radii } from '../theme/tokens';
-import { activeItem } from './nav';
+import { OFF_MENU_TITLES, activeItem } from './nav';
 import { LogoIcon } from './BrandMark';
 import { NotificationsBell } from './NotificationsBell';
 
@@ -52,6 +52,7 @@ export function TopBar({
   onLogout: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.lg;
 
@@ -73,6 +74,13 @@ export function TopBar({
           </Typography.Text>
         </div>
       ),
+    },
+    { type: 'divider' },
+    {
+      key: 'profile',
+      icon: <icons.users size={16} strokeWidth={1.75} />,
+      label: 'Mon profil',
+      onClick: () => router.push('/profil'),
     },
     { type: 'divider' },
     {
@@ -123,7 +131,7 @@ export function TopBar({
         {!isMobile && (
           <span
             style={{
-              // Titre : blanc en clair, atténué #b9c0d4 en sombre (5,09:1 sur bleu roi).
+              // Titre : encre atténuée du design system — 10,8:1 sur la barre verte.
               color: 'var(--da-on-topbar-muted)',
               fontSize: 16,
               fontWeight: 600,
@@ -133,7 +141,7 @@ export function TopBar({
               textOverflow: 'ellipsis',
             }}
           >
-            {current?.label ?? 'Docu-Archives'}
+            {current?.label ?? OFF_MENU_TITLES[pathname] ?? 'Docu-Archives'}
           </span>
         )}
       </div>
@@ -177,10 +185,12 @@ export function TopBar({
             height: 36,
             padding: '0 10px 0 12px',
             minWidth: 240,
-            border: '1px solid rgba(255, 255, 255, 0.35)',
+            // Voiles pris aux variables de la barre : écrits en dur, ils supposaient un
+            // fond sombre et disparaissaient dès que la barre est passée au clair.
+            border: '1px solid var(--da-topbar-line)',
             // Déclencheur dessiné à la main : il imite un champ, il en suit donc le rayon.
             borderRadius: radii.field,
-            background: 'rgba(255, 255, 255, 0.12)',
+            background: 'var(--da-topbar-field)',
             color: 'var(--da-on-topbar)',
             cursor: 'pointer',
           }}
@@ -195,7 +205,7 @@ export function TopBar({
               fontSize: 11,
               padding: '2px 6px',
               borderRadius: 4,
-              border: '1px solid rgba(255, 255, 255, 0.35)',
+              border: '1px solid var(--da-topbar-line)',
               background: 'transparent',
               color: 'var(--da-on-topbar)',
             }}
@@ -225,8 +235,10 @@ export function TopBar({
           <Avatar
             size={32}
             style={{
-              background: 'var(--da-on-topbar)',
-              color: 'var(--da-topbar-bg)',
+              // Pastille pleine, et non l'inverse encre/fond de la barre : sur une barre
+              // claire, celui-ci donnait un disque noir à texte vert pâle.
+              background: 'var(--da-topbar-avatar-bg)',
+              color: 'var(--da-topbar-avatar-fg)',
               fontSize: 13,
               fontWeight: 600,
             }}

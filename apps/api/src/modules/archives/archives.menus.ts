@@ -24,6 +24,7 @@ export const ARCHIVES_MENUS = {
   lentDocuments: '/archives/documents-communiques',
   myLentDocuments: '/archives/mes-documents-communiques',
   lendingHistory: '/archives/historique-communications',
+  integrity: '/archives/integrite',
 } as const;
 
 export type ArchivesMenuKey = (typeof ARCHIVES_MENUS)[keyof typeof ARCHIVES_MENUS];

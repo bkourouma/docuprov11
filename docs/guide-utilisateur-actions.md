@@ -138,8 +138,7 @@ Fenêtre de **navigation rapide** ouverte par **Ctrl + K** (ou l'icône loupe su
 | Carte | Type de graphique | Mesure |
 |---|---|---|
 | **Répartition par type de document** | Anneau (donut) | Composition du fonds par type. |
-| **Concentration par programme** | Treemap | Documents par sous-arbre de dossiers. |
-| **Répartition par localisation** | Barres | Volume par lieu. |
+| **Répartition par dossier** | Barres | Documents rangés dans chaque dossier. |
 | **Répartition par plan de classement** | Barres | Volume par cote. |
 
 **Actions / états :**

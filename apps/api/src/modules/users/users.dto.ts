@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MIN_PASSWORD_LENGTH } from '../auth/login.dto';
 
 /**
  * L'adresse e-mail est OBLIGATOIRE à la création : c'est elle, et elle seule, qui sert à joindre
@@ -13,7 +14,7 @@ export const createUserSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   email: z.string().email("L'adresse e-mail est obligatoire et doit être valide"),
-  password: z.string().min(6),
+  password: z.string().min(MIN_PASSWORD_LENGTH),
   isAdmin: z.boolean().optional(),
   groupId: z.number().int().positive().optional(),
   roleId: z.number().int().positive().nullable().optional(),
@@ -28,7 +29,7 @@ export const updateUserSchema = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
   email: z.string().email('Adresse e-mail invalide').optional(),
-  password: z.string().min(6).optional(),
+  password: z.string().min(MIN_PASSWORD_LENGTH).optional(),
   isDisabled: z.boolean().optional(),
   isAdmin: z.boolean().optional(),
   roleId: z.number().int().positive().nullable().optional(),
@@ -48,7 +49,7 @@ export const bulkConfidentialiteSchema = z.object({
 });
 
 export const resetPasswordSchema = z.object({
-  newPassword: z.string().min(6),
+  newPassword: z.string().min(MIN_PASSWORD_LENGTH),
 });
 
 export const assignGroupSchema = z.object({
