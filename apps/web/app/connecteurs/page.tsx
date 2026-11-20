@@ -14,6 +14,7 @@ import {
   connecteursApi,
   formatDateTime,
   isForbiddenError,
+  oauthStatus,
   truncate,
   type GedConnectorTypeInfo,
   type GedConnectorView,
@@ -21,6 +22,7 @@ import {
 import { ConnectorStatusTag } from './_components/ConnectorBadges';
 import { ConnectorFormModal } from './_components/ConnectorFormModal';
 import { ForbiddenState } from './_components/ForbiddenState';
+import { OAuthAuthorizeButton, OAuthStatusTag } from './_components/OAuthAuthorization';
 import { useConnectorActions } from './_components/useConnectorActions';
 
 const ERROR_PREVIEW = 60;
@@ -62,6 +64,7 @@ export default function ConnecteursPage() {
 
   const { busy, test, sync, toggle } = useConnectorActions(load);
   const typeLabel = useMemo(() => new Map(types.map((t) => [t.type, t.label])), [types]);
+  const typeInfo = useMemo(() => new Map(types.map((t) => [t.type, t])), [types]);
 
   const openForm = (c?: GedConnectorView) => {
     setEditing(c);
@@ -96,6 +99,14 @@ export default function ConnecteursPage() {
       render: (s) => <ConnectorStatusTag status={s} />,
     },
     {
+      title: 'Autorisation',
+      key: 'oauth',
+      render: (_, r) => {
+        const s = oauthStatus(r, typeInfo.get(r.connectorType));
+        return s === 'not_applicable' ? dash : <OAuthStatusTag status={s} />;
+      },
+    },
+    {
       title: 'Actif',
       dataIndex: 'isActive',
       render: (a: boolean) => (a ? <Tag color="success">Oui</Tag> : <Tag>Non</Tag>),
@@ -125,6 +136,11 @@ export default function ConnecteursPage() {
         const id = r.gedSourceConnectorId;
         return (
           <Space size={spacing.xs} wrap>
+            <OAuthAuthorizeButton
+              connector={r}
+              typeInfo={typeInfo.get(r.connectorType)}
+              size="small"
+            />
             <Button
               size="small"
               icon={<Check size={iconDefaults.size} />}
@@ -183,7 +199,7 @@ export default function ConnecteursPage() {
       ) : (
         <Card>
           {loading && rows.length === 0 ? (
-            <TableSkeleton rows={4} columns={8} />
+            <TableSkeleton rows={4} columns={9} />
           ) : rows.length === 0 ? (
             <EmptyState
               icon="download"

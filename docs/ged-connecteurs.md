@@ -1,20 +1,20 @@
-# Cadre de connecteurs de sources GED (lot 2a)
+# Cadre de connecteurs de sources GED (lots 2a et 2b)
 
-Ce document décrit ce que fait le **code** de la copie de travail `ged-ia-lot-2a` à la date de rédaction (2026-11-20, modifications du lot non encore commitées). Il ne décrit pas de fonctionnalité prévue. Les écarts constatés entre le code, le schéma, la configuration et le brief de lot sont listés en section 11.
+Ce document décrit ce que fait le **code** de la copie de travail `ged-ia-lot-2b` à la date de rédaction (2026-11-20). Il couvre le lot 2a (commité, `9c61224`) et le lot 2b (connecteurs Google Drive et Microsoft 365, modifications non encore commitées, sections 12 à 15). Il ne décrit pas de fonctionnalité prévue. Les écarts constatés entre le code, le schéma, la configuration et le brief de lot sont listés en section 11 (points 34 et suivants pour le lot 2b).
 
-> **Limite connue — décision métier en attente.** Les droits d'origine modifiés ou retirés à la source ne sont pas répercutés sur les permissions du document DocuPro, ni en copie ni en synchronisation (section 11.2, point 16). Une révocation à la source reste donc active dans DocuPro tant qu'elle n'est pas retirée à la main, et un droit ajouté à la source n'est pas accordé. **Décision à prendre :** faut-il une révocation automatique, une alerte aux administrateurs, ou les deux ? Le comportement actuel est volontairement inchangé dans cette copie.
+> **Limite connue — décision métier en attente.** Les droits d'origine modifiés ou retirés à la source ne sont pas répercutés sur les permissions du document DocuPro, ni en copie ni en synchronisation (section 11.2, point 16). Une révocation à la source reste donc active dans DocuPro tant qu'elle n'est pas retirée à la main, et un droit ajouté à la source n'est pas accordé. **Décision à prendre :** faut-il une révocation automatique, une alerte aux administrateurs, ou les deux ? Le comportement actuel est volontairement inchangé dans cette copie. La même limite vaut pour les connecteurs du lot 2b (section 13.4).
 
 ## 1. Vue d'ensemble
 
-Le cadre permet à la GED de reprendre des documents depuis une source externe (dossier monté, boîte IMAP dédiée) selon trois modes : copie, indexation en place, synchronisation. Il comprend un registre de types de connecteurs, un moteur de synchronisation exécuté par le worker, une ingestion commune aux sources, le chiffrement des identifiants, une garde SSRF, le mapping des droits d'origine et une API d'administration.
+Le cadre permet à la GED de reprendre des documents depuis une source externe (dossier monté, boîte IMAP dédiée) selon trois modes : copie, indexation en place, synchronisation. Il comprend un registre de types de connecteurs, un moteur de synchronisation exécuté par le worker, une ingestion commune aux sources, le chiffrement des identifiants, une garde SSRF, le mapping des droits d'origine et une API d'administration. Le lot 2b ajoute quatre connecteurs autorisés par OAuth 2.0 (Google Drive, OneDrive, SharePoint, Outlook) : voir section 12.
 
 Le code est réparti ainsi :
 
-- `packages/connectors/src/` : contrat (`types.ts`), registre (`registry.ts`, `default-registry.ts`), chiffrement (`crypto.ts`), garde SSRF (`ssrf.ts`), mapping des droits (`rights.ts`, `rights-config.ts`), bornes (`limits.ts`), connecteurs (`connectors/filesystem.ts`, `connectors/imap.ts`) et leurs fournisseurs d'E/S (`connectors/fs-default.ts`, `connectors/imap-default.ts`, `connectors/imap-errors.ts`).
+- `packages/connectors/src/` : contrat (`types.ts`), registre (`registry.ts`, `default-registry.ts`), chiffrement (`crypto.ts`), garde SSRF (`ssrf.ts`), mapping des droits (`rights.ts`, `rights-config.ts`), bornes (`limits.ts`), connecteurs (`connectors/filesystem.ts`, `connectors/imap.ts`) et leurs fournisseurs d'E/S (`connectors/fs-default.ts`, `connectors/imap-default.ts`, `connectors/imap-errors.ts`). Lot 2b : socle OAuth (`oauth-contract.ts`, `oauth.ts`, `oauth-http.ts`, `oauth-session.ts`), connecteurs `connectors/google-drive.ts`, `connectors/microsoft-graph.ts` (socle Graph commun), `connectors/microsoft-onedrive.ts`, `connectors/microsoft-sharepoint.ts` et `connectors/microsoft-outlook.ts`.
 - `apps/worker/src/processors/connectors/` : `sync-engine.ts` (moteur, sans dépendance directe à Prisma ni au disque), `sync.processor.ts` (câblage BullMQ, planificateur), `prisma-store.ts` (accès base), `ai-trigger.ts` (enfilage du pipeline IA).
 - `apps/worker/src/processors/ingestion.ts` : `ingestExternalFile` (création) et `addVersionFromSource` (nouvelle version), bloc « Lot 2a ».
 - `apps/worker/src/index.ts` : démarrage de la file `ged-connector-sync` et du planificateur `tick` (bloc « Lot 2a »).
-- `apps/api/src/modules/connectors/` : contrôleur, service, DTO, fournisseur de la file.
+- `apps/api/src/modules/connectors/` : contrôleur, service, DTO, fournisseur de la file. Lot 2b : `oauth-state.store.ts` (magasin d'état OAuth à usage unique) et `oauth.dto.ts` ; le contrôleur OAuth (`oauth.controller.ts`) et le service (`oauth.service.ts`) sont présents, avec leurs specs (section 12.3). `connectors.module.ts` déclare le contrôleur OAuth avant le contrôleur principal.
 - `packages/types/src/ged-connectors.ts` (contrat partagé API, worker, web), `packages/types/src/ged.ts` (énumérations), `packages/db/prisma/models/ged.prisma` (modèles `GedSourceConnector`, `GedSourceSyncRun`, `GedSourceItem`). Les CHECK et index sont dans la migration `20261120120000_add_ged_ia_foundations`.
 
 ```
@@ -39,7 +39,7 @@ Le code est réparti ainsi :
                   ─► file « ged-connector-sync » ─► worker (jobs « sync » et « tick »)
 ```
 
-L'écran d'administration est présent dans `apps/web/app/connecteurs/` : liste des connecteurs (`/connecteurs`), formulaire de création et de modification (`_components/ConnectorFormModal.tsx`), détail (`/connecteurs/[connectorId]`) avec les onglets « Synchronisations » (historique des passes) et « Éléments et provenance ». Ces écrans appellent l'API décrite en section 8.
+L'écran d'administration est présent dans `apps/web/app/connecteurs/` : liste des connecteurs (`/connecteurs`), formulaire de création et de modification (`_components/ConnectorFormModal.tsx`), détail (`/connecteurs/[connectorId]`) avec les onglets « Synchronisations » (historique des passes) et « Éléments et provenance ». Ces écrans appellent l'API décrite en section 8. Le lot 2b ajoute le bouton d'autorisation OAuth (`_components/OAuthAuthorization.tsx`) et la page de retour `oauth/callback/page.tsx`, servie à `/connecteurs/oauth/callback` (section 12.3).
 
 ## 2. Interface commune et registre
 
@@ -63,11 +63,11 @@ Les erreurs typées pilotent le moteur :
 
 ### 2.2 `ConnectorDefinition` et registre
 
-Une `ConnectorDefinition` porte : `type`, `label`, `description`, `supportedModes`, `configFields` et `credentialFields` (descriptions de formulaire, en français), `configSchema` et `credentialsSchema` (schémas zod stricts), `assertConfigSafe(config, deps)` (garde de configuration, asynchrone) et `create(ctx)`.
+Une `ConnectorDefinition` porte : `type`, `label`, `description`, `supportedModes`, `configFields` et `credentialFields` (descriptions de formulaire, en français), `configSchema` et `credentialsSchema` (schémas zod stricts), `assertConfigSafe(config, deps)` (garde de configuration, asynchrone) et `create(ctx)`. Lot 2b : `oauth` (fournisseur et périmètres) est présent pour les types autorisés par OAuth 2.0 ; `ConnectorDeps` peut alors porter `http`, `oauth` et `onCredentialsChanged` (section 12.3).
 
 - La clé `type` est un texte libre `[a-z0-9_]+`, 40 caractères au plus (`GED_CONNECTOR_TYPE_REGEX`, contrainte `ck_ged_source_connector_type` en base, colonne `varchar(40)`). Ajouter un type n'exige ni énumération ni migration.
 - `ConnectorRegistry.register` refuse un type mal formé et un type déjà enregistré.
-- `createDefaultRegistry()` enregistre aujourd'hui `filesystem` et `imap`. L'API (`connectors.module.ts`) et le worker (`sync.processor.ts`, en l'absence de registre injecté) construisent chacun ce même registre.
+- `createDefaultRegistry()` enregistre aujourd'hui six types : `filesystem` et `imap` (lot 2a), puis `google_drive`, `microsoft_onedrive`, `microsoft_sharepoint` et `microsoft_outlook` (lot 2b). L'API (`connectors.module.ts`) et le worker (`sync.processor.ts`, en l'absence de registre injecté) construisent chacun ce même registre.
 - `validateConnectorInput` contrôle, dans l'ordre : type connu, mode supporté, réglages (schéma strict), droits (`rights`, schéma strict), identifiants (schéma strict, s'ils sont fournis), puis `assertConfigSafe`. Les messages d'erreur ne contiennent jamais une valeur d'identifiant.
 
 ### 2.3 Ajouter un connecteur
@@ -76,7 +76,7 @@ Une `ConnectorDefinition` porte : `type`, `label`, `description`, `supportedMode
 2. Définir `configSchema` et `credentialsSchema` avec `z.object({...}).strict()`. Les secrets ne vont jamais dans `configSchema`.
 3. Implémenter `assertConfigSafe` : garde SSRF pour tout hôte (`assertPublicHost`), contrôle des chemins pour tout dossier (même logique que `assertFilesystemPathSafe`, puis garde sur chemins réels `assertFilesystemRealPathSafe` : `realpath` de la racine, des racines autorisées et d'`ARCHIVES_PATH`), à refaire aussi à chaque passe dans `authenticate`.
 4. Ajouter le `register(...)` dans `packages/connectors/src/default-registry.ts`.
-5. Si le connecteur lit une variable d'environnement, l'ajouter à `connectorEnv()` dans `apps/worker/src/processors/connectors/sync.processor.ts`. Cette fonction ne transmet au connecteur que `GED_CONNECTOR_FS_ROOTS`, `GED_CONNECTOR_ALLOWED_INTERNAL_HOSTS` et `ARCHIVES_PATH`. Les références `credentials_ref` lisent l'environnement complet et ne sont pas concernées.
+5. Si le connecteur lit une variable d'environnement, l'ajouter à `connectorEnv()` dans `apps/worker/src/processors/connectors/sync.processor.ts`. Cette fonction ne transmet au connecteur que `GED_CONNECTOR_FS_ROOTS`, `GED_CONNECTOR_ALLOWED_INTERNAL_HOSTS` et `ARCHIVES_PATH`. Les références `credentials_ref` lisent l'environnement complet et ne sont pas concernées. Pour le lot 2b, `connectorEnv()` transmet aussi `GED_GOOGLE_CLIENT_ID`, `GED_GOOGLE_CLIENT_SECRET`, `GED_MS_CLIENT_ID`, `GED_MS_CLIENT_SECRET` et `GED_MS_TENANT` (section 11, point 34).
 6. Tester avec des fournisseurs simulés injectés par `deps` (modèle : `connectors/filesystem.spec.ts`, `connectors/imap.spec.ts`).
 
 Aucune migration n'est nécessaire. `GET /api/ged/connectors/types` expose le nouveau type à partir de ses `configFields` et `credentialFields`.
@@ -215,6 +215,8 @@ Les extensions acceptées sont : `.pdf`, `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff
 
 ## 6. Connecteurs fournis
 
+Les connecteurs du lot 2a (dossier, IMAP) sont décrits ci-dessous. Les connecteurs OAuth du lot 2b (Google Drive, OneDrive, SharePoint, Outlook) sont décrits en section 13.
+
 ### 6.1 Dossier surveillé (`filesystem`, libellé « Dossier surveillé »)
 
 Modes : copie, indexation en place, synchronisation. Pas d'identifiants.
@@ -352,6 +354,8 @@ Préfixe global `/api`. Le contrôleur `ged/connectors` est réservé aux admini
 | `GET /api/ged/connectors/:id/runs?limit` | Historique des passes, 1 à 100, défaut 20 | Liste de `GedSourceSyncRunView` |
 | `GET /api/ged/connectors/:id/items?state&q&page&pageSize` | Éléments et provenance, 25 par page par défaut, 100 au plus | `{ items, total, page, pageSize }` |
 | `GET /api/ged/connectors/:id/items/:itemId` | Détail d'un élément, avec `duplicateOf` | Vue ; 404 si l'élément appartient à un autre connecteur |
+| `POST /api/ged/connectors/:id/oauth/start` (lot 2b) | Démarre l'autorisation OAuth : `{ redirectUri }` contrôlé par la liste blanche, renvoie l'URL du fournisseur (section 12.3) | `{ authorizationUrl, expiresInSeconds: 600 }` |
+| `POST /api/ged/connectors/oauth/callback` (lot 2b) | Échange le code et enregistre le jeton chiffré (section 12.3) | `{ connectorId, authorized: true, expiresAt }` |
 
 Précisions :
 
@@ -359,21 +363,28 @@ Précisions :
 - `PUT` : ne change pas le type. `credentials` remplace l'ensemble ; `null` efface ; absent ne change rien. Le marqueur de jeton n'est remis à zéro que si `rootPath`, `host` ou `mailbox` change.
 - `GET items` : filtre `state` (0 à 6), recherche `q` sur le nom, sur le chemin d'origine ou sur le préfixe de l'empreinte. Les métadonnées propres au connecteur (`origin_metadata`) ne figurent pas dans la vue.
 - Codes d'erreur : 400 pour une configuration ou des droits invalides, un groupe inexistant, un dossier cible introuvable, une référence hors liste blanche ; 404 pour un connecteur ou un élément inconnu ; 409 pour une passe déjà en cours ou un connecteur inactif ; 503 si `GED_CONNECTOR_KEY` manque ou est invalide alors qu'il faut chiffrer.
+- Lot 2b : les deux routes OAuth sont réservées aux administrateurs (garde du contrôleur). Codes HTTP du module, dans l'ordre des contrôles. `oauth/start` : 404 connecteur inconnu ; 400 type non OAuth ou URI hors liste ; 503 `GED_CONNECTOR_KEY` absente ou invalide ; 409 variables du fournisseur absentes ou liste blanche vide (noms seulement). `oauth/callback` : 503 clé absente ou invalide ; 400 `state` invalide, expiré ou altéré (même message), rejeu, enregistrement incohérent, échange refusé ; 403 `state` lié à un autre administrateur (non consommé) ; 404 connecteur introuvable ; 409 configuration du fournisseur.
 
 ## 9. Variables d'environnement
 
-Aucune de ces variables n'est déclarée dans `apps/api/src/config/env.ts` ni dans `apps/worker/src/config/env.ts` (voir section 11). Elles sont documentées en commentaire, sans valeur, dans `.env.example`, et lues directement dans l'environnement du processus.
+Aucune de ces variables n'est déclarée dans `apps/api/src/config/env.ts` ni dans `apps/worker/src/config/env.ts` (voir section 11). Elles sont documentées en commentaire, sans valeur, dans `.env.example`, et lues directement dans l'environnement du processus. Les six variables OAuth du lot 2b suivent la même règle (point 38 de la section 11).
 
 | Variable | Lue par | Rôle |
 |---|---|---|
-| `GED_CONNECTOR_KEY` | API, worker | Clé active, base64 de 32 octets. Absente : chiffrement refusé (503 côté API), passe mise en erreur côté worker. |
+| `GED_CONNECTOR_KEY` | API, worker | Clé active, base64 de 32 octets. Absente : chiffrement refusé (503 côté API), passe mise en erreur côté worker. Dérive aussi la clé de signature des `state` OAuth (lot 2b, section 12.3). |
 | `GED_CONNECTOR_KEY_ID` | API, worker | Identifiant de la clé active, défaut `k1`. |
 | `GED_CONNECTOR_KEY_PREVIOUS` | API, worker | Anciennes clés `id:base64,id:base64`, en déchiffrement seulement. |
 | `GED_CONNECTOR_SECRET_<NOM>` | API, worker | Objet JSON d'identifiants, désigné par `credentials_ref`. Seul ce préfixe est accepté. |
 | `GED_CONNECTOR_FS_ROOTS` | API, worker | Racines autorisées pour le dossier surveillé, séparées par le séparateur de chemins du système. Absente : aucun dossier accepté. |
 | `GED_CONNECTOR_ALLOWED_INTERNAL_HOSTS` | API, worker | Liste blanche SSRF : noms exacts, adresses, CIDR (7.3). |
 | `ARCHIVES_PATH` | API, worker | Coffre des archives. Un dossier surveillé ne doit pas le recouvrir. |
-| `REDIS_URL` | API, worker | Connexion de la file `ged-connector-sync` et du planificateur. |
+| `REDIS_URL` | API, worker | Connexion de la file `ged-connector-sync`, du planificateur et du magasin d'état OAuth (lot 2b). |
+| `GED_GOOGLE_CLIENT_ID` | API, worker | Identifiant client OAuth Google (type « application web »). Absente : `OAuthConfigError`, qui cite le nom de la variable. |
+| `GED_GOOGLE_CLIENT_SECRET` | API, worker | Secret client Google. Jamais journalisé, jamais placé dans une URL. |
+| `GED_MS_CLIENT_ID` | API, worker | Identifiant d'application (client) Microsoft Entra. |
+| `GED_MS_CLIENT_SECRET` | API, worker | Secret client Microsoft. |
+| `GED_MS_TENANT` | API, worker | Locataire Microsoft, obligatoire : GUID, nom de domaine, ou `common` / `organizations` / `consumers`. La valeur entre dans le chemin des URL : seule cette forme passe. |
+| `GED_OAUTH_REDIRECT_URIS` | API seulement | Liste blanche des URI de retour, séparées par des virgules. Correspondance exacte ; https, ou http pour `localhost` et `127.0.0.1` seulement. Lue à chaque démarrage d'autorisation ; vide = 409. |
 
 ## 10. Tests
 
@@ -451,3 +462,226 @@ Exploitation :
 
 32. **Jeton illisible bloquant.** Un jeton lu comme illisible fait échouer la passe à chaque tick, jusqu'à intervention manuelle. Il n'existe pas de remise à zéro directe ; seul un changement de réglage identitaire (point 4) remet le jeton à NULL.
 33. **Documentation d'exploitation.** Les variables de la section 9 ne sont déclarées dans aucun schéma d'environnement ; `.env.example` les documente seulement en commentaire, sans contrôle au démarrage. La procédure de rotation (section 7.2) est la seule description complète.
+
+Lot 2b : câblage et écarts avec le brief
+
+34. **Worker : variables OAuth.** `connectorEnv()` transmet désormais `GED_GOOGLE_CLIENT_ID`, `GED_GOOGLE_CLIENT_SECRET`, `GED_MS_CLIENT_ID`, `GED_MS_CLIENT_SECRET` et `GED_MS_TENANT` au connecteur, et seulement elles en plus des trois variables d'origine (pas de `JWT_SECRET`). Testé dans `sync.processor.spec.ts`.
+35. **Worker : rotation du jeton Microsoft persistée.** Le worker fournit `deps.onCredentialsChanged` : le nouveau jeton de rafraîchissement est chiffré avec la clé active et écrit par `updateMany` gardé sur l'ancien chiffré (une édition concurrente n'est pas écrasée). Identifiants par référence : rien n'est réécrit. Le comportement réel de Microsoft après rotation reste à confirmer avec un compte réel.
+36. **Module API OAuth : écarts avec le brief.** Le module est présent (`oauth.service.ts`, `oauth.controller.ts`, `oauth-state.store.ts`, `oauth.dto.ts`) et couvert par des specs (section 15). Le brief ne fixait pas les codes HTTP : ceux de la section 8 sont ceux du code. Le brief ne prévoyait pas non plus le contrôle de `isActive` ni le refus de `credentials` pour les types OAuth (points 57 et 58).
+37. **Magasin d'état : pas de GETDEL.** Le brief prévoit `GETDEL`. Le code lit et supprime l'état par un script Lua (`GET` puis `DEL`, atomique), pour ne pas dépendre de Redis 6.2 ou plus. L'usage unique est le même.
+38. **Variables OAuth absentes des schémas d'environnement.** Comme le point 33, les six variables du lot 2b ne figurent dans aucun schéma d'environnement ; `.env.example` les documente en commentaire seulement.
+39. **Messages « réinitialisez le jeton ».** Les messages Google Drive (jeton de changement illisible, réponse 400) et Microsoft Graph (jeton expiré, 410) demandent de réinitialiser le jeton. Aucune route ne le fait (même cause que le point 4).
+
+Lot 2b : sources, détection et périmètre
+
+40. **Outlook : suppressions en mémoire de la passe.** Les messages marqués `@removed` sont retenus dans la mémoire de l'instance du connecteur, et `findMissing` ne répond que pour cette instance. `deletedExternalIds` est toujours vide. Si la passe s'interrompt après que le jeton a avancé, la suppression est perdue (limite notée en tête de `microsoft-outlook.ts`).
+41. **Outlook : messages déplacés et identifiants.** Un message déplacé hors du dossier suivi est vu comme supprimé. Les identifiants Graph des messages ne sont pas immuables : un message déplacé peut changer d'identifiant. Les doublons de contenu sont alors écartés par empreinte côté moteur (limite notée en tête de `microsoft-outlook.ts`).
+42. **Outlook : pièces jointes et pagination.** Une page peut produire plus d'éléments que `pageSize`, car la pagination porte sur les messages. Au-delà de 5 pages de pièces jointes pour un même message, les suivantes sont ignorées sans erreur (`MAX_ATTACHMENT_PAGES`). Un message disparu entre le delta et la lecture (404) est ignoré sans trace.
+43. **Outlook : pièces écartées sans trace.** Les pièces jointes non fichier (messages joints, liens), les images incorporées (tant que `includeInlineImages` est faux), les images de moins de 10 Ko et les extensions hors liste sont écartées au listage sans être comptées.
+44. **Sortie du périmètre non signalée.** Un élément déplacé hors du dossier suivi (`folderId` pour Google Drive, `folderPath` pour OneDrive et SharePoint, `folder` pour Outlook) n'est ni repris ni signalé supprimé. Il reste dans son état précédent (« Copié », etc.).
+45. **Google Drive : coût de la restriction à un dossier.** Pour chaque fichier listé, les parents sont remontés par des appels `files.get` non mis en cache, jusqu'à 20 niveaux. Le cache de parents compte 5 000 entrées au plus et est vidé à saturation. Le coût n'a pas été mesuré.
+46. **SharePoint : recherche de bibliothèque.** Une bibliothèque nommée (`libraryName`) est cherchée sur 5 pages de bibliothèques au plus. Au-delà, le connecteur répond « introuvable », même si la bibliothèque existe sur une page non lue.
+47. **Google : export et taille.** Le code affiche la limite de 10 Mo imposée par Google pour les exports (réponse 403 `exportSizeLimitExceeded`). Cette valeur n'est pas vérifiée contre la documentation Google. Un export est chargé en mémoire ; les fichiers natifs n'ont pas de taille connue au listage, donc la borne de 50 Mio n'est appliquée qu'après téléchargement.
+48. **Droits : repli plus ouvert que la source.** Le repli (`rights.fallbackUserGroupIds`) s'applique aussi lorsque l'ACL est lisible mais qu'aucun de ses principaux n'est mappé : le groupe de repli reçoit alors la Consultation. Le document peut donc être ouvert à plus de personnes que dans la source, ce qui contredit la règle « jamais plus ouvert qu'à la source » de la section 7.4. Le cas est traité dans `rights.ts`, mais la règle de la section 7.4 n'est pas tenue. À trancher avec la décision du point 16.
+49. **Droits : principal Outlook non vérifié.** Le principal des droits d'origine est l'adresse `mailboxAddress` saisie. Elle n'est pas comparée au compte qui a autorisé l'accès, qui est celui dont la boîte est lue (`/me`).
+
+Lot 2b : jetons, OAuth et tests (non vérifiable sans compte réel)
+
+50. **Consentement granulaire Google.** Une case décochée est détectée à l'échange : le code refuse l'autorisation (« autorisation incomplète »). Ce comportement n'a pas été confronté à Google.
+51. **Expiration des jetons Google en mode test.** Le brief et le guide de la section 12.2 indiquent une validité de 7 jours en mode test. Le code ne fixe une échéance que si la réponse contient `refresh_token_expires_in`. La durée réelle n'est pas vérifiée.
+52. **Microsoft : rotation et échéance.** Le code ne calcule aucune échéance pour Microsoft, et la durée de validité du jeton de rafraîchissement (inactivité, rotation) n'est pas modélisée. La rotation EST persistée par le worker (point 35) et par le test de connexion de l'API ; un échec d'enregistrement donne un seul avertissement sans détail. Rien de cela n'a été vérifié contre un locataire réel.
+53. **Redirection de téléchargement Graph.** Les hôtes de téléchargement réellement renvoyés par Graph (SharePoint, OneDrive) ne sont pas vérifiés. La liste de suffixes admis (`OAUTH_DOWNLOAD_HOST_SUFFIXES`) suit la documentation, et l'exception est décrite en section 14.
+54. **Réponses simulées.** Les tests des connecteurs et du socle OAuth s'appuient sur des réponses simulées d'après la documentation de Drive v3, de Graph v1.0 et du point de jeton OAuth. Aucun test n'a été lancé contre Google ou Microsoft : aucun compte réel n'était disponible.
+55. **Tests web non lancés.** Le script `test` du paquet `apps/web` affiche « no tests yet ». `apps/web/app/connecteurs/_tests/oauth.test.ts` n'est lancé par aucune commande du paquet à la date de rédaction (à vérifier avec le chef de lot).
+56. **Tests du lot 2b côté worker.** `sync.processor.spec.ts` couvre le câblage de `connectorEnv()` (variables OAuth transmises, `JWT_SECRET` non transmis) et la persistance chiffrée de la rotation du jeton (point 35). Les connecteurs OAuth eux-mêmes sont testés dans `packages/connectors` (section 15) ; les specs du module API passent.
+57. **Connecteur désactivé ré-autorisé.** Le callback conserve l'état : un connecteur inactif reste « Inactif » après autorisation (le moteur l'ignore de toute façon). Ni `oauth/start` ni `oauth/callback` ne vérifient `isActive`.
+58. **Jeton saisi à la main : refusé.** `POST` et `PUT` des connecteurs répondent 400 si `credentials` ou `credentialsRef` sont fournis pour un type qui porte `oauth` (`google_drive`, `microsoft_*`) : seul le flux `oauth/start` puis `oauth/callback` pose le jeton. `credentials: null` (effacer l'autorisation) reste permis. Les identifiants par référence ne servent donc pas aux types OAuth.
+59. **Longueur du jeton de rafraîchissement.** `credentialsSchema` des quatre connecteurs OAuth accepte un `refreshToken` de 1 à 16 384 caractères, aligné sur `MAX_REFRESH_TOKEN_LENGTH` de l'échange (16 Kio). Le test de connexion de l'API enregistre lui aussi un jeton tourné (chiffré, garde optimiste).
+
+## 12. Connecteurs OAuth 2.0 (lot 2b)
+
+Le lot 2b ajoute quatre connecteurs dont l'accès à la source passe par une autorisation OAuth 2.0 (code et PKCE) au lieu d'identifiants saisis : Google Drive, Microsoft OneDrive, Microsoft SharePoint et Microsoft Outlook (pièces jointes). Ils partagent le socle `oauth-contract.ts`, `oauth.ts`, `oauth-http.ts` et `oauth-session.ts`, et, pour Microsoft, le module `connectors/microsoft-graph.ts`. Tous sont en lecture seule : toutes les requêtes d'API sont des `GET` ; seul le point de jeton reçoit des `POST`.
+
+### 12.1 Types ajoutés
+
+| Type | Libellé | Modes | Périmètres demandés | Fichier |
+|---|---|---|---|---|
+| `google_drive` | Google Drive | 0, 1, 2 | `https://www.googleapis.com/auth/drive.readonly` | `connectors/google-drive.ts` |
+| `microsoft_onedrive` | Microsoft OneDrive | 0, 1, 2 | `offline_access`, `Files.Read` | `connectors/microsoft-onedrive.ts` |
+| `microsoft_sharepoint` | Microsoft SharePoint | 0, 1, 2 | `offline_access`, `Sites.Read.All` | `connectors/microsoft-sharepoint.ts` |
+| `microsoft_outlook` | Microsoft Outlook (pièces jointes) | 0, 2 | `offline_access`, `Mail.Read` | `connectors/microsoft-outlook.ts` |
+
+Modes : 0 Copie, 1 Indexation en place, 2 Synchronisation (section 3). L'indexation en place est refusée pour Outlook. Les quatre types n'ont aucun champ d'identifiants saisi (`credentialFields` vide) : le bouton d'autorisation renseigne `credentials` (jeton de rafraîchissement et périmètre accordé). `GET /api/ged/connectors/types` expose le fournisseur et les périmètres dans `oauth` (`GedConnectorTypeInfo`).
+
+### 12.2 Enregistrer l'application OAuth (administrateur du client)
+
+Cette opération se fait une fois, par l'administrateur du client (propriétaire du projet Google Cloud ou administrateur de l'annuaire Microsoft Entra). Les valeurs produites vont dans l'environnement de l'API et du worker (section 9), jamais dans le dépôt ni dans un document. L'URI de retour se présente sous la forme `https://<hôte-de-la-GED>/connecteurs/oauth/callback` (espace réservé).
+
+**Google Cloud** (console Google Cloud, projet réservé à la GED)
+
+1. Créer ou choisir un projet Google Cloud réservé à la GED.
+2. Activer l'API Google Drive pour ce projet. Le code appelle `https://www.googleapis.com/drive/v3`.
+3. Configurer l'écran de consentement OAuth. Type d'utilisateur « Interne » si le client est un Google Workspace et que seuls ses comptes autorisent la GED, « Externe » sinon. Ajouter le périmètre `https://www.googleapis.com/auth/drive.readonly`, et lui seul.
+4. Créer un identifiant client OAuth de type « Application Web » (l'URI de retour est une page web). Ajouter comme URI de redirection autorisée l'URI de la page de retour, identique à une entrée de `GED_OAUTH_REDIRECT_URIS` : même schéma, même hôte, même chemin `/connecteurs/oauth/callback`.
+5. Renseigner `GED_GOOGLE_CLIENT_ID` et `GED_GOOGLE_CLIENT_SECRET` dans l'environnement de l'API, et du worker une fois le point 34 corrigé.
+6. Points à confirmer dans la documentation Google à la mise en service. Le code ne les vérifie pas et aucun test n'a été fait contre Google (points 50 et 51) :
+   - en mode test, les jetons de rafraîchissement expirent au bout de 7 jours, et seuls les comptes déclarés « utilisateurs test » peuvent autoriser l'application ;
+   - `drive.readonly` est un périmètre dit « sensible » : une application externe ouverte à plusieurs organisations exige en principe une vérification Google avant publication. Une application interne à un Workspace n'est pas concernée ;
+   - le consentement de Google est granulaire : l'utilisateur peut décocher un périmètre. Le code refuse alors l'autorisation (section 12.3, étape 6).
+
+**Microsoft Entra** (centre d'administration Entra, inscription d'application dédiée)
+
+1. Inscriptions d'applications, puis Nouvelle inscription. Type de compte : « Comptes de cet annuaire uniquement » (locataire unique). Le code accepte aussi les alias `common`, `organizations` et `consumers`, mais ils ne sont pas testés.
+2. Authentification, puis Ajouter une plateforme, « Web ». L'URI de redirection doit être identique à une entrée de `GED_OAUTH_REDIRECT_URIS`.
+3. Certificats et secrets, puis Nouveau secret client. La valeur n'est affichée qu'une fois : la copier dans `GED_MS_CLIENT_SECRET`. Noter la date d'expiration du secret : à son échéance, les passes Microsoft échouent avec « Identifiants de l'application Microsoft refusés (invalid_client) », et le connecteur passe « En erreur » (section 13.6).
+4. Autorisations d'API, puis Ajouter une autorisation, Microsoft Graph, Autorisations déléguées : `Files.Read` (OneDrive), `Sites.Read.All` (SharePoint), `Mail.Read` (Outlook) et `offline_access`. Ces périmètres minimaux sont déduits de la documentation de Microsoft Graph : à confirmer avec un vrai locataire (en particulier la lecture des permissions d'éléments et du delta avec `Files.Read` seul, et celle d'une bibliothèque SharePoint avec `Sites.Read.All` seul). Ne déclarer que les permissions des types réellement utilisés. Le code ajoute `offline_access` à la demande s'il manque.
+5. Selon la politique du locataire, ces permissions peuvent exiger le consentement d'un administrateur (« Accorder le consentement administrateur »). Sans ce consentement, l'autorisation d'un compte peut échouer côté Microsoft. Le message renvoyé par Microsoft n'est pas vérifié par le code.
+6. Renseigner `GED_MS_CLIENT_ID` (identifiant d'application), `GED_MS_CLIENT_SECRET` et `GED_MS_TENANT` (identifiant de l'annuaire, GUID, ou nom de domaine). Sans `GED_MS_TENANT`, la configuration Microsoft est refusée, et le message cite le nom de la variable.
+7. Choisir le compte qui autorise, selon le connecteur. OneDrive et Outlook appellent `/me` : c'est le OneDrive du compte, ou la boîte du compte, qui est lu. SharePoint n'appelle pas `/me` : le compte voit ce qu'il a le droit de voir sur le site. Pour Outlook, l'adresse `mailboxAddress` n'est pas comparée au compte qui autorise (point 49).
+
+### 12.3 Flux d'autorisation pas à pas
+
+Le flux est entièrement dans le code à la date de rédaction : la page web et le socle OAuth (`oauth.ts`, `oauth-http.ts`, `oauth-session.ts`), et le module API (`apps/api/src/modules/connectors/oauth.service.ts`, `oauth.controller.ts`, magasin d'état `oauth-state.store.ts`). Les étapes 1, 3, 4 et 8 se passent dans la page web et le navigateur ; les étapes 2, 5, 6 et 7 dans le module API.
+
+1. **Point de départ.** Le connecteur existe, son type est OAuth (`GedConnectorTypeInfo.oauth`) et il n'a pas d'identifiants (`hasCredentials` faux, statut « Non autorisé »). L'administrateur clique sur « Autoriser avec Google » ou « Autoriser avec Microsoft » (`_components/OAuthAuthorization.tsx`). Le libellé devient « Autoriser de nouveau » si une autorisation existe ou a expiré.
+2. **Démarrage** (`POST /api/ged/connectors/:id/oauth/start`, corps `{ redirectUri }`, validé en mode strict). Le navigateur envoie l'origine de la GED suivie de `/connecteurs/oauth/callback`. Contrôles, dans l'ordre : connecteur existant (404) ; type OAuth (400) ; `GED_CONNECTOR_KEY` présente et valide (503) ; configuration du fournisseur (409, noms des variables manquantes seulement) ; liste blanche `GED_OAUTH_REDIRECT_URIS` non vide (409) ; URI présente à l'identique dans la liste (400). Le service crée alors un nonce de 256 bits, un couple PKCE S256 et un `state` signé en HMAC-SHA256, qui contient `n` (le nonce), `exp` (maintenant plus 600 secondes), `uid` (l'administrateur), `cid` (le connecteur) et `provider`. Il écrit dans Redis, sous le nonce, avec un TTL de 600 secondes : l'administrateur, le connecteur, le fournisseur, l'URI de retour et le vérificateur PKCE chiffré (AES-GCM, identifiant de clé enregistré). Une écriture sur un nonce déjà présent est refusée. Si la construction de l'URL échoue, l'enregistrement est retiré. Un événement d'audit `oauth-start` est écrit, sans URL ni `state`. La réponse contient `authorizationUrl` et `expiresInSeconds: 600`.
+3. **Navigateur vers le fournisseur.** La page fait `window.location.assign(authorizationUrl)`. L'URL ne contient ni secret client ni jeton : `client_id`, `redirect_uri`, `scope`, `state`, `code_challenge` et `code_challenge_method=S256`. Google reçoit en plus `access_type=offline`, `prompt=consent` et `include_granted_scopes=false`. Microsoft reçoit `response_mode=query` et `prompt=select_account`, et `offline_access` est ajouté aux périmètres s'il manque.
+4. **Retour sur la page web** (`oauth/callback/page.tsx`). Le fournisseur renvoie vers l'URI de retour avec `code` et `state`, ou avec `error`. `consumeOAuthReturn` lit les paramètres puis **efface l'URL** (`history.replaceState`) avant tout appel réseau. Si `error` est présent, la page affiche un refus, sans appel. Si `code` ou `state` manque, elle affiche un retour incomplet, sans appel. Sinon, un seul appel `POST /api/ged/connectors/oauth/callback` avec `{ code, state }` part, avec le jeton de l'administrateur ; une garde `started` évite le second appel du mode strict de React.
+5. **Contrôle du `state`** (`callback`, côté API). Ordre : clé de chiffrement présente (503) ; signature HMAC-SHA256 vérifiée à temps constant, forme stricte, expiration. Toute erreur sur le `state` (altéré, mal formé ou expiré) donne 400 « Autorisation invalide ou expirée : recommencez ». Puis, avant toute consommation, l'identifiant de l'administrateur de la charge utile doit être celui de l'appelant : sinon 403, et le nonce n'est pas consommé. Le nonce est ensuite lu et supprimé en une seule opération (`take`) ; un rejeu ou une absence donne 400 « Autorisation déjà utilisée ou expirée ». Enfin, l'administrateur, le connecteur et le fournisseur de l'enregistrement doivent correspondre à la charge utile (400), et le connecteur doit exister (404) et être de type OAuth (400).
+6. **Échange du code.** Le vérificateur PKCE est déchiffré avec la clé indiquée par `verifierKeyId` (échec : 400). `exchangeAuthorizationCode` envoie un POST au point de jeton officiel (`oauth2.googleapis.com/token` pour Google ; `login.microsoftonline.com/<locataire>/oauth2/v2.0/token` pour Microsoft). Le corps du formulaire porte `grant_type=authorization_code`, `code`, `redirect_uri`, `client_id`, `client_secret` et `code_verifier` ; Microsoft reçoit aussi `scope`. La réponse est lue dans la limite de 64 Kio, sans redirection. L'URI utilisée est celle de l'enregistrement, contrôlée au démarrage et non recontrôlée au retour. Une erreur de configuration donne 409. Toute autre erreur d'échange (refus du fournisseur, `invalid_grant` pour un code expiré ou déjà utilisé, réponse sans `refresh_token`, périmètre absent de la réponse, erreur réseau) donne 400 « Le fournisseur a refusé l'autorisation », sans détail fournisseur. Le service écrit alors un seul avertissement de journal, avec l'identifiant du connecteur et le code d'erreur interne. Le nonce a déjà été consommé à l'étape 5.
+7. **Enregistrement.** Le jeton de rafraîchissement et le périmètre accordé sont chiffrés (AES-GCM, section 7.1) dans `credentials_enc`, avec `credentials_key_id` ; `credentials_ref` est remis à NULL. Le connecteur reçoit l'échéance `credentialsExpiresAt` (fournie par le fournisseur, sinon NULL), le statut « Actif », `lastError` vidé, et un jeton de changement remis à NULL pour un relistage complet à la passe suivante (section 13.2). `isActive` n'est pas modifié (point 57). Un événement d'audit `oauth-authorized` est écrit. La réponse est `{ connectorId, authorized: true, expiresAt }`, sans aucun jeton.
+8. **Affichage.** La page affiche « Compte autorisé », avec l'échéance si elle est connue, puis revient à la fiche du connecteur après 1,5 seconde. En cas d'échec, elle affiche le message d'erreur, sans code, sans `state` et sans jeton.
+
+Mesures anti-CSRF et anti-rejeu, telles que le code les pose :
+
+- Le `state` est lié à l'administrateur, au connecteur, au fournisseur, à l'URI de retour et à un nonce à usage unique.
+- Il est signé en HMAC-SHA256 avec une clé dérivée en HKDF-SHA256 de la clé active `GED_CONNECTOR_KEY` (étiquette `ged-oauth-state-v1`). La clé brute n'est jamais utilisée pour signer. Une rotation de la clé active rend invalides les `state` en cours.
+- Expiration à 600 secondes, avec le même TTL côté Redis.
+- Usage unique : la lecture et la suppression du nonce sont atomiques (script Lua). Un second essai ne trouve rien.
+- PKCE S256 : le vérificateur (256 bits) n'est jamais stocké en clair, et l'échange le présente au fournisseur.
+- URI de redirection : correspondance exacte avec la liste blanche, et la même URI est utilisée à l'autorisation et à l'échange.
+- Le secret client n'apparaît que dans le corps POST de l'échange, jamais dans une URL. Les messages d'erreur sont génériques et ne citent ni code, ni state, ni vérificateur, ni jeton.
+- La page nettoie l'URL avant tout appel et n'appelle l'API qu'une fois.
+
+## 13. Connecteurs OAuth : fonctionnement
+
+### 13.1 Réglages des types
+
+Les schémas sont stricts : un champ inconnu fait échouer la validation. Les identifiants de drive, de dossier et de fichier sont validés par motif avant tout appel.
+
+| Type | Réglage | Règle |
+|---|---|---|
+| `google_drive` | `driveId` | Identifiant de drive partagé, `[A-Za-z0-9_-]` de 5 à 128 caractères. Vide = « Mon Drive ». |
+| `google_drive` | `includeSharedDrives` | Booléen, faux par défaut. Sans `driveId`, inclut les drives partagés accessibles (corpus `allDrives`). |
+| `google_drive` | `folderId` | Identifiant de dossier, même forme que `driveId`. Restreint à sa descendance (20 niveaux au plus). |
+| `google_drive` | `exportFormat` | `pdf` (défaut) ou `office` (docx, xlsx, pptx). Le formulaire le saisit en texte libre ; le schéma refuse toute autre valeur. Les dessins restent en PDF. |
+| `google_drive` | `extensions` | 50 au plus, `.ext` en minuscules de 1 à 10 caractères alphanumériques. Ne peut que restreindre la liste commune. |
+| `microsoft_onedrive` | `folderPath` | 500 caractères au plus, sans caractère de contrôle. Vide = tout le OneDrive. Filtre client insensible à la casse, sur frontière de segment. |
+| `microsoft_onedrive` | `extensions` | 1 à 30 entrées, avec ou sans point, 1 à 10 caractères alphanumériques. |
+| `microsoft_sharepoint` | `hostname` | Requis. Doit se terminer par `.sharepoint.com` (253 caractères au plus). Jamais appelé directement. |
+| `microsoft_sharepoint` | `sitePath` | Requis. `/sites/<nom>` ou `/teams/<nom>`, nom de 1 à 128 caractères `[A-Za-z0-9._~-]`. |
+| `microsoft_sharepoint` | `libraryName` | Facultatif. Vide = bibliothèque par défaut du site. Recherche insensible à la casse sur 5 pages de bibliothèques au plus (point 46). |
+| `microsoft_sharepoint` | `folderPath`, `extensions` | Comme pour OneDrive. |
+| `microsoft_outlook` | `mailboxAddress` | Requis. Adresse e-mail de 3 à 320 caractères. Principal des droits d'origine (13.4, point 49). |
+| `microsoft_outlook` | `folder` | Défaut `inbox`. Nom connu ou identifiant de dossier, `[A-Za-z0-9_=-]`, 300 caractères au plus. |
+| `microsoft_outlook` | `includeInlineImages` | Faux par défaut. Les images de moins de 10 Ko restent écartées dans tous les cas. |
+| `microsoft_outlook` | `extensions` | Comme pour OneDrive. |
+
+Identifiants : Google Drive accepte `refreshToken` (1 à 16 384 caractères) et `scope` facultatif (2 000 au plus). Les trois types Microsoft acceptent `refreshToken` (1 à 16 384 caractères) et `scope` facultatif (4 096 au plus). Aucun ne lit de jeton d'accès.
+
+### 13.2 Jetons de changement
+
+Google Drive. Le jeton est un JSON à deux formes :
+
+- pendant le listage complet, il porte la page suivante (`t`) et le jeton de départ (`s`), pris avant le premier appel `files.list` (`changes/startPageToken`) ; le listage trie sur `modifiedTime` et exclut les fichiers à la corbeille (`q=trashed=false`) ;
+- ensuite, il porte le jeton de `changes.list` (`p: chg`) ; `includeRemoved=true` ; `restrictToMyDrive` n'est envoyé que si aucun drive partagé n'est visé. Le dernier `newStartPageToken` devient le jeton suivant.
+
+Microsoft Graph (OneDrive, SharePoint, Outlook). Le jeton est un JSON `{ k, u }` : `k` vaut `next` (page suivante du parcours en cours, à partir du `@odata.nextLink`) ou `delta` (parcours terminé, base du prochain, à partir du `@odata.deltaLink`), et `u` est l'URL. Toute URL relue est exigée sous `https://graph.microsoft.com/v1.0/`. Les premiers appels sont :
+
+- OneDrive : `/me/drive/root/delta` ;
+- SharePoint : `/drives/{id}/root/delta` (le lecteur est résolu avant le listage) ;
+- Outlook : `/me/mailFolders/{dossier}/messages/delta` avec `$select` limité aux champs utiles.
+
+Le nombre d'éléments par page est transmis par l'en-tête `Prefer: odata.maxpagesize`.
+
+Un jeton illisible fait échouer la passe, sans relistage silencieux. Un jeton accepté par le code mais refusé par Graph en 410 donne un message de « resynchronisation complète demandée », sans relistage automatique. Une nouvelle autorisation remet le jeton à NULL (`oauth.service.ts`) : la passe suivante relista la source. Les éléments déjà connus ne sont pas relus si leur version n'a pas changé (section 3).
+
+### 13.3 Contenu des éléments
+
+- **Google Drive, fichiers natifs.** Les Docs, Sheets, Slides et dessins sont exportés. Le format est `pdf` par défaut, ou `office` (docx, xlsx, pptx ; les dessins restent en PDF). L'extension est ajoutée au nom si elle manque, et l'élément est écarté si cette extension n'est pas retenue. La version est `modifiedTime:version`. Les autres types natifs (dossiers, raccourcis, formulaires, sites) sont ignorés au listage. Le téléchargement passe par `files/{id}/export?mimeType=…`, dont le type est contrôlé contre la table d'export avant l'appel.
+- **Google Drive, fichiers binaires.** Téléchargement par `alt=media` avec `supportsAllDrives=true`. La version est `md5Checksum`, à défaut `headRevisionId`, à défaut `v<version>:<modifiedTime>`.
+- **OneDrive et SharePoint.** Téléchargement par `…/items/{id}/content`, avec suivi de la redirection de téléchargement (exception décrite en section 14). La version est `sha256Hash`, à défaut `sha1Hash`, `quickXorHash`, `cTag` ou `eTag`.
+- **Outlook.** Téléchargement de la pièce jointe par `…/attachments/{id}/$value`, sans redirection. La version est la taille en octets.
+- **Bornes.** La taille maximale est `maxFileBytes` (50 Mio). Un fichier de taille connue au-delà de la borne est listé, puis refusé à la récupération sans téléchargement. Les extensions hors de la liste commune ne sont jamais listées.
+
+### 13.4 Droits d'origine et mapping
+
+Les droits sont lus à chaque passe par `readOriginAcl`. Le mapping suit la section 7.4 : seules les entrées `user` ou `group` lisibles (`read`, `write`, `owner`) sont mappées ; `public` et `unknown` ne donnent rien et n'élargissent rien.
+
+- **Google Drive** (`permissions.list`, 100 par page, 10 pages au plus). Les permissions supprimées sont ignorées. `user` et `group` donnent le courriel en minuscules, à défaut l'identifiant de la permission (`unknown`). `domain` et `anyone` donnent `public`. Rôles : `owner` donne `owner` ; `writer`, `fileOrganizer` et `organizer` donnent `write` ; `reader` et `commenter` donnent `read` ; les autres sont `unknown`.
+- **Microsoft Graph** (`permissions` de l'élément, 10 pages au plus). Un lien `anonymous` ou `organization` donne `public`, jamais mappé. Les identités donnent des utilisateurs (courriel en minuscules, à défaut identifiant d'objet) et des groupes (courriel, identifiant, puis nom affiché). Les entrées `application` et `device` sont ignorées. Rôles : `owner` ; `write`, `edit`, `contribute`, `sp.full control`, `sp.edit`, `sp.contribute` donnent `write` ; `read`, `view`, `sp.read`, `sp.view only` donnent `read`.
+- **Outlook.** Une seule entrée : l'adresse de la boîte en minuscules, de type utilisateur, en lecture (point 49).
+
+Une ACL illisible ou incomplète donne `null` : Google Drive et Graph le font après plus de 10 pages, sur une réponse 403 ou 404, et sur toute autre erreur (les autorisations et quotas se propagent). Le repli de la section 7.4 s'applique alors. Il s'applique aussi lorsque l'ACL est lisible mais sans principal mappé (point 48).
+
+### 13.5 Suppressions à la source
+
+- **Google Drive.** Un `removed` ou un `trashed` dans `changes.list` donne une suppression. En listage complet, un fichier à la corbeille est aussi signalé supprimé. Il n'y a pas de `findMissing`.
+- **OneDrive et SharePoint.** La facette `deleted` du delta donne `deletedExternalIds`.
+- **Outlook.** Les messages `@removed` sont retenus pendant la passe, et `findMissing` répond sans appel réseau, pour la même instance seulement (point 40). `deletedExternalIds` est vide.
+- **Sortie du périmètre.** Un élément sorti du dossier suivi n'est pas signalé supprimé (point 44).
+
+### 13.6 Quotas et erreurs
+
+- **Google.** Les réponses 429, 503 et 504 sont des quotas, comme un 403 dont la raison est `rateLimitExceeded`, `userRateLimitExceeded`, `sharingRateLimitExceeded`, `quotaExceeded` ou `dailyLimitExceeded`. Les autres 403 sont des erreurs d'API ; à la récupération, le code en tire « Accès refusé à ce fichier » (élément rejeté).
+- **Microsoft.** Les réponses 429, 503 et 504 sont des quotas.
+- **Retry-After.** Le délai est lu en secondes ou en date HTTP (IMF-fixdate). Absent ou illisible, il vaut 60 secondes. Le client le borne entre 1 seconde et 6 heures. Le moteur ne reprend pas avant 1 minute ni après 6 heures, et utilise 15 minutes si rien n'est fourni (section 5.4). Une passe interrompue par un quota est « Partielle » et le statut du connecteur ne change pas.
+- **401.** Un rafraîchissement forcé, puis un seul nouvel essai. Un second 401 donne « Accès refusé malgré un jeton neuf » (autorisation non expirée, connecteur « En erreur »).
+- **Rafraîchissement refusé.** `invalid_grant`, `interaction_required`, `consent_required`, `login_required` et `invalid_scope` donnent « Autorisation expirée ou révoquée » : statut « Autorisation expirée ». `invalid_client` et `unauthorized_client` donnent « Identifiants de l'application … refusés » en citant seulement le nom des variables à vérifier : statut « En erreur ». Une autre réponse donne une erreur d'API.
+- **Absence de jeton de rafraîchissement.** « Connecteur non autorisé » : statut « Autorisation expirée », sans appel réseau.
+- **Google Drive, listage.** 400 donne un message de jeton périmé ou de configuration invalide ; 404 donne « Drive partagé ou dossier introuvable, ou inaccessible avec cette autorisation ».
+- **Récupération.** 404 et 410 donnent « n'existe plus à la source » (élément rejeté).
+
+### 13.7 Jeton d'accès pendant une passe
+
+Le jeton d'accès n'est gardé qu'en mémoire. Il est réutilisé jusqu'à 60 secondes avant son expiration ; sans `expires_in`, la durée retenue est de 300 secondes. Un seul rafraîchissement est en vol à la fois : les appels concurrents l'attendent. Chaque passe construit une nouvelle instance de connecteur (`buildConnector` dans `sync.processor.ts`), donc un rafraîchissement au moins par passe. Le jeton de rafraîchissement enregistré n'est réécrit qu'en cas de rotation, et seulement si le worker fournit `onCredentialsChanged` (point 35).
+
+## 14. Sécurité du lot 2b
+
+- **Hôtes officiels.** Les appels ne vont qu'aux hôtes de `OAUTH_API_HOSTS`, en correspondance exacte : `www.googleapis.com`, `oauth2.googleapis.com` et `accounts.google.com` pour Google ; `graph.microsoft.com` et `login.microsoftonline.com` pour Microsoft. `accounts.google.com` ne reçoit aucun appel serveur : l'URL d'autorisation part dans le navigateur. Une URL d'API doit être en https, sur le port 443, sans identifiant, sans adresse IP littérale, sans barre oblique inversée ni caractère hors ASCII imprimable, et au plus 8 192 caractères. La vérification a lieu avant tout appel, y compris pour les `nextLink` et les URL relues en base.
+- **Résolution et connexion.** L'hôte est résolu et chaque adresse est contrôlée par la garde SSRF, sans la liste blanche de l'exploitant (`GED_CONNECTOR_ALLOWED_INTERNAL_HOSTS` ne s'applique pas ici). La connexion va à l'adresse vérifiée, avec le nom officiel comme SNI et contrôle du certificat, en TLS 1.2 au minimum. Aucun agent de connexion n'est partagé. Le délai global est de 60 secondes par défaut (30 minutes au plus).
+- **Redirections.** Par défaut, toute redirection est refusée. Seul le téléchargement OneDrive et SharePoint suit une redirection (point suivant).
+- **Exception documentée : téléchargement Graph.** Graph répond à `…/content` par un 302 vers une URL pré-authentifiée. Le client suit cette redirection seulement si elle pointe vers `*.sharepoint.com`, `*.files.1drv.com` ou `*.1drv.com` (`OAUTH_DOWNLOAD_HOST_SUFFIXES`), avec au moins un libellé devant le suffixe. Au plus 3 sauts, en GET seulement. Les en-têtes `Authorization`, `Cookie`, `Proxy-Authorization`, ainsi que `content-length` et `content-type`, ne sont pas transmis après la redirection. La garde DNS s'applique à chaque saut. Aucun autre appel ne suit de redirection. Outlook télécharge sans redirection.
+- **Jetons.** Le jeton d'accès est en mémoire seulement. Le jeton de rafraîchissement est chiffré en AES-GCM (section 7.1). Le vérificateur PKCE est chiffré dans Redis. Aucun jeton ni secret n'apparaît dans un journal, une URL ou une réponse d'API : la réponse du callback ne contient que `connectorId`, `authorized` et `expiresAt`. Les messages et les piles d'erreur sont masqués avec toutes les valeurs sensibles vues pendant la session, y compris les jetons successifs. Les modules du socle OAuth n'écrivent aucun journal. Le service API n'écrit qu'un avertissement, lorsqu'un échange est refusé : identifiant du connecteur et code d'erreur interne, jamais de détail fournisseur. Les messages réseau ne citent que le nom d'hôte et un code système filtré.
+- **En-têtes.** Les en-têtes fournis par l'appelant ne peuvent ni contenir de retour ligne ni porter `Authorization`, `Cookie` ou `Proxy-Authorization` : ces en-têtes sont écartés ou refusés.
+- **Bornes de taille.** Réponse de jeton : 64 Kio. Réponse JSON d'API : 25 Mio. Fichier : `maxFileBytes`, soit 50 Mio. Jeton d'accès et jeton de rafraîchissement : 16 Kio. Code d'autorisation : 4 096 caractères. `state` et URI de retour : 2 048 caractères chacun.
+- **Identifiants d'objets.** Les identifiants sont validés par motif avant d'être placés dans une URL, et les segments sont encodés : Drive `[A-Za-z0-9_-]{5,128}` ; Graph `[A-Za-z0-9!_.-]{1,200}` ; Outlook `[A-Za-z0-9_=+/-]{1,400}`. Les jetons de pagination Drive sont passés en paramètres, jamais comme URL.
+- **Locataire.** `GED_MS_TENANT` entre dans le chemin des URL d'autorisation et de jeton. Seuls un GUID, un nom de domaine DNS dont le dernier libellé est alphabétique, ou `common`, `organizations`, `consumers` sont acceptés.
+
+## 15. Tests du lot 2b
+
+| Fichier | Périmètre |
+|---|---|
+| `packages/connectors/src/oauth.spec.ts` | Configuration des fournisseurs (noms des variables seulement), PKCE (vecteur de la RFC 7636, annexe B), URL d'autorisation Google et Microsoft, liste blanche des URI, `state` signé (aller-retour, altérations, expiration), échange du code (succès, refus, consentement incomplet, réponses non JSON, erreurs réseau masquées). |
+| `packages/connectors/src/oauth-http.spec.ts` | Client gardé : hôtes, adresses vérifiées, liste blanche de l'exploitant non appliquée, en-têtes, redirections (3 sauts admis, le quatrième refusé ; mode téléchargement), lecture bornée, délai, annulation, erreurs de transport. |
+| `packages/connectors/src/oauth-session.spec.ts` | Jeton d'accès (cache, rafraîchissement unique en vol, rotation Microsoft), appels d'API (Bearer, 401, quotas, 403 Google), validation des URL, `getBytes`, session et client gardé (redirection vers SharePoint). |
+| `packages/connectors/src/connectors/google-drive.spec.ts` | Définition et configuration, listage complet puis changements, drive partagé, dossier, extensions, exports natifs, téléchargement binaire, droits d'origine. |
+| `packages/connectors/src/connectors/microsoft-graph.spec.ts` | Jeton de delta, `fetchDeltaPage`, chemins et extensions, `mapDriveItem`, droits (`mapGraphPermissions`, `readDriveItemAcl`). |
+| `packages/connectors/src/connectors/microsoft-onedrive.spec.ts` | Définition, authentification, listage et suppressions, téléchargement, droits. |
+| `packages/connectors/src/connectors/microsoft-sharepoint.spec.ts` | Résolution du site et de la bibliothèque, listage, fichiers, droits. |
+| `packages/connectors/src/connectors/microsoft-outlook.spec.ts` | Listage des messages, pièces jointes, suppressions (y compris la limite de mémoire entre instances), téléchargement, droits. |
+| `apps/api/src/modules/connectors/oauth.service.spec.ts` | Démarrage (URL avec `state`, PKCE S256, périmètres minimaux, TTL de 600 s, liste blanche, configuration, clé, type non OAuth), callback (autorisation et chiffrement, `expiresAt` nul, rejeu, `state` expiré ou altéré, administrateur différent sans consommation, enregistrement incohérent, connecteur supprimé, échec d'échange sans fuite), magasin d'état (usage unique, TTL), `listTypes` (expose `oauth`). |
+| `apps/api/src/modules/connectors/oauth.controller.spec.ts` | Garde administrateur sur les deux routes, ordre des routes (`oauth/callback` avant `:id`), délégation au service, validation stricte des corps. |
+| `apps/web/app/connecteurs/_tests/oauth.test.ts` | Statut et libellés d'autorisation, `consumeOAuthReturn` (URL effacée avant l'appel, appel unique, refus, retour incomplet, échec d'API). Non lancé par le script de test du paquet (point 55). |
+
+Les tests des connecteurs injectent un client OAuth simulé (`deps.oauth`) ou un transport simulé (`deps.http`). Aucun ne fait d'appel réseau réel. Aucun test du worker ne couvre encore le lot 2b (point 56). Les specs du module API sont listées ci-dessus et lancées par la commande API.
+
+Commandes :
+
+```
+pnpm --filter @archivage/connectors test
+pnpm --filter @archivage/worker test -- connectors ingestion-external
+pnpm --filter @archivage/api test -- modules/connectors
+```
+
+Résultats constatés le 2026-11-20 sur la copie de travail : `packages/connectors` 15 suites, 790 tests réussis (dont `oauth.spec.ts`, `oauth-http.spec.ts`, `oauth-session.spec.ts`, les specs Google Drive et Microsoft, et `connectors/oauth-integration.spec.ts`, qui exerce les connecteurs avec le vrai client OAuth sur un transport simulé) ; `apps/api` `modules/connectors` 5 suites, 160 tests réussis ; `apps/worker` `processors/connectors` 2 suites, 57 tests réussis. La suite complète du worker contient en plus `test/acquisition-live.spec.ts`, qui exige une base PostgreSQL vivante et échoue sans elle (préexistant, hors lot). Aucun test n'appelle un fournisseur réel.

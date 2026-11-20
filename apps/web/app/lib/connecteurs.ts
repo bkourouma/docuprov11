@@ -14,8 +14,11 @@ import {
   GED_SOURCE_MODE_LABELS,
   GED_SYNC_RUN_STATUS_LABELS,
   type GedConnectorFieldDescriptor,
+  type GedConnectorOAuthInfo,
   type GedConnectorTypeInfo,
   type GedConnectorView,
+  type GedOAuthCallbackResponse,
+  type GedOAuthStartResponse,
   type GedSourceItemView,
   type GedSourceSyncRunView,
 } from '@archivage/types';
@@ -31,8 +34,11 @@ export {
   GED_SOURCE_MODE_LABELS,
   GED_SYNC_RUN_STATUS_LABELS,
   type GedConnectorFieldDescriptor,
+  type GedConnectorOAuthInfo,
   type GedConnectorTypeInfo,
   type GedConnectorView,
+  type GedOAuthCallbackResponse,
+  type GedOAuthStartResponse,
   type GedSourceItemView,
   type GedSourceSyncRunView,
 };
@@ -107,6 +113,18 @@ export const connecteursApi = {
     return apiJson<ItemsPage>(`${base}/${id}/items${qs ? `?${qs}` : ''}`);
   },
   item: (id: number, itemId: number) => apiJson<GedSourceItemView>(`${base}/${id}/items/${itemId}`),
+  /** Lot 2b — démarre l'autorisation OAuth : renvoie l'URL du fournisseur vers laquelle rediriger. */
+  oauthStart: (id: number, redirectUri: string) =>
+    apiJson<GedOAuthStartResponse>(`${base}/${id}/oauth/start`, {
+      method: 'POST',
+      body: JSON.stringify({ redirectUri }),
+    }),
+  /** Lot 2b — échange le code de retour (usage unique) ; `code` et `state` ne transitent que dans le corps. */
+  oauthCallback: (code: string, state: string) =>
+    apiJson<GedOAuthCallbackResponse>(`${base}/oauth/callback`, {
+      method: 'POST',
+      body: JSON.stringify({ code, state }),
+    }),
 };
 
 /**
@@ -367,4 +385,106 @@ export function displayConfig(
               : 'Non'
             : String(v ?? ''),
     }));
+}
+
+// ---------------------------------------------------------------------------
+// Autorisation OAuth 2.0 (lot 2b) — Google Drive, Microsoft 365
+// ---------------------------------------------------------------------------
+
+export type OAuthStatus = 'not_applicable' | 'missing' | 'expired' | 'expiring' | 'authorized';
+
+export const OAUTH_STATUS_LABELS: Record<Exclude<OAuthStatus, 'not_applicable'>, string> = {
+  missing: 'Non autorisé',
+  expired: 'Autorisation expirée',
+  expiring: 'Expire bientôt',
+  authorized: 'Autorisé',
+};
+
+/** Délai en deçà duquel une autorisation est signalée « Expire bientôt ». */
+export const OAUTH_EXPIRING_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * État d'autorisation OAuth d'un connecteur. `not_applicable` si le type n'a pas d'OAuth ;
+ * une date d'expiration absente ou illisible n'est pas une expiration.
+ */
+export function oauthStatus(
+  connector: Pick<GedConnectorView, 'hasCredentials' | 'status' | 'credentialsExpiresAt'>,
+  typeInfo: Pick<GedConnectorTypeInfo, 'oauth'> | undefined,
+  now: Date = new Date(),
+): OAuthStatus {
+  if (!typeInfo?.oauth) return 'not_applicable';
+  if (!connector.hasCredentials) return 'missing';
+  if (connector.status === GedSourceConnectorStatus.AutorisationExpiree) return 'expired';
+  const expiresAt = connector.credentialsExpiresAt
+    ? new Date(connector.credentialsExpiresAt).getTime()
+    : Number.NaN;
+  if (Number.isFinite(expiresAt)) {
+    const left = expiresAt - now.getTime();
+    if (left <= 0) return 'expired';
+    if (left < OAUTH_EXPIRING_DAYS * DAY_MS) return 'expiring';
+  }
+  return 'authorized';
+}
+
+export const OAUTH_PROVIDER_LABELS: Record<GedConnectorOAuthInfo['provider'], string> = {
+  google: 'Google',
+  microsoft: 'Microsoft',
+};
+
+/** « Autoriser avec Google » ; « Autoriser de nouveau avec Microsoft » si déjà autorisé ou expiré. */
+export function oauthButtonLabel(oauth: GedConnectorOAuthInfo, status: OAuthStatus): string {
+  const provider = OAUTH_PROVIDER_LABELS[oauth.provider];
+  return status === 'missing' || status === 'not_applicable'
+    ? `Autoriser avec ${provider}`
+    : `Autoriser de nouveau avec ${provider}`;
+}
+
+/** Texte d'aide des périmètres demandés (lecture seule). */
+export function oauthScopesHelp(oauth: GedConnectorOAuthInfo): string {
+  return `Accès en lecture seule : ${oauth.scopes.join(', ')}.`;
+}
+
+/**
+ * URI de retour de l'autorisation (page web). Aucun `basePath` n'est configuré dans next.config :
+ * l'origine suffit. Doit figurer dans la liste blanche GED_OAUTH_REDIRECT_URIS de l'API.
+ */
+export const OAUTH_CALLBACK_PATH = '/connecteurs/oauth/callback';
+export function oauthRedirectUri(): string {
+  return `${window.location.origin}${OAUTH_CALLBACK_PATH}`;
+}
+
+/** Démarre l'autorisation et redirige le navigateur vers le fournisseur (rien n'est stocké ni journalisé). */
+export async function startOAuthAuthorization(connectorId: number): Promise<void> {
+  const { authorizationUrl } = await connecteursApi.oauthStart(connectorId, oauthRedirectUri());
+  window.location.assign(authorizationUrl);
+}
+
+export type OAuthReturnOutcome =
+  | { kind: 'invalid'; reason: 'denied' | 'missing' }
+  | { kind: 'success'; connectorId: number; expiresAt: string | null }
+  | { kind: 'failure'; error: unknown };
+
+/**
+ * Traite le retour du fournisseur : lit `code`, `state`, `error`, EFFACE l'URL (`clearUrl`) avant tout
+ * appel réseau, puis échange le code. Fonction pure vis-à-vis du navigateur (dépendances injectées).
+ */
+export async function consumeOAuthReturn(deps: {
+  search: string;
+  clearUrl: () => void;
+  callback: (code: string, state: string) => Promise<GedOAuthCallbackResponse>;
+}): Promise<OAuthReturnOutcome> {
+  const params = new URLSearchParams(deps.search);
+  const code = params.get('code');
+  const state = params.get('state');
+  const error = params.get('error');
+  deps.clearUrl();
+  if (error) return { kind: 'invalid', reason: 'denied' };
+  if (!code || !state) return { kind: 'invalid', reason: 'missing' };
+  try {
+    const r = await deps.callback(code, state);
+    return { kind: 'success', connectorId: r.connectorId, expiresAt: r.expiresAt };
+  } catch (e) {
+    return { kind: 'failure', error: e };
+  }
 }

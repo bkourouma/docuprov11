@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import {
   ConnectorRegistry,
+  decryptCredentials,
   encryptCredentials,
   loadKeyRing,
   type ConnectorDefinition,
@@ -281,6 +282,7 @@ describe('runSyncJob', () => {
       gedSourceConnector: {
         findUnique: jest.fn().mockResolvedValue(record),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findMany: jest.fn(),
       },
       gedSourceSyncRun: {
@@ -348,6 +350,58 @@ describe('runSyncJob', () => {
       common(prisma, fakeRegistry({}, seen), env),
     );
     expect(seen.ctx.credentials).toEqual({ token: 'jeton-secret-1234' });
+  });
+
+  it('lot 2b : transmet au connecteur les variables OAuth, et seulement elles (pas JWT_SECRET)', async () => {
+    const prisma = fakePrisma({ ...baseRecord });
+    const seen: { ctx?: any } = {};
+    const env = {
+      GED_GOOGLE_CLIENT_ID: 'gid',
+      GED_GOOGLE_CLIENT_SECRET: 'gsecret',
+      GED_MS_CLIENT_ID: 'mid',
+      GED_MS_CLIENT_SECRET: 'msecret',
+      GED_MS_TENANT: 'contoso.onmicrosoft.com',
+      JWT_SECRET: 'ne-doit-pas-passer',
+    };
+    await runSyncJob(
+      { connectorId: 1, trigger: 'manual' },
+      common(prisma, fakeRegistry({}, seen), env),
+    );
+    expect(seen.ctx.deps.env).toMatchObject({
+      GED_GOOGLE_CLIENT_ID: 'gid',
+      GED_GOOGLE_CLIENT_SECRET: 'gsecret',
+      GED_MS_CLIENT_ID: 'mid',
+      GED_MS_CLIENT_SECRET: 'msecret',
+      GED_MS_TENANT: 'contoso.onmicrosoft.com',
+    });
+    expect(seen.ctx.deps.env.JWT_SECRET).toBeUndefined();
+  });
+
+  it('lot 2b : la rotation du jeton de rafraîchissement est rechiffrée et enregistrée (garde optimiste)', async () => {
+    const key = Buffer.alloc(32, 7).toString('base64');
+    const env = { GED_CONNECTOR_KEY: key, GED_CONNECTOR_KEY_ID: 'k1' };
+    const enc = encryptCredentials({ refreshToken: 'ancien-jeton-1234' }, loadKeyRing(env));
+    const prisma = fakePrisma({ ...baseRecord, ...enc });
+    const seen: { ctx?: any } = {};
+    await runSyncJob(
+      { connectorId: 1, trigger: 'manual' },
+      common(prisma, fakeRegistry({}, seen), env),
+    );
+    await seen.ctx.deps.onCredentialsChanged({ refreshToken: 'nouveau-jeton-5678' });
+    const call = prisma.gedSourceConnector.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual({ gedSourceConnectorId: 1, credentialsEnc: enc.credentialsEnc });
+    expect(call.data.credentialsEnc).not.toBe(enc.credentialsEnc);
+    expect(JSON.stringify(call)).not.toContain('nouveau-jeton-5678');
+    const back = decryptCredentials(call.data.credentialsEnc, call.data.credentialsKeyId, loadKeyRing(env));
+    expect(back).toEqual({ refreshToken: 'nouveau-jeton-5678' });
+  });
+
+  it('lot 2b : identifiants par référence, la rotation ne réécrit rien', async () => {
+    const prisma = fakePrisma({ ...baseRecord });
+    const seen: { ctx?: any } = {};
+    await runSyncJob({ connectorId: 1, trigger: 'manual' }, common(prisma, fakeRegistry({}, seen)));
+    await seen.ctx.deps.onCredentialsChanged({ refreshToken: 'x' });
+    expect(prisma.gedSourceConnector.updateMany).not.toHaveBeenCalled();
   });
 
   it('clé absente avec identifiants chiffrés : erreur claire, connecteur en erreur, moteur non lancé', async () => {

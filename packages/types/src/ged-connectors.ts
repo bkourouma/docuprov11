@@ -106,6 +106,35 @@ export interface GedConnectorTypeInfo {
   supportedModes: GedSourceMode[];
   configFields: GedConnectorFieldDescriptor[];
   credentialFields: GedConnectorFieldDescriptor[];
+  /** Lot 2b — présent si la source s'autorise par OAuth 2.0 (bouton « Autoriser avec … »). */
+  oauth?: GedConnectorOAuthInfo;
+}
+
+/** Lot 2b — autorisation OAuth 2.0 d'un type de connecteur (périmètres minimaux, lecture seule). */
+export interface GedConnectorOAuthInfo {
+  provider: 'google' | 'microsoft';
+  scopes: string[];
+}
+
+/** Lot 2b — POST /ged/connectors/:id/oauth/start. */
+export interface GedOAuthStartRequest {
+  /** URI de retour (page web) : doit figurer dans la liste blanche GED_OAUTH_REDIRECT_URIS. */
+  redirectUri: string;
+}
+export interface GedOAuthStartResponse {
+  authorizationUrl: string;
+  expiresInSeconds: number;
+}
+/** Lot 2b — POST /ged/connectors/oauth/callback (appelé par la page web de retour, avec le JWT de l'administrateur). */
+export interface GedOAuthCallbackRequest {
+  code: string;
+  state: string;
+}
+export interface GedOAuthCallbackResponse {
+  connectorId: number;
+  authorized: true;
+  /** Fin de validité de l'autorisation si le fournisseur la communique, sinon `null`. */
+  expiresAt: string | null;
 }
 
 export interface GedSourceSyncRunView {

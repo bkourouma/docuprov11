@@ -166,6 +166,7 @@ export class ConnectorsService {
       supportedModes: [...def.supportedModes],
       configFields: def.configFields.map((f) => ({ ...f })),
       credentialFields: def.credentialFields.map((f) => ({ ...f })),
+      oauth: def.oauth ? { provider: def.oauth.provider, scopes: [...def.oauth.scopes] } : undefined,
     }));
   }
 
@@ -185,6 +186,7 @@ export class ConnectorsService {
   // -------------------------------------------------------------------------
 
   async create(dto: CreateConnectorDto, user: AuthUser): Promise<GedConnectorView> {
+    this.assertNoManualOAuthCredentials(dto.connectorType, dto.credentials, dto.credentialsRef);
     const plain = this.nonEmptyCredentials(dto.credentials);
     // Clé vérifiée AVANT tout travail : inutile de valider une config qu'on ne pourra pas enregistrer.
     const ring = plain ? this.requireKeyRing() : null;
@@ -227,6 +229,7 @@ export class ConnectorsService {
 
   async update(id: number, dto: UpdateConnectorDto, user: AuthUser): Promise<GedConnectorView> {
     const row = await this.getRow(id);
+    this.assertNoManualOAuthCredentials(row.connectorType, dto.credentials, dto.credentialsRef);
 
     const plain = this.nonEmptyCredentials(dto.credentials ?? undefined);
     const ring = plain ? this.requireKeyRing() : null;
@@ -359,7 +362,7 @@ export class ConnectorsService {
       connector = buildConnector(this.registry, row.connectorType, {
         config: row.config,
         credentials,
-        deps: this.deps,
+        deps: { ...this.deps, onCredentialsChanged: this.rotatedCredentialsWriter(row) },
       });
       const live = connector;
       await withTimeout(
@@ -550,6 +553,51 @@ export class ConnectorsService {
     });
     if (!row) throw new NotFoundException('Connecteur introuvable');
     return row;
+  }
+
+  /**
+   * Un type OAuth ne s'autorise que par le flux oauth/start puis oauth/callback : un jeton saisi à la
+   * main contournerait le consentement du fournisseur. `credentials: null` (effacer = révoquer
+   * côté DocuPro) reste permis.
+   */
+  private assertNoManualOAuthCredentials(
+    connectorType: string,
+    credentials: Record<string, string> | null | undefined,
+    credentialsRef: string | null | undefined,
+  ): void {
+    if (!this.registry.get(connectorType)?.oauth) return;
+    const manual =
+      (credentials != null && Object.keys(credentials).length > 0) ||
+      (credentialsRef != null && credentialsRef !== '');
+    if (manual) {
+      throw new BadRequestException(
+        'Ce type de connecteur s’autorise uniquement par le bouton « Autoriser » : la saisie d’identifiants est refusée',
+      );
+    }
+  }
+
+  /** Rotation du jeton de rafraîchissement pendant un test : enregistrée chiffrée, sans écraser une édition concurrente. */
+  private rotatedCredentialsWriter(
+    row: GedSourceConnector,
+  ): ConnectorDeps['onCredentialsChanged'] {
+    return async (next) => {
+      if (!row.credentialsEnc) return;
+      try {
+        const sealed = encryptCredentials(next, loadKeyRing(this.env));
+        const res = await this.prisma.gedSourceConnector.updateMany({
+          where: { gedSourceConnectorId: row.gedSourceConnectorId, credentialsEnc: row.credentialsEnc },
+          data: { credentialsEnc: sealed.credentialsEnc, credentialsKeyId: sealed.credentialsKeyId },
+        });
+        if (res.count > 0) {
+          row.credentialsEnc = sealed.credentialsEnc;
+          row.credentialsKeyId = sealed.credentialsKeyId;
+        }
+      } catch {
+        this.logger.warn(
+          `Test du connecteur ${row.gedSourceConnectorId} : rotation du jeton non enregistrée`,
+        );
+      }
+    };
   }
 
   /** Objet vide = « pas d'identifiants » : on ne chiffre pas `{}`. */

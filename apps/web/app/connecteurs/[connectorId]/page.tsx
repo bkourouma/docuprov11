@@ -34,6 +34,7 @@ import { ConnectorStatusTag } from '../_components/ConnectorBadges';
 import { ConnectorItemsTab } from '../_components/ConnectorItemsTab';
 import { ConnectorRunsTab } from '../_components/ConnectorRunsTab';
 import { ForbiddenState } from '../_components/ForbiddenState';
+import { OAuthAuthorizeButton, OAuthSummary } from '../_components/OAuthAuthorization';
 import { useConnectorActions } from '../_components/useConnectorActions';
 
 const dash = <Typography.Text type="secondary">—</Typography.Text>;
@@ -180,6 +181,7 @@ export default function ConnecteurDetailPage() {
         breadcrumb={crumbs}
         actions={
           <>
+            <OAuthAuthorizeButton connector={connector} typeInfo={typeInfo} />
             <Button
               icon={<Check size={iconDefaults.size} />}
               loading={busy === `test:${cid}`}
@@ -268,6 +270,16 @@ export default function ConnecteurDetailPage() {
               label: 'Dernière réussite',
               children: formatDateTime(connector.lastSuccessAt) || dash,
             },
+            ...(typeInfo?.oauth
+              ? [
+                  {
+                    key: 'oauth',
+                    label: 'Autorisation',
+                    span: 'filled' as const,
+                    children: <OAuthSummary connector={connector} typeInfo={typeInfo} />,
+                  },
+                ]
+              : []),
             {
               key: 'creds',
               label: 'Identifiants',

@@ -27,6 +27,7 @@ import {
   buildUpdateBody,
   connecteursApi,
   hasInvalidIds,
+  oauthScopesHelp,
   toFormValues,
   type ConnectorFormValues,
   type GedConnectorFieldDescriptor,
@@ -199,7 +200,9 @@ export function ConnectorFormModal({
   };
 
   const keptCredentials = editing && !!connector?.hasCredentials && !clearCredentials;
-  const credentialFields = info?.credentialFields ?? [];
+  const oauthInfo = info?.oauth;
+  // Type OAuth : le compte est relié par le bouton « Autoriser », jamais par saisie d'identifiants.
+  const credentialFields = oauthInfo ? [] : (info?.credentialFields ?? []);
 
   /** Remplacement complet : si l'on saisit un identifiant, les champs obligatoires doivent l'être aussi. */
   const wholeSetRule = (f: GedConnectorFieldDescriptor) =>
@@ -292,6 +295,16 @@ export function ConnectorFormModal({
               <DynamicField key={f.name} group="config" field={f} required={f.required} />
             ))}
           </>
+        )}
+
+        {oauthInfo && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: spacing.lg }}
+            message="Après l’enregistrement, utilisez le bouton « Autoriser » pour relier le compte."
+            description={oauthScopesHelp(oauthInfo)}
+          />
         )}
 
         {info && credentialFields.length > 0 && (
