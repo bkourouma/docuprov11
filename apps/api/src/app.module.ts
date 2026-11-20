@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { validateEnv } from './config/env';
 import { CommonModule } from './common/common.module';
+import { pinoHttpOptions } from './common/log-sanitize';
 import { AccessInquiriesModule } from './modules/access-inquiries/access-inquiries.module';
 import { AcquisitionModule } from './modules/acquisition/acquisition.module';
 import { AiModule } from './modules/ai/ai.module';
@@ -43,6 +44,7 @@ import { HealthController } from './health.controller';
     LoggerModule.forRoot({
       pinoHttp: {
         transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
+        ...pinoHttpOptions,
       },
     }),
     PrismaModule,

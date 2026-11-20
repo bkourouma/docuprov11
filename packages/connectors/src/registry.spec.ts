@@ -73,7 +73,7 @@ describe('ConnectorRegistry', () => {
     expect(() => r.register(fakeDefinition('x'))).toThrow(/déjà enregistré/);
   });
 
-  it('le registre par défaut fournit les connecteurs d’origine et ceux du lot 2b', () => {
+  it('le registre par défaut fournit les connecteurs d’origine et ceux des lots 2b et 2c', () => {
     const r = createDefaultRegistry();
     expect(r.list().map((d) => d.type)).toEqual([
       'filesystem',
@@ -82,6 +82,7 @@ describe('ConnectorRegistry', () => {
       'microsoft_onedrive',
       'microsoft_sharepoint',
       'microsoft_outlook',
+      'whatsapp',
     ]);
   });
 });

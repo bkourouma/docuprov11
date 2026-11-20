@@ -453,7 +453,7 @@ export class ConnectorsService {
     id: number,
     query: ListItemsQuery,
   ): Promise<{ items: GedSourceItemView[]; total: number; page: number; pageSize: number }> {
-    await this.getRow(id);
+    const connector = await this.getRow(id);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? CONNECTORS_DEFAULT_PAGE_SIZE;
 
@@ -478,11 +478,11 @@ export class ConnectorsService {
       }),
       this.prisma.gedSourceItem.count({ where }),
     ]);
-    return { items: rows.map((r) => this.toItemView(r)), total, page, pageSize };
+    return { items: rows.map((r) => this.toItemView(r, connector.connectorType)), total, page, pageSize };
   }
 
   async getItem(id: number, itemId: number): Promise<GedSourceItemDetailView> {
-    await this.getRow(id);
+    const connector = await this.getRow(id);
     // Le filtre par connecteur est dans la requête : un élément d'un autre connecteur est un 404.
     const row = await this.prisma.gedSourceItem.findFirst({
       where: { gedSourceItemId: BigInt(itemId), connectorId: id },
@@ -492,7 +492,7 @@ export class ConnectorsService {
     });
     if (!row) throw new NotFoundException('Élément introuvable');
     return {
-      ...this.toItemView(row),
+      ...this.toItemView(row, connector.connectorType),
       duplicateOf: row.duplicateOf
         ? {
             id: Number(row.duplicateOf.gedSourceItemId),
@@ -787,21 +787,25 @@ export class ConnectorsService {
     };
   }
 
-  private toItemView(r: GedSourceItem): GedSourceItemView {
+  private toItemView(r: GedSourceItem, connectorType: string): GedSourceItemView {
+    // WhatsApp : jamais de numéro exposé. L'ACL (principal `wa:<numéro>`) et le chemin d'origine sont
+    // masqués ; l'auteur n'est conservé que s'il ne ressemble pas à un numéro (pseudonyme du webhook).
+    const whatsapp = connectorType === 'whatsapp';
+    const looksLikePhone = (v: string | null) => v != null && /^\+?[\d\s().-]{6,}$/.test(v.trim());
     return {
       gedSourceItemId: Number(r.gedSourceItemId),
       connectorId: r.connectorId,
       externalId: r.externalId,
       name: r.name,
       originUrl: r.originUrl,
-      originPath: r.originPath,
+      originPath: whatsapp ? null : r.originPath,
       mimeType: r.mimeType,
       byteLength: r.byteLength == null ? null : Number(r.byteLength),
-      originAuthor: r.originAuthor,
+      originAuthor: whatsapp && looksLikePhone(r.originAuthor) ? null : r.originAuthor,
       originCreatedAt: iso(r.originCreatedAt),
       originModifiedAt: iso(r.originModifiedAt),
       contentHash: r.contentHash,
-      originAcl: r.originAcl,
+      originAcl: whatsapp ? null : r.originAcl,
       state: r.state as GedSourceItemState,
       documentId: r.documentId,
       duplicateOfId: r.duplicateOfId == null ? null : Number(r.duplicateOfId),

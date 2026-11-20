@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { App, Button, Card, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { GED_WHATSAPP_CONNECTOR_TYPE } from './_components/whatsapp-config';
 import type { TableColumnsType } from 'antd';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -149,15 +150,17 @@ export default function ConnecteursPage() {
             >
               Tester
             </Button>
-            <Button
-              size="small"
-              icon={<Sync size={iconDefaults.size} />}
-              loading={busy === `sync:${id}`}
-              disabled={!r.isActive}
-              onClick={() => void sync(r)}
-            >
-              Synchroniser maintenant
-            </Button>
+            {r.connectorType !== GED_WHATSAPP_CONNECTOR_TYPE && (
+              <Button
+                size="small"
+                icon={<Sync size={iconDefaults.size} />}
+                loading={busy === `sync:${id}`}
+                disabled={!r.isActive}
+                onClick={() => void sync(r)}
+              >
+                Synchroniser maintenant
+              </Button>
+            )}
             <Button size="small" loading={busy === `toggle:${id}`} onClick={() => toggle(r)}>
               {r.isActive ? 'Désactiver' : 'Activer'}
             </Button>

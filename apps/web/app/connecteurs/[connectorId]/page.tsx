@@ -35,6 +35,8 @@ import { ConnectorItemsTab } from '../_components/ConnectorItemsTab';
 import { ConnectorRunsTab } from '../_components/ConnectorRunsTab';
 import { ForbiddenState } from '../_components/ForbiddenState';
 import { OAuthAuthorizeButton, OAuthSummary } from '../_components/OAuthAuthorization';
+import { WhatsappPanel } from '../_components/WhatsappPanel';
+import { isWhatsappType } from '../_components/whatsapp-config';
 import { useConnectorActions } from '../_components/useConnectorActions';
 
 const dash = <Typography.Text type="secondary">—</Typography.Text>;
@@ -171,7 +173,10 @@ export default function ConnecteurDetailPage() {
 
   const typeInfo = types.find((t) => t.type === connector.connectorType);
   const cid = connector.gedSourceConnectorId;
-  const config = displayConfig(connector.config);
+  // Connecteur WhatsApp : événements poussés par le webhook, pas de synchronisation ; la config
+  // (numéros d'expéditeurs) n'est jamais listée brute, elle passe par le panneau dédié (numéros masqués).
+  const isWa = isWhatsappType(connector.connectorType);
+  const config = isWa ? [] : displayConfig(connector.config);
 
   return (
     <div>
@@ -192,14 +197,16 @@ export default function ConnecteurDetailPage() {
             >
               Tester
             </Button>
-            <Button
-              icon={<Sync size={iconDefaults.size} />}
-              loading={busy === `sync:${cid}`}
-              disabled={!connector.isActive}
-              onClick={() => void sync(connector)}
-            >
-              Synchroniser maintenant
-            </Button>
+            {!isWa && (
+              <Button
+                icon={<Sync size={iconDefaults.size} />}
+                loading={busy === `sync:${cid}`}
+                disabled={!connector.isActive}
+                onClick={() => void sync(connector)}
+              >
+                Synchroniser maintenant
+              </Button>
+            )}
             <Button loading={busy === `toggle:${cid}`} onClick={() => toggle(connector)}>
               {connector.isActive ? 'Désactiver' : 'Activer'}
             </Button>
@@ -248,28 +255,36 @@ export default function ConnecteurDetailPage() {
               label: 'Actif',
               children: connector.isActive ? <Tag color="success">Oui</Tag> : <Tag>Non</Tag>,
             },
-            {
-              key: 'interval',
-              label: 'Synchronisation',
-              children: connector.syncIntervalMinutes
-                ? `Toutes les ${connector.syncIntervalMinutes} minutes`
-                : 'Manuelle',
-            },
+            ...(isWa
+              ? []
+              : [
+                  {
+                    key: 'interval',
+                    label: 'Synchronisation',
+                    children: connector.syncIntervalMinutes
+                      ? `Toutes les ${connector.syncIntervalMinutes} minutes`
+                      : 'Manuelle',
+                  },
+                ]),
             {
               key: 'dossier',
               label: 'Dossier de destination',
               children: connector.targetDossierId ?? dash,
             },
-            {
-              key: 'last',
-              label: 'Dernière passe',
-              children: formatDateTime(connector.lastSyncAt) || dash,
-            },
-            {
-              key: 'ok',
-              label: 'Dernière réussite',
-              children: formatDateTime(connector.lastSuccessAt) || dash,
-            },
+            ...(isWa
+              ? []
+              : [
+                  {
+                    key: 'last',
+                    label: 'Dernière passe',
+                    children: formatDateTime(connector.lastSyncAt) || dash,
+                  },
+                  {
+                    key: 'ok',
+                    label: 'Dernière réussite',
+                    children: formatDateTime(connector.lastSuccessAt) || dash,
+                  },
+                ]),
             ...(typeInfo?.oauth
               ? [
                   {
@@ -295,12 +310,16 @@ export default function ConnecteurDetailPage() {
               label: c.key,
               children: c.value || dash,
             })),
-            {
-              key: 'rights',
-              label: 'Droits d’origine',
-              span: 'filled' as const,
-              children: <RightsSummary config={connector.config} />,
-            },
+            ...(isWa
+              ? []
+              : [
+                  {
+                    key: 'rights',
+                    label: 'Droits d’origine',
+                    span: 'filled' as const,
+                    children: <RightsSummary config={connector.config} />,
+                  },
+                ]),
             {
               key: 'created',
               label: 'Créé le',
@@ -313,7 +332,7 @@ export default function ConnecteurDetailPage() {
             },
           ]}
         />
-        {connector.lastError && (
+        {!isWa && connector.lastError && (
           <Alert
             style={{ marginTop: spacing.lg }}
             type="error"
@@ -324,22 +343,39 @@ export default function ConnecteurDetailPage() {
         )}
       </Card>
 
+      {isWa && <WhatsappPanel connector={connector} />}
+
       <Card>
-        <Tabs
-          defaultActiveKey="runs"
-          items={[
-            {
-              key: 'runs',
-              label: 'Synchronisations',
-              children: <ConnectorRunsTab connectorId={cid} refreshKey={refreshKey} />,
-            },
-            {
-              key: 'items',
-              label: 'Éléments et provenance',
-              children: <ConnectorItemsTab connectorId={cid} refreshKey={refreshKey} />,
-            },
-          ]}
-        />
+        {isWa ? (
+          <Tabs
+            defaultActiveKey="items"
+            items={[
+              {
+                key: 'items',
+                label: 'Messages reçus',
+                children: (
+                  <ConnectorItemsTab connectorId={cid} refreshKey={refreshKey} variant="messages" />
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <Tabs
+            defaultActiveKey="runs"
+            items={[
+              {
+                key: 'runs',
+                label: 'Synchronisations',
+                children: <ConnectorRunsTab connectorId={cid} refreshKey={refreshKey} />,
+              },
+              {
+                key: 'items',
+                label: 'Éléments et provenance',
+                children: <ConnectorItemsTab connectorId={cid} refreshKey={refreshKey} />,
+              },
+            ]}
+          />
+        )}
       </Card>
 
       <ConnectorFormModal

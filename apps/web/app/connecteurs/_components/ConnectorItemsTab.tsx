@@ -71,10 +71,17 @@ function ItemExpanded({ item }: { item: GedSourceItemView }) {
 export function ConnectorItemsTab({
   connectorId,
   refreshKey,
+  variant = 'default',
 }: {
   connectorId: number;
   refreshKey: number;
+  /**
+   * `messages` (WhatsApp) : « Messages reçus ». Colonnes réduites (nom, état, motif d'erreur, date) ;
+   * ni origine, ni auteur, ni droits d'origine, qui pourraient identifier un numéro de téléphone.
+   */
+  variant?: 'default' | 'messages';
 }) {
+  const messages = variant === 'messages';
   const { message } = App.useApp();
   const router = useRouter();
   const [items, setItems] = useState<GedSourceItemView[]>([]);
@@ -178,8 +185,38 @@ export function ConnectorItemsTab({
     },
   ];
 
+  const messageColumns: TableColumnsType<GedSourceItemView> = [
+    {
+      title: 'Nom',
+      dataIndex: 'name',
+      render: (v: string) => <Typography.Text strong>{truncate(v, 60)}</Typography.Text>,
+    },
+    {
+      title: 'Reçu le',
+      dataIndex: 'firstSeenAt',
+      render: (v: string) => formatDateTime(v) || '—',
+    },
+    {
+      title: 'État',
+      dataIndex: 'state',
+      render: (s: GedSourceItemState) => <ItemStateTag state={s} />,
+    },
+    {
+      title: 'Motif d’erreur',
+      dataIndex: 'errorMessage',
+      render: (v: string | null) =>
+        v ? <Typography.Text type="danger">{truncate(v, 120)}</Typography.Text> : dash,
+    },
+    {
+      title: 'Document',
+      dataIndex: 'documentId',
+      render: (id: number | null) =>
+        id ? <Link href={`/documents/${id}`}>Ouvrir le document</Link> : dash,
+    },
+  ];
+
   if (loading && items.length === 0 && !q && state === undefined) {
-    return <TableSkeleton rows={5} columns={7} />;
+    return <TableSkeleton rows={5} columns={messages ? 5 : 7} />;
   }
 
   return (
@@ -187,8 +224,8 @@ export function ConnectorItemsTab({
       <div style={{ display: 'flex', gap: spacing.md, flexWrap: 'wrap', marginBottom: spacing.lg }}>
         <Input.Search
           allowClear
-          placeholder="Rechercher un nom ou un chemin"
-          aria-label="Rechercher parmi les éléments"
+          placeholder={messages ? 'Rechercher un nom' : 'Rechercher un nom ou un chemin'}
+          aria-label={messages ? 'Rechercher parmi les messages' : 'Rechercher parmi les éléments'}
           style={{ flex: `1 1 ${FIELD}px`, maxWidth: FIELD * 2 }}
           onSearch={(v) => {
             setPage(1);
@@ -211,10 +248,10 @@ export function ConnectorItemsTab({
       <Table<GedSourceItemView>
         rowKey="gedSourceItemId"
         loading={loading}
-        columns={columns}
+        columns={messages ? messageColumns : columns}
         dataSource={items}
         scroll={{ x: 'max-content' }}
-        expandable={{ expandedRowRender: (r) => <ItemExpanded item={r} /> }}
+        expandable={messages ? undefined : { expandedRowRender: (r) => <ItemExpanded item={r} /> }}
         pagination={{
           current: page,
           pageSize: PAGE_SIZE,
@@ -231,7 +268,9 @@ export function ConnectorItemsTab({
               title={
                 q || state !== undefined
                   ? 'Aucun élément ne correspond à ce filtre.'
-                  : 'Aucun élément pour l’instant : ils apparaîtront après la première synchronisation.'
+                  : messages
+                    ? 'Aucun message reçu pour l’instant : les documents envoyés par WhatsApp apparaîtront ici.'
+                    : 'Aucun élément pour l’instant : ils apparaîtront après la première synchronisation.'
               }
             />
           ),
