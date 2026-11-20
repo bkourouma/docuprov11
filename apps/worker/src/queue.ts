@@ -38,3 +38,8 @@ export { GED_EMBEDDING_QUEUE } from '@archivage/types';
 /** File des synchronisations de sources GED (producteur api, consommateur worker). */
 export { GED_CONNECTOR_SYNC_QUEUE } from '@archivage/types';
 // --- fin Lot 2a ---
+
+// --- Lot 5 : nettoyage et gouvernance ---
+/** File des analyses de gouvernance (producteur api, consommateur worker). */
+export { GED_GOVERNANCE_QUEUE } from '@archivage/types';
+// --- fin Lot 5 ---

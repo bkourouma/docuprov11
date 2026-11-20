@@ -34,6 +34,14 @@ import { GED_EMBEDDING_JOBS } from '@archivage/types';
 import type { GedEmbeddingJobData } from '@archivage/types';
 import { createEmbeddingProcessor } from './processors/embedding-processor';
 // --- fin lot 3 ---
+// --- Lot 5 : nettoyage et gouvernance ---
+import { GED_GOVERNANCE_QUEUE } from './queue';
+import type { GedGovernanceJobData } from '@archivage/types';
+import {
+  createGovernanceProcessorFromPrisma,
+  type GovernanceJobResult,
+} from './processors/governance.processor';
+// --- fin Lot 5 ---
 
 /**
  * Rappels Docu-Courriers (§03.5) : planificateurs répétables + consommateur.
@@ -120,6 +128,47 @@ async function startEmbedding(connection: ConnectionOptions): Promise<void> {
   );
 }
 // --- fin lot 3 ---
+// --- Lot 5 : nettoyage et gouvernance ---
+/**
+ * Gouvernance : analyse de doublons, de données personnelles et de sensibilité. Concurrence 1 ; le
+ * worker PROPOSE seulement (aucune application automatique). Journaux : compteurs et identifiants.
+ */
+function startGovernance(connection: ConnectionOptions): void {
+  const queue = new Queue(GED_GOVERNANCE_QUEUE, { connection });
+  const worker = new Worker<GedGovernanceJobData, GovernanceJobResult>(
+    GED_GOVERNANCE_QUEUE,
+    createGovernanceProcessorFromPrisma(prisma, { queue }),
+    { connection, concurrency: 1 },
+  );
+  worker.on('ready', () => logger.info('ged-governance worker ready'));
+  worker.on('completed', (job, result) =>
+    logger.info(
+      {
+        jobId: job.id,
+        job: job.name,
+        ...('batch' in result
+          ? {
+              scope: result.scope,
+              processed: result.processed,
+              skipped: result.skipped,
+              errors: result.errors,
+              created: result.created,
+            }
+          : {
+              documentId: result.documentId,
+              skipped: result.skipped,
+              aiDisabled: result.aiDisabled,
+              created: result.created.length,
+            }),
+      },
+      'ged-governance job completed',
+    ),
+  );
+  worker.on('failed', (job, err) =>
+    logger.error({ jobId: job?.id, job: job?.name, err: err.message }, 'ged-governance job failed'),
+  );
+}
+// --- fin Lot 5 ---
 
 // --- Lot 2a : connecteurs ---
 /**
@@ -289,6 +338,10 @@ function main(): void {
   startConnectorSync(connection as unknown as ConnectionOptions, env.ARCHIVES_PATH);
   // --- fin Lot 2a ---
 
+  // --- Lot 5 : nettoyage et gouvernance ---
+  startGovernance(connection as unknown as ConnectionOptions);
+  // --- fin Lot 5 ---
+
   void startReminders(
     connection as unknown as ConnectionOptions,
     {
@@ -300,7 +353,7 @@ function main(): void {
   ).catch((err: Error) => logger.error({ err: err.message }, 'démarrage des rappels impossible'));
 
   logger.info(
-    `Worker booted (NODE_ENV=${env.NODE_ENV}); listening on queues "${ACQUISITION_QUEUE}", "${REMINDERS_QUEUE}", "${GED_AI_QUEUE}" and "${GED_CONNECTOR_SYNC_QUEUE}".`,
+    `Worker booted (NODE_ENV=${env.NODE_ENV}); listening on queues "${ACQUISITION_QUEUE}", "${REMINDERS_QUEUE}", "${GED_AI_QUEUE}", "${GED_CONNECTOR_SYNC_QUEUE}" and "${GED_GOVERNANCE_QUEUE}".`,
   );
 }
 

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import {
   buildDocumentPatch,
   buildInputExcerpt,
+  GED_GOVERNANCE_PROMPT_VERSION,
   GedAiDecisionStatus,
   type GedAiTask,
 } from '@archivage/types';
@@ -143,6 +144,13 @@ export class AiDecisionService {
     await this.prisma.$transaction(async (tx) => {
       const decision = await tx.gedAiDecision.findUnique({ where: { gedAiDecisionId: decisionId } });
       if (!decision) throw new NotFoundException('Décision IA introuvable');
+      // Les décisions de gouvernance ont leur propre circuit (droits, confirmation, effets) : on
+      // refuse ici, avant toute écriture.
+      if (decision.promptVersion === GED_GOVERNANCE_PROMPT_VERSION) {
+        throw new ConflictException(
+          "Cette décision relève du module Gouvernance : utilisez l'écran Gouvernance.",
+        );
+      }
       if (decision.status !== GedAiDecisionStatus.Proposee) {
         throw new ConflictException('Seule une décision proposée peut être validée ou rejetée.');
       }

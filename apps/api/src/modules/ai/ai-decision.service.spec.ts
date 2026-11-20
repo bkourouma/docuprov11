@@ -3,6 +3,7 @@ import { Prisma, type GedAiDecision } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import {
   GED_AI_INPUT_EXCERPT_MAX_CHARS,
+  GED_GOVERNANCE_PROMPT_VERSION,
   GedAiDecisionStatus,
   GedAiTask,
 } from '@archivage/types';
@@ -241,6 +242,24 @@ describe('AiDecisionService', () => {
       await expect(service.reject(42, actor)).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.gedAiDecision.updateMany).not.toHaveBeenCalled();
       expect(prisma.document.updateMany).not.toHaveBeenCalled();
+    });
+
+    it.each(['validate', 'reject'] as const)(
+      '%s : décision de gouvernance => 409, aucune écriture',
+      async (action) => {
+        const { prisma, service } = setup(decision({ promptVersion: GED_GOVERNANCE_PROMPT_VERSION }));
+        const err = await service[action](42, actor).catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect((err as ConflictException).message).toContain('module Gouvernance');
+        expect(prisma.gedAiDecision.updateMany).not.toHaveBeenCalled();
+        expect(prisma.document.updateMany).not.toHaveBeenCalled();
+      },
+    );
+
+    it('une autre promptVersion garde son comportement', async () => {
+      const { service } = setup(decision({ promptVersion: 'autre-v1' }));
+      const res = await service.validate(42, actor);
+      expect(res).toMatchObject({ status: GedAiDecisionStatus.Validee });
     });
 
     it('404 si la décision n’existe pas', async () => {

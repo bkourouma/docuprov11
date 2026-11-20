@@ -15,6 +15,9 @@ import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard';
 import { CourriersModule } from './modules/courriers/courriers.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+// --- Lot 5 : gouvernance ---
+import { GovernanceModule } from './modules/governance/governance.module';
+// --- fin Lot 5 ---
 import { IntercalairesModule } from './modules/intercalaires/intercalaires.module';
 import { ParametresModule } from './modules/parametres/parametres.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
@@ -63,6 +66,9 @@ import { HealthController } from './health.controller';
     SemanticSearchModule,
 
     ConnectorsModule,
+    // --- Lot 5 : gouvernance ---
+    GovernanceModule,
+    // --- fin Lot 5 ---
   ],
   providers: [
     // Deny-by-default at the transport layer: every route needs a JWT unless @Public().
