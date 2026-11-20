@@ -47,6 +47,18 @@ export const envSchema = z.object({
   // démarrer normalement.
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default('gpt-5.6-terra'),
+  /**
+   * Socle IA (GED) : clé de repli quand `ged_ai_setting.api_key_ref` est vide. La configuration
+   * ne porte jamais la clé elle-même, seulement le NOM d'une variable (liste blanche `GED_AI_*`).
+   */
+  GED_AI_API_KEY: emptyAsAbsent(z.string().optional()) as z.ZodType<string | undefined>,
+  /**
+   * Socle IA (GED) : endpoint du modèle local (Ollama, vLLM…) utilisé par défaut quand la
+   * configuration en base n'en porte pas.
+   */
+  GED_AI_LOCAL_ENDPOINT: emptyAsAbsent(z.string().url().optional()) as z.ZodType<
+    string | undefined
+  >,
 
   // --- E-mail (notifications §03.5) ---
   // TOUT est optionnel : sans SMTP_HOST le canal e-mail est simplement désactivé (les

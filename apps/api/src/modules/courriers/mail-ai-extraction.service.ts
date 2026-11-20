@@ -1,16 +1,22 @@
 import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
 import { extname } from 'node:path';
 import { z } from 'zod';
+import { GedAiTask } from '@archivage/types';
+import { AiService } from '../ai/ai.service';
+import {
+  AiDisabledError,
+  AiMaskingRequiredError,
+  AiProviderError,
+  AiUnsupportedInputError,
+} from '../ai/ai.types';
 import { MailsService } from './mails.service';
 import { MailReferentialsService } from './mail-referentials.service';
+import { MailTextExtractor } from './mail-text-extractor';
 import type { UploadedScan } from './mail-scanned.service';
 
 /**
- * Types acceptés à l'analyse IA. Plus restrictif que le dépôt §07 : le modèle lit les images en
- * JPEG/PNG/GIF/WebP et les PDF (`input_image` / `input_file` de la Responses API), mais pas le
- * TIFF — l'accepter ici ne ferait qu'échouer côté API.
+ * Types acceptés à l'analyse IA. Plus restrictif que le dépôt §07 : l'extraction locale du texte
+ * lit les PDF et les images JPEG/PNG/GIF/WebP, pas le TIFF.
  */
 const MEDIA_TYPES: Record<string, string> = {
   '.pdf': 'application/pdf',
@@ -21,14 +27,11 @@ const MEDIA_TYPES: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
-/**
- * Plafond du binaire envoyé au modèle. La Responses API accepte jusqu'à 50 Mo par fichier ; on
- * refuse bien en-deçà, avec un message lisible, plutôt qu'un 413 opaque côté OpenAI.
- */
+/** Plafond du fichier analysé localement, refusé avec un message lisible plutôt qu'un échec opaque. */
 const MAX_BYTES = 10 * 1024 * 1024;
 
 /**
- * Sortie structurée imposée au modèle (`text.format`, type `json_schema`). Tout est nullable : un
+ * Sortie structurée imposée au modèle (`jsonSchema`, strict). Tout est nullable : un
  * champ illisible ou absent du document doit revenir `null` et laisser la saisie manuelle
  * reprendre la main — une valeur inventée serait pire que pas de valeur du tout.
  */
@@ -91,7 +94,7 @@ const extractionSchema = z.object({
 export type MailExtraction = z.infer<typeof extractionSchema>;
 
 const SYSTEM_PROMPT = `Tu assistes l'agent du bureau d'ordre qui enregistre un courrier entrant dans DocuPro.
-On te transmet le courrier numérisé ; tu en extrais les champs du formulaire d'enregistrement.
+On te transmet le texte du courrier numérisé ; tu en extrais les champs du formulaire d'enregistrement.
 
 Règles :
 - N'extrais que ce que le document montre. Un champ que tu ne lis pas vaut null — ne devine jamais.
@@ -101,39 +104,33 @@ Règles :
   casse, les accents, la ponctuation ou une abréviation courante) ; au moindre doute, renvoie null.
 - Renseigne toujours externalEntityLabel avec le nom lu, même quand aucun correspondant ne colle :
   l'agent s'en sert pour créer la fiche manquante.
-- La date du courrier est celle de sa rédaction, en AAAA-MM-JJ.`;
+- La date du courrier est celle de sa rédaction, en AAAA-MM-JJ.
+- Le document est fourni sous forme de texte issu d'une lecture automatique (OCR) : il peut contenir des
+  erreurs de lecture. Des données personnelles peuvent apparaître remplacées par des marqueurs entre
+  crochets, comme [IDENTITÉ] : ne les recopie jamais et ne cherche pas à deviner la valeur masquée.`;
 
 /**
  * Pré-remplissage du formulaire d'enregistrement (§05) à partir du courrier numérisé. Le modèle ne
  * fait que proposer : rien n'est écrit en base ici, l'agent relit et corrige avant d'enregistrer.
  *
- * La clé API ne quitte jamais l'API : le navigateur envoie le binaire, jamais le modèle directement.
+ * Le binaire n'est jamais transmis au fournisseur IA : le texte est lu localement (couche texte du
+ * PDF, sinon OCR) puis envoyé comme TEXTE, masqué par AiService en cloud.
  */
 @Injectable()
 export class MailAiExtractionService {
   private readonly logger = new Logger(MailAiExtractionService.name);
-  private client: OpenAI | null = null;
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly ai: AiService,
     private readonly mails: MailsService,
     private readonly referentials: MailReferentialsService,
+    private readonly textExtractor: MailTextExtractor,
   ) {}
 
-  /** Le module démarre sans clé : la fonctionnalité est alors simplement absente de l'écran. */
-  get enabled(): boolean {
-    return Boolean(this.config.get<string>('OPENAI_API_KEY'));
-  }
-
-  private get openai(): OpenAI {
-    const apiKey = this.config.get<string>('OPENAI_API_KEY');
-    if (!apiKey) {
-      throw new ServiceUnavailableException(
-        "La saisie automatique par IA n'est pas configurée (OPENAI_API_KEY absente).",
-      );
-    }
-    if (!this.client) this.client = new OpenAI({ apiKey });
-    return this.client;
+  /** Disponible si l'IA est activée ET que la lecture locale (OCR) est utilisable sur ce serveur. */
+  async isEnabled(): Promise<boolean> {
+    if (!this.textExtractor.isOperational()) return false;
+    return (await this.ai.status()).enabled;
   }
 
   async extract(file: UploadedScan | undefined): Promise<MailExtraction> {
@@ -152,6 +149,12 @@ export class MailAiExtractionService {
       );
     }
 
+    // IA coupée : on ne lance pas l'OCR local (coûteux) pour rien.
+    if (!(await this.ai.status()).enabled) throw this.disabledError();
+
+    // Lecture locale AVANT tout appel IA : un document sans texte lisible échoue ici (400).
+    const documentText = await this.textExtractor.extractText({ buffer: file.buffer, mediaType });
+
     // Les listes partent avec la requête : le modèle choisit un identifiant existant au lieu de
     // renvoyer un libellé qu'il faudrait rapprocher après coup, à l'aveugle.
     const [entities, roles] = await Promise.all([
@@ -159,65 +162,60 @@ export class MailAiExtractionService {
       this.mails.listDestinataireRoles(),
     ]);
 
-    const data = file.buffer.toString('base64');
-    const documentBlock: OpenAI.Responses.ResponseInputContent =
-      mediaType === 'application/pdf'
-        ? {
-            type: 'input_file',
-            filename: file.originalname,
-            file_data: `data:application/pdf;base64,${data}`,
-          }
-        : { type: 'input_image', image_url: `data:${mediaType};base64,${data}`, detail: 'auto' };
+    const text = [
+      'Correspondants enregistrés (externalEntityId — libellé) :',
+      entities.map((e) => `${e.externalEntityId} — ${e.label}`).join('\n') || '(aucun)',
+      '',
+      'Rôles destinataires (destinataireRoleId — libellé) :',
+      roles.map((r) => `${r.roleId} — ${r.label}`).join('\n') || '(aucun)',
+      '',
+      'Texte du courrier (lecture automatique) :',
+      '<<<DEBUT_COURRIER>>>',
+      documentText,
+      '<<<FIN_COURRIER>>>',
+      '',
+      "Extrais les champs d'enregistrement de ce courrier.",
+    ].join('\n');
 
-    const response = await this.openai.responses
-      .create({
-        model: this.config.get<string>('OPENAI_MODEL') ?? 'gpt-5.6-terra',
-        instructions: SYSTEM_PROMPT,
-        text: {
-          format: { type: 'json_schema', name: 'mail_extraction', schema: OUTPUT_SCHEMA, strict: true },
+    let result;
+    try {
+      result = await this.ai.run<MailExtraction>({
+        task: GedAiTask.ExtractionMetadonnees,
+        request: {
+          system: SYSTEM_PROMPT,
+          text,
+          jsonSchema: { name: 'mail_extraction', schema: OUTPUT_SCHEMA },
         },
-        input: [
-          {
-            role: 'user',
-            content: [
-              documentBlock,
-              {
-                type: 'input_text',
-                text: [
-                  'Correspondants enregistrés (externalEntityId — libellé) :',
-                  entities.map((e) => `${e.externalEntityId} — ${e.label}`).join('\n') || '(aucun)',
-                  '',
-                  'Rôles destinataires (destinataireRoleId — libellé) :',
-                  roles.map((r) => `${r.roleId} — ${r.label}`).join('\n') || '(aucun)',
-                  '',
-                  "Extrais les champs d'enregistrement de ce courrier.",
-                ].join('\n'),
-              },
-            ],
-          },
-        ],
-      })
-      .catch((e: unknown) => {
-        // Le détail (clé invalide, quota, panne réseau) part au log ; l'écran reçoit un message
-        // actionnable. Un échec d'analyse ne doit pas empêcher la saisie manuelle du courrier.
-        this.logger.error(`Échec de l'extraction IA : ${e instanceof Error ? e.message : String(e)}`);
+        // La sortie structurée garantit un JSON conforme, mais on revalide : un refus du modèle ou
+        // une coupure sur la longueur rend la réponse vide ou incomplète.
+        parse: (raw) => extractionSchema.parse(JSON.parse(raw) as unknown),
+        autoApply: false,
+        minTimeoutSeconds: 180,
+        promptVersion: 'mail-extraction-v2',
+      });
+    } catch (e) {
+      if (e instanceof AiMaskingRequiredError) {
+        throw new ServiceUnavailableException(
+          "L'analyse du document est indisponible : le texte n'a pas pu être masqué avant envoi. Saisissez le courrier manuellement.",
+        );
+      }
+      if (e instanceof AiUnsupportedInputError) throw new BadRequestException(e.message);
+      if (e instanceof AiDisabledError) throw this.disabledError();
+      // Le détail (clé invalide, quota, panne réseau) part au log, sans contenu ; l'écran reçoit
+      // un message actionnable. Un échec d'analyse n'empêche pas la saisie manuelle.
+      if (e instanceof AiProviderError) {
+        this.logger.error(`Échec de l'extraction IA : ${e.message}`);
         throw new ServiceUnavailableException(
           "L'analyse du document a échoué. Vous pouvez saisir le courrier manuellement.",
         );
-      });
-
-    // La sortie structurée garantit un JSON conforme, mais on revalide : un refus du modèle ou une
-    // coupure sur la longueur rend `output_text` vide ou incomplet.
-    const parsed = response.output_text
-      ? extractionSchema.safeParse(JSON.parse(response.output_text) as unknown)
-      : null;
-    if (!parsed?.success) {
-      this.logger.warn(`Réponse d'extraction inexploitable (status: ${response.status ?? 'inconnu'}).`);
+      }
+      this.logger.warn(`Réponse d'extraction inexploitable (${e instanceof Error ? e.name : 'erreur'}).`);
       throw new ServiceUnavailableException(
         "Le document n'a pas pu être analysé. Vous pouvez saisir le courrier manuellement.",
       );
     }
-    const extracted = parsed.data;
+    if (result.disabled) throw this.disabledError();
+    const extracted = result.data;
 
     // Garde-fou : le modèle ne doit renvoyer qu'un identifiant des listes envoyées. On rejette
     // silencieusement tout autre, sinon le formulaire porterait une valeur qui échouerait à
@@ -231,5 +229,11 @@ export class MailAiExtractionService {
         ? extracted.destinataireRoleId
         : null,
     };
+  }
+
+  private disabledError(): ServiceUnavailableException {
+    return new ServiceUnavailableException(
+      "L'IA est désactivée : la saisie automatique est indisponible. Saisissez le courrier manuellement.",
+    );
   }
 }

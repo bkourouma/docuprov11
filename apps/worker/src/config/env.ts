@@ -38,6 +38,17 @@ export const envSchema = z.object({
   // `email_template_setting`, comme côté API, pour un rendu identique entre rappel et notification.
   MAIL_ORG_NAME: emptyAsAbsent(z.string().optional()),
   MAIL_LOGO_URL: emptyAsAbsent(z.string().url().optional()),
+
+  // --- Socle IA (file `ged-ai`) --- tout optionnel : un worker sans IA démarre normalement.
+  // Les clés ne sont jamais écrites en base : `ged_ai_setting.api_key_ref` ne désigne que le NOM
+  // d'une de ces variables (liste blanche `OPENAI_API_KEY` / `GED_AI_*`). Plus aucun repli : une IA
+  // sans ligne `ged_ai_setting` active reste désactivée, même si `OPENAI_API_KEY` est définie.
+  // `OPENAI_API_KEY` n'est conservée ici qu'à titre documentaire : elle est lue dans `process.env`
+  // comme valeur d'une référence `api_key_ref`, et seulement pour cloud + openai + api.openai.com.
+  OPENAI_API_KEY: emptyAsAbsent(z.string().optional()),
+  GED_AI_API_KEY: emptyAsAbsent(z.string().optional()),
+  /** Endpoint du fournisseur local (compatible OpenAI) si `ged_ai_setting.endpoint` est vide. */
+  GED_AI_LOCAL_ENDPOINT: emptyAsAbsent(z.string().url().optional()),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,5 +1,8 @@
 import IORedis from 'ioredis';
 
+/** File du pipeline IA (producteur api, consommateur worker) — nom défini dans le contrat partagé. */
+export { GED_AI_QUEUE } from '@archivage/types';
+
 /** Must match the API producer (apps/api/.../queue.constants.ts). */
 export const ACQUISITION_QUEUE = 'acquisition';
 
