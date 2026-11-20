@@ -27,6 +27,7 @@ import { PdfViewer } from '../../components/viewer/PdfViewer';
 import { icons } from '../../theme/icons';
 import { fontSize, space } from '../../theme/tokens';
 import { PERMISSION_LEVEL } from '../../lib/security';
+import { isCollabDocument } from '../../lib/editeur';
 
 const { Text } = Typography;
 
@@ -220,9 +221,17 @@ export default function DocumentDetailPage() {
       {/* L'aperçu est le geste attendu de l'écran : il porte seul l'accent primaire, le retour à
           la recherche restant une action secondaire de l'en-tête. */}
       <Space wrap size={space.sm} style={{ marginBottom: space.lg }}>
-        <Button type="primary" icon={<icons.view size={16} />} onClick={() => void openViewer()}>
-          Visualiser le document
-        </Button>
+        {isCollabDocument(detail.currentVersion?.files) ? (
+          /* Texte natif : la pièce .ydoc n'est pas un PDF, l'éditeur (lecture ou écriture selon
+             les droits, décidé par le serveur) remplace l'aperçu. */
+          <Button type="primary" icon={<icons.edit size={16} />} onClick={() => router.push(`/editeur/${detail.documentId}`)}>
+            Ouvrir le document
+          </Button>
+        ) : (
+          <Button type="primary" icon={<icons.view size={16} />} onClick={() => void openViewer()}>
+            Visualiser le document
+          </Button>
+        )}
       </Space>
 
       <Card>
