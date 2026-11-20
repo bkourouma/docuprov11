@@ -18,7 +18,9 @@ import { ParametresModule } from './modules/parametres/parametres.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { ReferentialsModule } from './modules/referentials/referentials.module';
+import { DocVersionsModule } from './modules/doc-versions/doc-versions.module';
 import { RolesModule } from './modules/roles/roles.module';
+import { SpacesModule } from './modules/spaces/spaces.module';
 import { UsersModule } from './modules/users/users.module';
 import { HealthController } from './health.controller';
 
@@ -47,6 +49,8 @@ import { HealthController } from './health.controller';
     ArchivesModule,
     IntercalairesModule,
     DocumentsModule,
+    DocVersionsModule,
+    SpacesModule,
     ParametresModule,
     ReferentialsModule,
     RolesModule,
