@@ -28,3 +28,8 @@ export type ReminderJobName = (typeof REMINDER_JOBS)[keyof typeof REMINDER_JOBS]
 export function createRedis(url: string): IORedis {
   return new IORedis(url, { maxRetriesPerRequest: null });
 }
+
+// --- Lot 3 : indexation sémantique ---
+/** File d'indexation (segmentation + embeddings) — nom défini dans le contrat partagé. */
+export { GED_EMBEDDING_QUEUE } from '@archivage/types';
+// --- fin lot 3 ---

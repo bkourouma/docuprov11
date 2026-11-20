@@ -22,6 +22,12 @@ import {
   runInputationReminders,
   type ReminderEnv,
 } from './processors/mail-reminders.processor';
+// --- Lot 3 : indexation sémantique ---
+import { GED_EMBEDDING_QUEUE } from './queue';
+import { GED_EMBEDDING_JOBS } from '@archivage/types';
+import type { GedEmbeddingJobData } from '@archivage/types';
+import { createEmbeddingProcessor } from './processors/embedding-processor';
+// --- fin lot 3 ---
 
 /**
  * Rappels Docu-Courriers (§03.5) : planificateurs répétables + consommateur.
@@ -67,6 +73,47 @@ async function startReminders(
     logger.error({ jobId: job?.id, job: job?.name, err: err.message }, 'rappel en échec'),
   );
 }
+
+// --- Lot 3 : indexation sémantique ---
+/**
+ * Indexation sémantique : segmentation + embeddings des documents archivés. Concurrence 1 (un
+ * fournisseur local est souvent mono-GPU). Le rattrapage (`sweep`) est planifié toutes les 10 min par
+ * `upsertJobScheduler` (idempotent, calque de `startReminders`) ; sans configuration IA il ne fait rien.
+ */
+async function startEmbedding(connection: ConnectionOptions): Promise<void> {
+  const queue = new Queue(GED_EMBEDDING_QUEUE, { connection });
+  await queue.upsertJobScheduler(
+    'ged-embedding-sweep',
+    { every: 10 * 60 * 1000 },
+    { name: GED_EMBEDDING_JOBS.sweep },
+  );
+
+  const worker = new Worker<GedEmbeddingJobData>(
+    GED_EMBEDDING_QUEUE,
+    createEmbeddingProcessor(prisma, { queue }),
+    { connection, concurrency: 1 },
+  );
+  worker.on('ready', () => logger.info('ged-embedding worker ready'));
+  worker.on('completed', (job, result) =>
+    logger.info(
+      {
+        jobId: job.id,
+        job: job.name,
+        disabled: result.disabled,
+        ...(result.disabled
+          ? {}
+          : 'queued' in result
+            ? { queued: result.queued }
+            : { documentId: result.documentId, skipped: result.skipped, chunks: result.chunks }),
+      },
+      'ged-embedding job completed',
+    ),
+  );
+  worker.on('failed', (job, err) =>
+    logger.error({ jobId: job?.id, job: job?.name, err: err.message }, 'ged-embedding job failed'),
+  );
+}
+// --- fin lot 3 ---
 
 function main(): void {
   const env = loadEnv();
@@ -172,6 +219,14 @@ function main(): void {
   aiWorker.on('failed', (job, err) =>
     logger.error({ jobId: job?.id, err: err.message }, 'ged-ai job failed'),
   );
+
+  // --- Lot 3 : indexation sémantique ---
+  void startEmbedding(connection as unknown as ConnectionOptions)
+    .then(() => logger.info(`Indexation sémantique active sur la file "${GED_EMBEDDING_QUEUE}".`))
+    .catch((err: Error) =>
+      logger.error({ err: err.message }, 'démarrage de l’indexation sémantique impossible'),
+    );
+  // --- fin lot 3 ---
 
   void startReminders(
     connection as unknown as ConnectionOptions,
