@@ -16,6 +16,7 @@ import { MetaDataDisplay } from '../../components/MetaDataDisplay';
 import { InfoCard, InfoRow } from '../../components/InfoCard';
 import { AccessTab } from '../../components/documents/AccessTab';
 import { HistoryTab } from '../../components/documents/HistoryTab';
+import { VersionsTab } from '../../components/documents/VersionsTab';
 import { SecurityTab } from '../../components/documents/SecurityTab';
 import { IndexationTab } from '../../components/documents/IndexationTab';
 import { LifeCycleTab } from '../../components/documents/LifeCycleTab';
@@ -342,6 +343,18 @@ export default function DocumentDetailPage() {
                   documentId={detail.documentId}
                   canVerify={canIndex}
                   canSeal={canSeal}
+                />
+              ),
+            },
+            {
+              // Dépôt et restauration réservés au niveau Modification, comme l'onglet Indexation.
+              key: 'versions',
+              label: 'Versions',
+              children: (
+                <VersionsTab
+                  documentId={detail.documentId}
+                  canEdit={canIndex}
+                  onChanged={() => void load()}
                 />
               ),
             },

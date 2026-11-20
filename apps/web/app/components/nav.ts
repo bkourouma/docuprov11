@@ -51,6 +51,12 @@ export const NAV: NavSection[] = [
         keywords: ['rechercher', 'export', 'P3'],
       },
       {
+        key: '/espaces',
+        label: 'Espaces',
+        icon: 'dossier',
+        keywords: ['espace', 'partage', 'collaboration', 'publication', 'membres', 'ged'],
+      },
+      {
         key: '/archives/integrite',
         label: 'Intégrité du fonds',
         icon: 'lock',
