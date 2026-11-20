@@ -3,3 +3,4 @@ export * from './courriers';
 export * from './archives';
 export * from './ged';
 export * from './ged-spaces';
+export * from './ged-connectors';

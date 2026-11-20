@@ -16,6 +16,12 @@ import { join } from 'node:path';
 import { createBrandLoader, createMailer, loadInlineLogo, type Mailer } from '@archivage/mailer';
 import type { GedAiPipelineJobData } from '@archivage/types';
 import { createAiPipelineProcessor } from './processors/ai-pipeline.processor';
+// --- Lot 2a : connecteurs ---
+import { DiskFileStore } from '@archivage/storage';
+import { GED_CONNECTOR_JOB, type GedConnectorSyncJobData } from '@archivage/types';
+import { GED_CONNECTOR_SYNC_QUEUE } from './queue';
+import { createConnectorSyncProcessor } from './processors/connectors/sync.processor';
+// --- fin Lot 2a ---
 import { processBatch } from './processors/acquisition.processor';
 import {
   runDateButoireReminders,
@@ -67,6 +73,57 @@ async function startReminders(
     logger.error({ jobId: job?.id, job: job?.name, err: err.message }, 'rappel en échec'),
   );
 }
+
+// --- Lot 2a : connecteurs ---
+/**
+ * Synchronisation des sources GED : Worker de la file (concurrence 2) + planificateur répétable
+ * `tick` chaque minute (idempotent, comme `startReminders`). La file IA sert à enfiler le pipeline
+ * après chaque ingestion ; elle n'a pas de consommateur ici (c'est `aiWorker`).
+ */
+function startConnectorSync(connection: ConnectionOptions, archivesPath: string): void {
+  const syncQueue = new Queue(GED_CONNECTOR_SYNC_QUEUE, { connection });
+  const aiQueue = new Queue(GED_AI_QUEUE, { connection });
+  const processor = createConnectorSyncProcessor({
+    prisma,
+    fileStore: new DiskFileStore(archivesPath),
+    archivesPath,
+    aiQueue,
+    syncQueue,
+    env: process.env,
+  });
+
+  void syncQueue
+    .upsertJobScheduler(
+      'ged-connector-tick',
+      { pattern: '* * * * *' },
+      { name: GED_CONNECTOR_JOB.tick },
+    )
+    .catch((err: Error) =>
+      logger.error({ err: err.message }, 'planificateur des connecteurs impossible'),
+    );
+
+  const syncWorker = new Worker<GedConnectorSyncJobData>(GED_CONNECTOR_SYNC_QUEUE, processor, {
+    connection,
+    concurrency: 2,
+  });
+  syncWorker.on('ready', () => logger.info('ged-connector-sync worker ready'));
+  syncWorker.on('completed', (job, result) => {
+    // Le `tick` sans connecteur échu est le cas nominal : débogage seulement.
+    if (job.name === GED_CONNECTOR_JOB.tick) logger.debug({ result }, 'tick connecteurs');
+    else
+      logger.info(
+        { jobId: job.id, connectorId: job.data.connectorId },
+        'ged-connector-sync job completed',
+      );
+  });
+  syncWorker.on('failed', (job, err) =>
+    logger.error(
+      { jobId: job?.id, job: job?.name, err: err.message },
+      'ged-connector-sync job failed',
+    ),
+  );
+}
+// --- fin Lot 2a ---
 
 function main(): void {
   const env = loadEnv();
@@ -173,6 +230,10 @@ function main(): void {
     logger.error({ jobId: job?.id, err: err.message }, 'ged-ai job failed'),
   );
 
+  // --- Lot 2a : connecteurs ---
+  startConnectorSync(connection as unknown as ConnectionOptions, env.ARCHIVES_PATH);
+  // --- fin Lot 2a ---
+
   void startReminders(
     connection as unknown as ConnectionOptions,
     {
@@ -184,7 +245,7 @@ function main(): void {
   ).catch((err: Error) => logger.error({ err: err.message }, 'démarrage des rappels impossible'));
 
   logger.info(
-    `Worker booted (NODE_ENV=${env.NODE_ENV}); listening on queues "${ACQUISITION_QUEUE}", "${REMINDERS_QUEUE}" and "${GED_AI_QUEUE}".`,
+    `Worker booted (NODE_ENV=${env.NODE_ENV}); listening on queues "${ACQUISITION_QUEUE}", "${REMINDERS_QUEUE}", "${GED_AI_QUEUE}" and "${GED_CONNECTOR_SYNC_QUEUE}".`,
   );
 }
 

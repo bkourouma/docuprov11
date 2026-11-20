@@ -28,3 +28,8 @@ export type ReminderJobName = (typeof REMINDER_JOBS)[keyof typeof REMINDER_JOBS]
 export function createRedis(url: string): IORedis {
   return new IORedis(url, { maxRetriesPerRequest: null });
 }
+
+// --- Lot 2a : connecteurs ---
+/** File des synchronisations de sources GED (producteur api, consommateur worker). */
+export { GED_CONNECTOR_SYNC_QUEUE } from '@archivage/types';
+// --- fin Lot 2a ---

@@ -343,6 +343,12 @@ export const NAV: NavSection[] = [
         icon: 'mail',
         keywords: ['e-mail', 'email', 'notification', 'logo', 'gabarit', 'marque', 'identité'],
       },
+      {
+        key: '/connecteurs',
+        label: 'Connecteurs',
+        icon: 'download',
+        keywords: ['source', 'import', 'synchronisation', 'messagerie', 'dossier partagé', 'ged'],
+      },
     ],
   },
 ];

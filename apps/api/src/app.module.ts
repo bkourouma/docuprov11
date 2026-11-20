@@ -7,6 +7,7 @@ import { CommonModule } from './common/common.module';
 import { AccessInquiriesModule } from './modules/access-inquiries/access-inquiries.module';
 import { AcquisitionModule } from './modules/acquisition/acquisition.module';
 import { AiModule } from './modules/ai/ai.module';
+import { ConnectorsModule } from './modules/connectors/connectors.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ArchivesModule } from './modules/archives/archives.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -58,6 +59,7 @@ import { HealthController } from './health.controller';
     UsersModule,
     CourriersModule,
     AiModule,
+    ConnectorsModule,
   ],
   providers: [
     // Deny-by-default at the transport layer: every route needs a JWT unless @Public().

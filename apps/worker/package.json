@@ -10,6 +10,7 @@
     "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js --passWithNoTests"
   },
   "dependencies": {
+    "@archivage/connectors": "workspace:*",
     "@archivage/db": "workspace:*",
     "@archivage/mailer": "workspace:^",
     "@archivage/ocr": "workspace:*",

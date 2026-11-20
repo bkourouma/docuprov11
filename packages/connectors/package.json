@@ -1,0 +1,27 @@
+{
+  "name": "@archivage/connectors",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Cadre de connecteurs de sources GED : interface, registre, chiffrement des identifiants, garde SSRF, mapping de droits, connecteurs dossier surveillé et IMAP. Partagé API et worker.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "node ../../node_modules/jest/bin/jest.js --passWithNoTests"
+  },
+  "dependencies": {
+    "@archivage/types": "workspace:*",
+    "imapflow": "^1.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@archivage/config": "workspace:*",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.2",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  }
+}
