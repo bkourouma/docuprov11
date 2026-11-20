@@ -57,6 +57,12 @@ export const NAV: NavSection[] = [
         keywords: ['espace', 'partage', 'collaboration', 'publication', 'membres', 'ged'],
       },
       {
+        key: '/recherche-ia',
+        label: 'Recherche IA',
+        icon: 'sparkle',
+        keywords: ['question', 'réponse', 'sémantique', 'ia', 'assistant', 'intelligence artificielle'],
+      },
+      {
         key: '/archives/integrite',
         label: 'Intégrité du fonds',
         icon: 'lock',

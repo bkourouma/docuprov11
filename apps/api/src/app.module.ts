@@ -21,6 +21,7 @@ import { QueueModule } from './modules/queue/queue.module';
 import { ReferentialsModule } from './modules/referentials/referentials.module';
 import { DocVersionsModule } from './modules/doc-versions/doc-versions.module';
 import { RolesModule } from './modules/roles/roles.module';
+import { SemanticSearchModule } from './modules/semantic-search/semantic-search.module';
 import { SpacesModule } from './modules/spaces/spaces.module';
 import { UsersModule } from './modules/users/users.module';
 import { HealthController } from './health.controller';
@@ -58,6 +59,7 @@ import { HealthController } from './health.controller';
     UsersModule,
     CourriersModule,
     AiModule,
+    SemanticSearchModule,
   ],
   providers: [
     // Deny-by-default at the transport layer: every route needs a JWT unless @Public().

@@ -8,6 +8,7 @@
  */
 import { ARCHIVES_MENUS } from '../archives/archives.menus';
 import { SECURITY_MENUS } from '../access-inquiries/security.menus';
+import { SEMANTIC_SEARCH_MENU } from '../semantic-search/semantic-search.menus';
 import { SPACES_MENU } from '../spaces/spaces.menus';
 
 export interface MenuPermission {
@@ -49,6 +50,7 @@ export const MENU_CATALOG: MenuPermission[] = [
   { key: '/acquisition', label: 'Acquisition par lot', section: 'Docu-Archives' },
   { key: '/search', label: 'Recherche', section: 'Docu-Archives' },
   { key: SPACES_MENU, label: 'Espaces', section: 'Docu-Archives' },
+  { key: SEMANTIC_SEARCH_MENU, label: 'Recherche IA', section: 'Docu-Archives' },
   { key: '/admin/geolocalisation', label: 'Géolocalisation', section: 'Paramétrage Archives' },
   { key: '/admin/classification-plans', label: 'Plan de classement', section: 'Paramétrage Archives' },
   // '/admin/dossier-categories' a été RETIRÉ du catalogue, pas seulement masqué : la table
