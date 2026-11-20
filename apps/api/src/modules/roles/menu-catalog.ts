@@ -149,6 +149,10 @@ export const MENU_CATALOG: MenuPermission[] = [
     label: 'Paramétrage e-mail',
     section: 'Administration',
   },
+  // Connecteurs de sources GED : administration pure (contrôleur `@RequireAdmin`). La clé est
+  // listée dans HIDDEN_MENU_KEYS plus bas pour n'être PAS assignable à un rôle (une permission
+  // accordée serait refusée par l'API) ; l'administrateur et le rôle système la voient via MENU_KEYS.
+  { key: '/connecteurs', label: 'Connecteurs', section: 'Administration' },
 
   // --- Docu-Courriers (opérationnel) --- §04.3
   {
@@ -240,6 +244,8 @@ export const HIDDEN_MENU_KEYS: string[] = [
   // les tableaux de bord, les intercalaires QR et le défaut du paramétrage des types. Seule son
   // ADMINISTRATION disparaît de l'interface ; les lectures (GET) n'ont jamais exigé ce menu.
   '/admin/geolocalisation',
+  // Administration seule (cf. entrée `/connecteurs` du catalogue) : non assignable à un rôle.
+  '/connecteurs',
 ];
 
 /** Toutes les clés connues (y compris l'accueil et les écrans masqués). */

@@ -33,3 +33,8 @@ export function createRedis(url: string): IORedis {
 /** File d'indexation (segmentation + embeddings) — nom défini dans le contrat partagé. */
 export { GED_EMBEDDING_QUEUE } from '@archivage/types';
 // --- fin lot 3 ---
+
+// --- Lot 2a : connecteurs ---
+/** File des synchronisations de sources GED (producteur api, consommateur worker). */
+export { GED_CONNECTOR_SYNC_QUEUE } from '@archivage/types';
+// --- fin Lot 2a ---
