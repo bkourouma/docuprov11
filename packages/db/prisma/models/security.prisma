@@ -47,6 +47,8 @@ model Role {
   mailsAsDestinataire Mail[]               @relation("MailDestinataireRole")
   // Droits documentaires accordés au rôle entier (« Sécurité type document par rôle »).
   typePermissions     DocumentTypePermission[]
+  // GED IA : appartenance du rôle entier à des espaces.
+  gedSpaceMembers     GedSpaceMember[]     @relation("GedSpaceMemberRole")
 
   @@index([organigrammeId])
   @@map("role")
@@ -94,6 +96,11 @@ model AppUserGroup {
   accessInquiries     DocumentAccessInquiry[] // demandes d'accès document SOUMISES par l'acteur
   navigationAudits    NavigationAudit[]
   dataChangeAudits    DataChangeAudit[]
+
+  // GED IA
+  gedAiDecisionsValidated GedAiDecision[]   @relation("GedAiDecisionValidatedBy")
+  gedSpacesOwned          GedSpace[]        @relation("GedSpaceOwner")
+  gedSpaceMemberships     GedSpaceMember[]  @relation("GedSpaceMemberUser")
 
   // Docu-Courriers (acteur effectif des courriers, imputations, commentaires, audit)
   mailsAsDestinataire     Mail[]                @relation("MailDestinataire")

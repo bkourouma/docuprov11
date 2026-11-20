@@ -97,6 +97,10 @@ model Document {
   lendingDetails   LendingDocumentDetail[] // Docu-Archives : prêts / communications
   metadataValues   DocumentMetadataValue[] // Docu-Archives : valeurs saisies des métadonnées du type
   accessInquiries  DocumentAccessInquiry[] // Sécurité Documentaire : demandes d'accès sur ce document
+  gedAiDecisions   GedAiDecision[] // GED IA : décisions de l'IA sur ce document
+  gedSourceItems   GedSourceItem[] // GED IA : provenance (éléments de source copiés en ce document)
+  gedChunks        GedDocumentChunk[] // GED IA : segments + embeddings (recherche sémantique)
+  gedSpaces        GedSpaceDocument[] // GED IA : espaces contenant ce document
 
   @@index([dossierId])
   @@index([documentTypeId])
@@ -151,6 +155,9 @@ model DocumentVersion {
   document      Document       @relation(fields: [documentId], references: [documentId], onDelete: Cascade)
   createdByUser AppUserGroup?  @relation("VersionCreatedBy", fields: [createdBy], references: [userGroupId])
   files         DocumentFile[]
+  gedChunks     GedDocumentChunk[] // GED IA : segments embarqués de cette version
+  gedInfo       GedVersionInfo? @relation("GedVersionInfoVersion") // GED IA : attributs GED (1-1)
+  gedRestoredInfos GedVersionInfo[] @relation("GedVersionInfoRestoredFrom") // GED IA : restaurations depuis cette version
 
   @@unique([documentId, versionNumber])
   @@index([documentId])
