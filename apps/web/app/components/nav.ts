@@ -62,6 +62,13 @@ export const NAV: NavSection[] = [
         icon: 'sparkle',
         keywords: ['question', 'réponse', 'sémantique', 'ia', 'assistant', 'intelligence artificielle'],
       },
+      // Lot 5 : gouvernance (doublons, données personnelles, sensibilité).
+      {
+        key: '/gouvernance',
+        label: 'Gouvernance',
+        icon: 'roles',
+        keywords: ['doublon', 'données personnelles', 'rgpd', 'sensibilité', 'confidentialité', 'nettoyage', 'ia'],
+      },
       {
         key: '/archives/integrite',
         label: 'Intégrité du fonds',
