@@ -34,6 +34,16 @@ import { GED_EMBEDDING_JOBS } from '@archivage/types';
 import type { GedEmbeddingJobData } from '@archivage/types';
 import { createEmbeddingProcessor } from './processors/embedding-processor';
 // --- fin lot 3 ---
+// --- Lot 2c : WhatsApp ---
+import { GED_WHATSAPP_QUEUE } from './queue';
+import type { GedWhatsappInboundJobData, GedWhatsappRefuseJobData } from '@archivage/types';
+import { createWhatsappProcessor } from './processors/connectors/whatsapp.processor';
+import {
+  createMemoryRateLimiter,
+  createRedisRateLimiter,
+  type RedisCounterClient,
+} from './processors/connectors/whatsapp-rate-limit';
+// --- fin Lot 2c ---
 
 /**
  * Rappels Docu-Courriers (§03.5) : planificateurs répétables + consommateur.
@@ -172,6 +182,50 @@ function startConnectorSync(connection: ConnectionOptions, archivesPath: string)
 }
 // --- fin Lot 2a ---
 
+// --- Lot 2c : WhatsApp ---
+/**
+ * Consommateur de la file `ged-whatsapp-inbound` (jobs `inbound` et `refuse`). La limitation de
+ * débit des messages sortants passe par Redis (partagée entre processus) quand la connexion le
+ * permet, sinon par un limiteur en mémoire.
+ */
+function startWhatsappInbound(connection: ConnectionOptions, archivesPath: string): void {
+  const aiQueue = new Queue(GED_AI_QUEUE, { connection });
+  const redis = connection as unknown as Partial<RedisCounterClient>;
+  const rateLimiter =
+    typeof redis.set === 'function' && typeof redis.incr === 'function'
+      ? createRedisRateLimiter(redis as RedisCounterClient)
+      : createMemoryRateLimiter();
+  const processor = createWhatsappProcessor({
+    prisma,
+    fileStore: new DiskFileStore(archivesPath),
+    archivesPath,
+    aiQueue,
+    rateLimiter,
+    env: process.env,
+  });
+
+  const whatsappWorker = new Worker<GedWhatsappInboundJobData | GedWhatsappRefuseJobData>(
+    GED_WHATSAPP_QUEUE,
+    processor,
+    { connection, concurrency: 2 },
+  );
+  whatsappWorker.on('ready', () => logger.info('ged-whatsapp worker ready'));
+  // Ni numéro, ni contenu : seulement l'identifiant du job, son nom et le connecteur.
+  whatsappWorker.on('completed', (job) =>
+    logger.info(
+      { jobId: job.id, job: job.name, connectorId: job.data.connectorId },
+      'ged-whatsapp job completed',
+    ),
+  );
+  whatsappWorker.on('failed', (job, err) =>
+    logger.error(
+      { jobId: job?.id, job: job?.name, err: err.message },
+      'ged-whatsapp job failed',
+    ),
+  );
+}
+// --- fin Lot 2c ---
+
 function main(): void {
   const env = loadEnv();
   const connection = createRedis(env.REDIS_URL);
@@ -288,6 +342,10 @@ function main(): void {
   // --- Lot 2a : connecteurs ---
   startConnectorSync(connection as unknown as ConnectionOptions, env.ARCHIVES_PATH);
   // --- fin Lot 2a ---
+
+  // --- Lot 2c : WhatsApp ---
+  startWhatsappInbound(connection as unknown as ConnectionOptions, env.ARCHIVES_PATH);
+  // --- fin Lot 2c ---
 
   void startReminders(
     connection as unknown as ConnectionOptions,

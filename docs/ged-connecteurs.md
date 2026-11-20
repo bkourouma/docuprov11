@@ -451,3 +451,59 @@ Exploitation :
 
 32. **Jeton illisible bloquant.** Un jeton lu comme illisible fait échouer la passe à chaque tick, jusqu'à intervention manuelle. Il n'existe pas de remise à zéro directe ; seul un changement de réglage identitaire (point 4) remet le jeton à NULL.
 33. **Documentation d'exploitation.** Les variables de la section 9 ne sont déclarées dans aucun schéma d'environnement ; `.env.example` les documente seulement en commentaire, sans contrôle au démarrage. La procédure de rotation (section 7.2) est la seule description complète.
+
+## 12. Connecteur WhatsApp Business (lot 2c)
+
+Ce connecteur (`whatsapp`, libellé « WhatsApp Business », mode copie uniquement) reçoit des documents envoyés à un numéro WhatsApp Business de l'organisation (API WhatsApp Cloud de Meta). C'est un connecteur à événements : `listChanges` renvoie toujours une page vide, aucune synchronisation périodique n'est utile.
+
+### 12.1 Chemin d'un message
+
+```
+  Meta ─POST─► /api/ged/webhooks/whatsapp/:connectorId   (public, @Public : seule exception au « authentifié par défaut »)
+                 │ 1. limite par IP  2. corps brut borné (256 Kio)  3. connecteur + secrets déchiffrés
+                 │ 4. signature X-Hub-Signature-256 (HMAC-SHA256 du corps brut, temps constant)  ◄── rejet 401 ici, avant tout traitement
+                 │ 5. analyse du JSON  6. fenêtre anti-rejeu  7. limite par expéditeur  8. liste blanche
+                 │ 9. ged_source_item (external_id = identifiant de message : idempotence)  10. job « inbound »  → 200
+                 ▼
+  File « ged-whatsapp-inbound » ─► worker : whatsapp.processor.ts
+                 │ liste blanche relue · Graph : URL du média (hôte officiel Meta seulement) · téléchargement borné
+                 │ validation type/taille/signature binaire/empreinte · dédoublonnage SHA-256 · droits · ingestExternalFile
+                 ▼
+  Document (copie) + accusé « Document reçu. Référence : WA-<id> » à l'expéditeur
+```
+
+Fichiers : `packages/connectors/src/whatsapp-{webhook,graph,media,messages,senders,config,phone}.ts` et `connectors/whatsapp.ts` ; API `apps/api/src/modules/connectors/whatsapp-{webhook.controller,webhook.service,queue.provider,raw-body}.ts` ; worker `apps/worker/src/processors/connectors/whatsapp.processor.ts` et `whatsapp-rate-limit.ts` ; web `apps/web/app/connecteurs/_components/Whatsapp*.tsx`. Contrat partagé : bloc « Lot 2c » de `packages/types/src/ged-connectors.ts`.
+
+### 12.2 Configuration
+
+- `config` : `phoneNumberId` (identifiant du numéro chez Meta), `graphApiVersion` (défaut `v21.0`), `senders` (liste blanche : numéros internationaux en chiffres, libellé facultatif, 500 au plus, doublons refusés), `maxFileBytes` (resserre seulement le plafond de 50 Mio), `ackEnabled` (défaut oui), `refuseUnknownSenders` (défaut non : silence). Aucun champ d'hôte ou d'URL : la surface SSRF de la configuration est nulle.
+- Groupe d'un expéditeur : `rights.principalMap` avec la clé `wa:<chiffres>` (mécanisme existant, section 7.4). Un expéditeur sans entrée reçoit `rights.fallbackUserGroupIds`, jamais vide. Le formulaire web construit ces clés ; par l'API, une clé `wa:` non canonique (par exemple `wa:+221…`) ne correspond à aucun expéditeur, qui retombe alors sur le repli (le plus restrictif).
+- Identifiants (chiffrés au repos comme en 7.1, via `credentials_enc` et `GED_CONNECTOR_KEY`, ou `credentials_ref`) : `accessToken` (jeton d'utilisateur système recommandé), `appSecret` (secret de l'application, sert à la signature), `verifyToken` (jeton du challenge GET). `verifyToken` doit différer d'`appSecret` et d'`accessToken`. L'API ne les renvoie jamais ; la page web affiche seulement « secrets enregistrés » ; le remplacement se fait en une fois (les trois valeurs).
+- URL à déclarer dans la console Meta : `https://<adresse publique de l'API>/api/ged/webhooks/whatsapp/<id du connecteur>` (affichée sur la page du connecteur), avec le Verify token et l'abonnement au champ `messages`.
+
+### 12.3 Sécurité du webhook
+
+- Signature obligatoire : un corps sans signature valide est rejeté en 401 avant tout `JSON.parse`, tout accès en écriture, toute mise en file. Les 401 sont identiques pour un connecteur inconnu, inactif, au secret illisible ou à la signature fausse (pas d'énumération). Le corps est lu en octets (middleware dédié `whatsapp-raw-body.ts`, branché dans `main.ts`), 256 Kio au plus (413) ; un `Content-Encoding` autre que l'identité est refusé (415).
+- Challenge GET : mode `subscribe`, jeton comparé à temps constant, valeur du challenge restreinte à `[A-Za-z0-9_-]{1,200}` (réponse `text/plain`).
+- Anti-rejeu : fenêtre sur l'horodatage du message (1 h par défaut, 5 min d'avance tolérée) et idempotence par identifiant de message (unicité `(connector_id, external_id)`). Le rejeu d'un message encore « Découvert » est ré-enfilé (job perdu), sinon ignoré.
+- Limites de débit : par IP (300/min) et par expéditeur (60 par 10 min) côté API ; côté worker, 10 accusés/heure/expéditeur, 60 envois/min/connecteur, 1 refus/heure/expéditeur (Redis si disponible, sinon mémoire).
+- Média : l'URL renvoyée par Graph doit être en `https`, port 443, sans identifiants, hôte exact ou sous-domaine strict de `graph.facebook.com`, `*.fbsbx.com`, `*.fbcdn.net`, `*.whatsapp.net`, `*.whatsapp.com`, `*.facebook.com` (liste non extensible par l'exploitant). Redirections suivies à la main (2 au plus), chaque `Location` revalidée ; le jeton d'accès n'est envoyé qu'à `graph.facebook.com` et `lookaside.fbsbx.com` (retiré sur les autres hôtes officiels, par exemple les CDN) et n'est jamais dans une URL. L'hôte est résolu et contrôlé par la garde SSRF (7.3), puis la connexion se fait sur l'adresse vérifiée ; la liste blanche `GED_CONNECTOR_ALLOWED_INTERNAL_HOSTS` ne s'applique pas ici.
+- Contenu : extension dans la liste globale privée de `.html` et `.htm` pour les dépôts WhatsApp (contenu actif potentiel ; `WHATSAPP_EXCLUDED_EXTENSIONS`), cohérence mime/extension, signature binaire (PDF, PNG, JPEG, TIFF, OOXML/ODF, OLE, RTF), pas d'octet NUL pour les formats texte, empreinte annoncée par Meta comparée à l'empreinte calculée, taille bornée en flux. Les droits sont évalués avant tout téléchargement. Aucun contenu n'est exécuté ni rendu ; les légendes et textes ne sont jamais lus. Noms de fichiers assainis (chemins, caractères de contrôle et bidi, noms réservés Windows, extensions intermédiaires neutralisées).
+- Journaux : seuls l'identifiant de connecteur, le pseudonyme de l'expéditeur (HMAC-SHA256 tronqué, clé = secret de l'application), l'identifiant de message et des décisions. Jamais de numéro en clair, de corps, de signature, de secret, d'URL signée ni de nom de fichier brut. Côté journal HTTP (`apps/api/src/common/log-sanitize.ts`, branché dans `app.module.ts`) : pino-http crée `req.log` avant le contrôle `autoLogging.ignore`, donc tout log émis pendant une requête embarque `req`. Le sérialiseur `req` retire donc `req.query`, supprime toute la query des URL de `/api/ged/webhooks/` (le verify token du GET y figure) et masque ailleurs la valeur des paramètres dont le nom contient token, secret, signature, key ou password ; `authorization`, `cookie`, `x-hub-signature-256` et `x-api-key` sont masqués partout, et le journal de fin de requête est désactivé pour `/api/ged/webhooks/`. Un test monte un vrai `LoggerModule` et vérifie l'absence du verify token et de la signature dans la sortie.
+- Droits : Consultation sur le groupe de l'expéditeur seulement (`resolveWhatsappGrants` : `mapOriginRights`, `assertNeverWider`, `assertRestricted`), jamais plus ouverts ; sans groupe applicable, l'élément passe « En erreur » et le document n'est pas créé. Un doublon n'ajoute aucun droit à l'original (4.3).
+
+### 12.4 Variables d'environnement
+
+`GED_WHATSAPP_TRUST_PROXY`, `GED_WHATSAPP_REPLAY_WINDOW_SECONDS` (60 à 604 800 s), `GED_WHATSAPP_IP_RATE_LIMIT`, `GED_WHATSAPP_SENDER_RATE_LIMIT` (API) ; `GED_CONNECTOR_KEY*` et `GED_CONNECTOR_SECRET_*` comme en section 9. Documentées en commentaire, sans valeur, dans `.env.example`.
+
+### 12.5 Limites connues et points non vérifiables sans compte Meta réel
+
+- Non vérifié contre l'API réelle de Meta (tests à fournisseurs simulés uniquement) : forme exacte de l'URL du média (hôte `lookaside.fbsbx.com` supposé) et présence de redirections ; présence de `Content-Length` (sinon seule la borne en flux s'applique) ; format réel de `sha256` (hex ou base64 acceptés, tout autre format fait refuser le média) ; codes d'erreur Graph (190, 100, 131047…) ; acceptation du paramètre `phone_number_id` sur le GET du média ; délai de réponse attendu par Meta pour les webhooks ; signature calculée par Meta sur les octets exacts (supposée conforme à la documentation).
+- Modèles de messages WhatsApp et fenêtre de service de 24 h : hors périmètre. Un accusé envoyé hors fenêtre peut être refusé par Meta ; l'échec est journalisé sans faire échouer l'ingestion.
+- Limiteurs de l'API en mémoire, par instance (non partagés, remis à zéro au redémarrage). Sans `GED_WHATSAPP_TRUST_PROXY=1` derrière un proxy, toutes les requêtes partagent l'IP du proxy : le quota par IP (300/min) est alors partagé par tous les appelants, et un flot de requêtes (même non signées) peut le saturer et faire refuser (429) les livraisons légitimes de Meta. Avec la variable, seule la dernière entrée de `X-Forwarded-For` est retenue (un seul proxy de confiance). Le limiteur compte par adresse exacte : un client IPv6 qui dispose d'un préfixe /64 peut changer d'adresse à volonté et contourner le quota par IP (il n'évite ni la signature, ni le quota par expéditeur).
+- Après une panne de l'API de plus d'une heure, les messages ré-émis par Meta sont comptés comme périmés et perdus (réponse 200). Un expéditeur qui dépasse sa limite voit ses messages excédentaires ignorés avec un 200.
+- Les messages d'expéditeurs inconnus, non pris en charge ou limités ne créent pas d'élément : ils n'apparaissent pas dans « Messages reçus » (seulement dans les journaux, pseudonymisés).
+- Une erreur d'authentification Graph (jeton expiré) marque l'élément « En erreur » définitivement et le connecteur « En erreur » ou « Autorisation expirée » : le message devra être renvoyé après correction du jeton.
+- Le numéro de l'expéditeur est stocké en clair dans `origin_metadata` (nécessaire pour répondre) et dans la clé `wa:` de `rights.principalMap` (nécessaire au mapping des droits, visible des administrateurs dans la configuration). Il n'est écrit ni dans `origin_acl` (laissé vide pour WhatsApp), ni dans `origin_author` (pseudonyme), ni dans les journaux ; l'API des éléments renvoie `originAcl` et `originPath` à `null` pour ce type. Le job de refus porte le numéro dans Redis jusqu'à son exécution.
+- Plusieurs numéros sous la même application Meta partagent le même secret d'application ; l'isolation entre connecteurs repose sur `phone_number_id`.
+- Les images reçues n'ont pas d'OCR (même limite qu'en 11.2, point 25).

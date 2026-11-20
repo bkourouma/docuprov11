@@ -10,3 +10,13 @@ export { filesystemConnector, FILESYSTEM_CONNECTOR_TYPE, FS_ROOTS_ENV } from './
 export { createDefaultFsProvider } from './connectors/fs-default';
 export { imapConnector, IMAP_CONNECTOR_TYPE } from './connectors/imap';
 export { createDefaultImapClientFactory } from './connectors/imap-default';
+// --- Lot 2c : WhatsApp ---
+export * from './whatsapp-phone';
+export * from './whatsapp-webhook';
+export * from './whatsapp-config';
+export * from './whatsapp-senders';
+export * from './whatsapp-media';
+export * from './whatsapp-graph';
+export * from './whatsapp-messages';
+// --- fin Lot 2c ---
+export { whatsappConnector, createWhatsappConnectorDefinition, WHATSAPP_CONNECTOR_TYPE } from './connectors/whatsapp';

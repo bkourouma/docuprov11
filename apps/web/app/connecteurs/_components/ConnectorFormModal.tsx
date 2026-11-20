@@ -33,12 +33,22 @@ import {
   type GedConnectorTypeInfo,
   type GedConnectorView,
 } from '../../lib/connecteurs';
+import { WhatsappFormSection } from './WhatsappFormSection';
+import {
+  buildWhatsappPayload,
+  defaultWhatsappValues,
+  isWhatsappType,
+  readWhatsappValues,
+  type WhatsappFormValues,
+} from './whatsapp-config';
 
 const SYNC_MIN = 5;
 const SYNC_MAX = 10080;
 
 interface Values extends ConnectorFormValues {
   intervalKind?: 'manual' | 'every';
+  /** Sous-formulaire du type `whatsapp` (lot 2c). */
+  whatsapp?: WhatsappFormValues;
 }
 
 const ALL_MODES = [
@@ -131,6 +141,8 @@ export function ConnectorFormModal({
   const typeId = Form.useWatch('connectorType', form) as string | undefined;
   const intervalKind = Form.useWatch('intervalKind', form);
   const mode = Form.useWatch('mode', form) as GedSourceMode | undefined;
+  const replaceWaSecrets = Form.useWatch(['whatsapp', 'replaceSecrets'], form) === true;
+  const isWa = isWhatsappType(typeId);
   const editing = !!connector;
   const Add = icons.add;
   const Remove = icons.delete;
@@ -150,6 +162,9 @@ export function ConnectorFormModal({
       const initial: Values = {
         ...base,
         intervalKind: connector.syncIntervalMinutes ? 'every' : 'manual',
+        ...(isWhatsappType(connector.connectorType)
+          ? { whatsapp: readWhatsappValues(connector) }
+          : {}),
       };
       form.setFieldsValue(initial as Parameters<typeof form.setFieldsValue>[0]);
     } else {
@@ -162,6 +177,7 @@ export function ConnectorFormModal({
         fallbackGroups: '',
         config: {},
         credentials: {},
+        whatsapp: defaultWhatsappValues(),
       });
     }
   }, [open, connector, types, form]);
@@ -169,7 +185,13 @@ export function ConnectorFormModal({
   const onTypeChange = (t: string) => {
     const next = types.find((x) => x.type === t);
     const supported = next?.supportedModes ?? [];
-    form.setFieldsValue({ config: {}, credentials: {} });
+    form.setFieldsValue({ config: {}, credentials: {}, whatsapp: defaultWhatsappValues() });
+    if (isWhatsappType(t)) {
+      // Connecteur à événements : mode Copie forcé, jamais de synchronisation planifiée.
+      form.setFieldsValue({ mode: GedSourceMode.Copie, intervalKind: 'manual' });
+      form.setFieldValue('syncIntervalMinutes', null);
+      return;
+    }
     if (mode === undefined || (supported.length > 0 && !supported.includes(mode))) {
       form.setFieldValue('mode', supported[0] ?? GedSourceMode.Copie);
     }
@@ -178,6 +200,32 @@ export function ConnectorFormModal({
   const submit = async (v: Values) => {
     setSaving(true);
     try {
+      if (isWhatsappType(v.connectorType)) {
+        const built = buildWhatsappPayload(v.whatsapp ?? {}, {
+          editing,
+          existingConfig: connector?.config ?? null,
+        });
+        if (!built.ok) {
+          message.error(built.errors.join(' '));
+          return;
+        }
+        const { mode: waMode, syncIntervalMinutes, config, credentials } = built.payload;
+        const common = {
+          label: (v.label ?? '').trim(),
+          mode: waMode,
+          config,
+          syncIntervalMinutes,
+          targetDossierId: v.targetDossierId ?? null,
+          ...(credentials ? { credentials } : {}),
+        };
+        const saved = connector
+          ? await connecteursApi.update(connector.gedSourceConnectorId, common)
+          : await connecteursApi.create({ ...common, connectorType: v.connectorType ?? '' });
+        message.success(connector ? 'Connecteur modifié' : 'Connecteur créé');
+        form.resetFields();
+        onSaved(saved);
+        return;
+      }
       const values: ConnectorFormValues = {
         ...v,
         syncIntervalMinutes: v.intervalKind === 'every' ? (v.syncIntervalMinutes ?? null) : null,
@@ -194,6 +242,8 @@ export function ConnectorFormModal({
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Enregistrement impossible');
     } finally {
+      // Les secrets saisis ne restent jamais dans l'état du formulaire après un envoi.
+      form.setFieldValue(['whatsapp', 'secrets'], {});
       setSaving(false);
     }
   };
@@ -264,26 +314,43 @@ export function ConnectorFormModal({
           />
         </Form.Item>
 
-        <Form.Item
-          name="mode"
-          label="Mode"
-          rules={[{ required: true, message: 'Choisissez un mode' }]}
-        >
-          <Radio.Group>
-            <Space direction="vertical">
-              {ALL_MODES.filter((m) => modes.includes(m)).map((m) => (
-                <Radio key={m} value={m}>
-                  {GED_SOURCE_MODE_LABELS[m]}
-                </Radio>
-              ))}
-            </Space>
-          </Radio.Group>
-        </Form.Item>
-        {mode !== undefined && (
-          <Typography.Paragraph type="secondary">{MODE_HELP[mode]}</Typography.Paragraph>
+        {isWa ? (
+          <Typography.Paragraph type="secondary">
+            Mode : {GED_SOURCE_MODE_LABELS[GedSourceMode.Copie]} (imposé pour ce type).{' '}
+            {MODE_HELP[GedSourceMode.Copie]}
+          </Typography.Paragraph>
+        ) : (
+          <>
+            <Form.Item
+              name="mode"
+              label="Mode"
+              rules={[{ required: true, message: 'Choisissez un mode' }]}
+            >
+              <Radio.Group>
+                <Space direction="vertical">
+                  {ALL_MODES.filter((m) => modes.includes(m)).map((m) => (
+                    <Radio key={m} value={m}>
+                      {GED_SOURCE_MODE_LABELS[m]}
+                    </Radio>
+                  ))}
+                </Space>
+              </Radio.Group>
+            </Form.Item>
+            {mode !== undefined && (
+              <Typography.Paragraph type="secondary">{MODE_HELP[mode]}</Typography.Paragraph>
+            )}
+          </>
         )}
 
-        {info && info.configFields.length > 0 && (
+        {isWa && (
+          <WhatsappFormSection
+            editing={editing}
+            hasCredentials={!!connector?.hasCredentials}
+            replaceSecrets={replaceWaSecrets}
+          />
+        )}
+
+        {!isWa && info && info.configFields.length > 0 && (
           <>
             <Divider orientation="left" plain>
               Configuration
@@ -294,7 +361,7 @@ export function ConnectorFormModal({
           </>
         )}
 
-        {info && credentialFields.length > 0 && (
+        {!isWa && info && credentialFields.length > 0 && (
           <>
             <Divider orientation="left" plain>
               Identifiants
@@ -339,15 +406,17 @@ export function ConnectorFormModal({
         )}
 
         <Divider orientation="left" plain>
-          Planification et destination
+          {isWa ? 'Destination' : 'Planification et destination'}
         </Divider>
-        <Form.Item name="intervalKind" label="Synchronisation">
-          <Radio.Group>
-            <Radio value="manual">Manuelle</Radio>
-            <Radio value="every">Toutes les N minutes</Radio>
-          </Radio.Group>
-        </Form.Item>
-        {intervalKind === 'every' && (
+        {!isWa && (
+          <Form.Item name="intervalKind" label="Synchronisation">
+            <Radio.Group>
+              <Radio value="manual">Manuelle</Radio>
+              <Radio value="every">Toutes les N minutes</Radio>
+            </Radio.Group>
+          </Form.Item>
+        )}
+        {!isWa && intervalKind === 'every' && (
           <Form.Item
             name="syncIntervalMinutes"
             label="Intervalle (minutes)"
@@ -372,90 +441,99 @@ export function ConnectorFormModal({
           <InputNumber min={1} precision={0} style={{ width: '100%' }} />
         </Form.Item>
 
-        <Divider orientation="left" plain>
-          Droits d&apos;origine
-        </Divider>
-        <Alert type="info" showIcon message={RIGHTS_HELP} style={{ marginBottom: spacing.lg }} />
-        <Typography.Text strong id="principal-map-label">
-          Correspondance « principal de la source → groupe DocuPro »
-        </Typography.Text>
-        <Form.List name="principalMap">
-          {(fields, { add, remove }) => (
-            <div
-              role="group"
-              aria-labelledby="principal-map-label"
-              style={{ marginTop: spacing.sm }}
-            >
-              {fields.map((field) => (
+        {!isWa && (
+          <>
+            <Divider orientation="left" plain>
+              Droits d&apos;origine
+            </Divider>
+            <Alert
+              type="info"
+              showIcon
+              message={RIGHTS_HELP}
+              style={{ marginBottom: spacing.lg }}
+            />
+            <Typography.Text strong id="principal-map-label">
+              Correspondance « principal de la source → groupe DocuPro »
+            </Typography.Text>
+            <Form.List name="principalMap">
+              {(fields, { add, remove }) => (
                 <div
-                  key={field.key}
-                  style={{
-                    display: 'flex',
-                    gap: spacing.sm,
-                    alignItems: 'flex-start',
-                    flexWrap: 'wrap',
-                  }}
+                  role="group"
+                  aria-labelledby="principal-map-label"
+                  style={{ marginTop: spacing.sm }}
                 >
-                  <Form.Item
-                    name={[field.name, 'principal']}
-                    rules={[{ required: true, whitespace: true, message: 'Principal requis' }]}
-                    style={{ flex: '2 1 200px', marginBottom: spacing.sm }}
-                  >
-                    <Input
-                      aria-label="Principal de la source"
-                      placeholder="Principal de la source (ex. compta@exemple.fr)"
-                      maxLength={300}
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name={[field.name, 'userGroupId']}
-                    rules={[{ required: true, message: 'Groupe requis' }]}
-                    style={{ flex: '1 1 140px', marginBottom: spacing.sm }}
-                  >
-                    <InputNumber
-                      aria-label="Identifiant du groupe DocuPro"
-                      placeholder="Identifiant du groupe"
-                      min={1}
-                      precision={0}
-                      style={{ width: '100%' }}
-                    />
-                  </Form.Item>
+                  {fields.map((field) => (
+                    <div
+                      key={field.key}
+                      style={{
+                        display: 'flex',
+                        gap: spacing.sm,
+                        alignItems: 'flex-start',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <Form.Item
+                        name={[field.name, 'principal']}
+                        rules={[{ required: true, whitespace: true, message: 'Principal requis' }]}
+                        style={{ flex: '2 1 200px', marginBottom: spacing.sm }}
+                      >
+                        <Input
+                          aria-label="Principal de la source"
+                          placeholder="Principal de la source (ex. compta@exemple.fr)"
+                          maxLength={300}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name={[field.name, 'userGroupId']}
+                        rules={[{ required: true, message: 'Groupe requis' }]}
+                        style={{ flex: '1 1 140px', marginBottom: spacing.sm }}
+                      >
+                        <InputNumber
+                          aria-label="Identifiant du groupe DocuPro"
+                          placeholder="Identifiant du groupe"
+                          min={1}
+                          precision={0}
+                          style={{ width: '100%' }}
+                        />
+                      </Form.Item>
+                      <Button
+                        type="text"
+                        danger
+                        aria-label="Supprimer cette correspondance"
+                        icon={<Remove size={iconDefaults.size} />}
+                        onClick={() => remove(field.name)}
+                      />
+                    </div>
+                  ))}
                   <Button
-                    type="text"
-                    danger
-                    aria-label="Supprimer cette correspondance"
-                    icon={<Remove size={iconDefaults.size} />}
-                    onClick={() => remove(field.name)}
-                  />
+                    type="dashed"
+                    icon={<Add size={iconDefaults.size} />}
+                    onClick={() => add({ principal: '', userGroupId: null })}
+                  >
+                    Ajouter une correspondance
+                  </Button>
                 </div>
-              ))}
-              <Button
-                type="dashed"
-                icon={<Add size={iconDefaults.size} />}
-                onClick={() => add({ principal: '', userGroupId: null })}
-              >
-                Ajouter une correspondance
-              </Button>
-            </div>
-          )}
-        </Form.List>
-        <Form.Item
-          name="fallbackGroups"
-          label="Groupes de repli (identifiants, séparés par des virgules)"
-          style={{ marginTop: spacing.lg }}
-          extra="Vide : votre propre groupe sera utilisé."
-          rules={[
-            {
-              validator: async (_, value: string | undefined) => {
-                if (hasInvalidIds(value)) {
-                  throw new Error('Saisissez uniquement des identifiants numériques positifs');
-                }
-              },
-            },
-          ]}
-        >
-          <Input placeholder="ex. 3, 7" />
-        </Form.Item>
+              )}
+            </Form.List>
+            <Form.Item
+              name="fallbackGroups"
+              label="Groupes de repli (identifiants, séparés par des virgules)"
+              style={{ marginTop: spacing.lg }}
+              extra="Vide : votre propre groupe sera utilisé."
+              rules={[
+                {
+                  validator: async (_, value: string | undefined) => {
+                    if (hasInvalidIds(value)) {
+                      throw new Error('Saisissez uniquement des identifiants numériques positifs');
+                    }
+                  },
+                },
+              ]}
+            >
+              <Input placeholder="ex. 3, 7" />
+            </Form.Item>
+          </>
+        )}
       </Form>
     </Modal>
   );

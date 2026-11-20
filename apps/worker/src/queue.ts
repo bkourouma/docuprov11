@@ -38,3 +38,8 @@ export { GED_EMBEDDING_QUEUE } from '@archivage/types';
 /** File des synchronisations de sources GED (producteur api, consommateur worker). */
 export { GED_CONNECTOR_SYNC_QUEUE } from '@archivage/types';
 // --- fin Lot 2a ---
+
+// --- Lot 2c : WhatsApp ---
+/** File des messages WhatsApp entrants (producteur api, consommateur worker). */
+export { GED_WHATSAPP_QUEUE } from '@archivage/types';
+// --- fin Lot 2c ---

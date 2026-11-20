@@ -73,9 +73,9 @@ describe('ConnectorRegistry', () => {
     expect(() => r.register(fakeDefinition('x'))).toThrow(/déjà enregistré/);
   });
 
-  it('le registre par défaut fournit filesystem et imap', () => {
+  it('le registre par défaut fournit filesystem, imap et whatsapp', () => {
     const r = createDefaultRegistry();
-    expect(r.list().map((d) => d.type)).toEqual(['filesystem', 'imap']);
+    expect(r.list().map((d) => d.type)).toEqual(['filesystem', 'imap', 'whatsapp']);
   });
 });
 

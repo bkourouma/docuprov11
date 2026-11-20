@@ -976,5 +976,44 @@ describe('ConnectorsService', () => {
       prisma.gedSourceItem.findFirst.mockResolvedValueOnce(null);
       await expect(service.getItem(1, 10)).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    describe('confidentialité WhatsApp', () => {
+      const ACL = { principals: ['wa:22507080910'] };
+      const waItem = () =>
+        itemRow({ originAcl: ACL, originAuthor: '22507080910', originPath: '+22507080910/x.pdf' });
+
+      it('listItems : ACL, chemin et auteur-numéro masqués pour whatsapp', async () => {
+        const { service, prisma } = setup({ current: row({ connectorType: 'whatsapp' }) });
+        prisma.gedSourceItem.findMany.mockResolvedValue([waItem(), itemRow({ originAuthor: 'a1b2c3d4' })]);
+        const res = await service.listItems(1, {});
+        expect(res.items[0].originAcl).toBeNull();
+        expect(res.items[0].originPath).toBeNull();
+        expect(res.items[0].originAuthor).toBeNull();
+        expect(res.items[1].originAuthor).toBe('a1b2c3d4'); // pseudonyme conservé
+        expect(JSON.stringify(res)).not.toContain('22507080910');
+      });
+
+      it('getItem : ACL masquée pour whatsapp', async () => {
+        const { service, prisma } = setup({ current: row({ connectorType: 'whatsapp' }) });
+        prisma.gedSourceItem.findFirst.mockResolvedValue(waItem());
+        const item = await service.getItem(1, 9);
+        expect(item.originAcl).toBeNull();
+        expect(JSON.stringify(item)).not.toContain('22507080910');
+      });
+
+      it('filesystem : ACL, chemin et auteur inchangés (liste et détail)', async () => {
+        const { service, prisma } = setup({ current: row({ connectorType: 'filesystem' }) });
+        const fsItem = () => itemRow({ originAcl: ACL, originAuthor: '22507080910' });
+        prisma.gedSourceItem.findMany.mockResolvedValue([fsItem()]);
+        prisma.gedSourceItem.findFirst.mockResolvedValue(fsItem());
+        const list = await service.listItems(1, {});
+        const one = await service.getItem(1, 9);
+        for (const it of [list.items[0], one]) {
+          expect(it.originAcl).toEqual(ACL);
+          expect(it.originPath).toBe('a/b.pdf');
+          expect(it.originAuthor).toBe('22507080910');
+        }
+      });
+    });
   });
 });

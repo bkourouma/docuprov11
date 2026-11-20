@@ -145,3 +145,101 @@ export interface GedSourceItemView {
   firstSeenAt: string;
   lastSeenAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// Lot 2c — connecteur WhatsApp Business (API WhatsApp Cloud de Meta). Ajouts non cassants.
+// Connecteur « push » : Meta appelle le webhook public de l'API ; l'API enregistre un élément
+// (`ged_source_item`, `external_id` = identifiant de message `wamid…`, unique par connecteur =
+// idempotence) puis enfile un job ; le worker télécharge le média et l'ingère en mode copie.
+// ---------------------------------------------------------------------------
+
+/** Clé de type du connecteur dans le registre (`ged_source_connector.connector_type`). */
+export const GED_WHATSAPP_CONNECTOR_TYPE = 'whatsapp';
+
+/** File BullMQ des messages WhatsApp entrants (producteur api, consommateur worker). */
+export const GED_WHATSAPP_QUEUE = 'ged-whatsapp-inbound';
+
+/** Noms de jobs de la file `ged-whatsapp-inbound`. */
+export const GED_WHATSAPP_JOB = {
+  /** Télécharger le média d'un élément déjà enregistré, l'ingérer, envoyer l'accusé. */
+  inbound: 'inbound',
+  /** Envoyer un message poli de refus (expéditeur inconnu, type non pris en charge). */
+  refuse: 'refuse',
+} as const;
+
+/** Job `inbound` : seul l'identifiant de l'élément voyage (le reste est relu en base). */
+export interface GedWhatsappInboundJobData {
+  connectorId: number;
+  /** `ged_source_item_id` (bigint) en chaîne décimale. */
+  itemId: string;
+}
+
+/**
+ * Job `refuse`. `to` = numéro de l'expéditeur en chiffres (format international sans `+`) : donnée
+ * personnelle de courte durée de vie (le job est supprimé après exécution), jamais journalisée en clair.
+ */
+export interface GedWhatsappRefuseJobData {
+  connectorId: number;
+  to: string;
+  reason: 'unknown_sender' | 'unsupported_type';
+}
+
+/**
+ * Contenu de `ged_source_item.origin_metadata` d'un message WhatsApp (non exposé par l'API :
+ * contient le numéro de l'expéditeur, nécessaire pour répondre).
+ */
+export interface GedWhatsappItemMetadata {
+  messageType: 'document' | 'image';
+  mediaId: string;
+  mimeType?: string;
+  /** Nom annoncé par l'expéditeur (document) — assaini avant tout usage. */
+  declaredFilename?: string;
+  /** Empreinte SHA-256 annoncée par Meta pour le média (hex), vérifiée au téléchargement. */
+  declaredSha256?: string;
+  /** Numéro de l'expéditeur, chiffres seulement (E.164 sans `+`). */
+  senderPhone: string;
+  /** Pseudonyme stable du numéro (HMAC-SHA256 tronqué) : seule forme admise dans les logs. */
+  senderHash: string;
+  /** Horodatage du message annoncé par Meta (secondes Unix). */
+  messageTimestamp: number;
+  /** Horodatage de réception par l'API (ISO 8601 UTC). */
+  receivedAt: string;
+}
+
+/** Préfixe du principal d'un expéditeur WhatsApp dans `rights.principalMap` : `wa:<chiffres>`. */
+export const GED_WHATSAPP_PRINCIPAL_PREFIX = 'wa:';
+
+/** Identifiants chiffrés du connecteur (clés de `credentials`). Jamais renvoyés par l'API. */
+export const GED_WHATSAPP_CREDENTIAL_KEYS = ['accessToken', 'appSecret', 'verifyToken'] as const;
+
+/** Un expéditeur autorisé (liste blanche) dans `config.senders`. Numéro : 8 à 15 chiffres, sans `+`. */
+export interface GedWhatsappSender {
+  phone: string;
+  /** Libellé libre pour l'administrateur (ex. nom de la personne). */
+  label?: string;
+}
+
+/**
+ * Configuration non secrète du connecteur `whatsapp` (`ged_source_connector.config`, hors clé réservée
+ * `rights`). Le groupe DocuPro d'un expéditeur se déclare dans `rights.principalMap`
+ * (`"wa:<chiffres>": user_group_id`) ; un expéditeur sans entrée reçoit les groupes de repli
+ * `rights.fallbackUserGroupIds` (jamais vide).
+ */
+export interface GedWhatsappConfig {
+  /** Identifiant du numéro WhatsApp Business (Phone Number ID de Meta), chiffres seulement. */
+  phoneNumberId: string;
+  /** Version de l'API Graph, ex. `v21.0`. */
+  graphApiVersion?: string;
+  senders: GedWhatsappSender[];
+  /** Taille maximale d'un média (octets) ; ne peut que résserrer `GED_CONNECTOR_LIMITS.maxFileBytes`. */
+  maxFileBytes?: number;
+  /** Envoyer l'accusé de réception « Document reçu » (défaut : oui). */
+  ackEnabled?: boolean;
+  /** Envoyer un message de refus aux expéditeurs inconnus (défaut : non — aucun message). */
+  refuseUnknownSenders?: boolean;
+}
+
+/** Chemin public du webhook d'un connecteur (préfixe global `/api` inclus). */
+export function gedWhatsappWebhookPath(connectorId: number): string {
+  return `/api/ged/webhooks/whatsapp/${connectorId}`;
+}
