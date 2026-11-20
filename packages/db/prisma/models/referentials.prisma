@@ -98,6 +98,7 @@ model Dossier {
   children     Dossier[]             @relation("DossierTree")
   documents    Document[]
   batches      AcquisitionBatch[]
+  gedConnectors GedSourceConnector[] // GED IA : connecteurs dont c'est le dossier de destination
   typeSettings DocumentTypeSetting[]
 
   @@index([parentId])
