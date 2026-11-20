@@ -11,3 +11,4 @@ export * from './ged-connectors';
 export * from './ged-governance';
 export * from './ged-governance-detect';
 // --- fin Lot 5 ---
+export * from './ged-collab';

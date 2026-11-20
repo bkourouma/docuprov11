@@ -12,6 +12,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ArchivesModule } from './modules/archives/archives.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CollabModule } from './modules/collab/collab.module';
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard';
 import { CourriersModule } from './modules/courriers/courriers.module';
 import { DocumentsModule } from './modules/documents/documents.module';
@@ -57,6 +58,7 @@ import { HealthController } from './health.controller';
     DocumentsModule,
     DocVersionsModule,
     SpacesModule,
+    CollabModule,
     ParametresModule,
     ReferentialsModule,
     RolesModule,

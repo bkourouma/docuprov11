@@ -1,0 +1,57 @@
+{
+  "name": "@archivage/editor",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Éditeur natif DocuPro : schéma Tiptap/Yjs partagé, commentaires et mentions, import/export DOCX.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "server": [
+        "./dist/server.d.ts"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@archivage/config": "workspace:*",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.2",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "@tiptap/core": "^3.35.0",
+    "@tiptap/extension-link": "^3.35.0",
+    "@tiptap/extension-mention": "^3.35.0",
+    "@tiptap/extension-table": "^3.35.0",
+    "@tiptap/extension-underline": "^3.35.0",
+    "@tiptap/html": "^3.35.0",
+    "@tiptap/pm": "^3.35.0",
+    "@tiptap/starter-kit": "^3.35.0",
+    "@tiptap/y-tiptap": "^3.3.1",
+    "@types/sanitize-html": "^2.16.2",
+    "docx": "^9.1.0",
+    "happy-dom": "^21.0.4",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.13.0",
+    "sanitize-html": "^2.18.2",
+    "yjs": "^13.6.33"
+  }
+}

@@ -1,0 +1,523 @@
+/* Éditeur natif — styles locaux. Uniquement les variables du thème (--ant-*, --da-*, --font-*),
+   donc clair/sombre sans logique JS. Aucune couleur codée en dur. */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.body {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+}
+
+.main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aside {
+  flex: 0 0 360px;
+  width: 360px;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border);
+  border-radius: var(--ant-border-radius-lg);
+  overflow: hidden;
+}
+
+/* ---- Barre d'outils ---------------------------------------------------- */
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border);
+  border-radius: var(--ant-border-radius-lg);
+}
+
+.toolbarGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbarSep {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 6px;
+  background: var(--ant-color-border);
+}
+
+.toolBtn {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--ant-border-radius);
+  background: transparent;
+  color: var(--ant-color-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toolBtn:hover:not(:disabled) {
+  background: var(--ant-color-fill-tertiary);
+}
+
+.toolBtn:focus-visible {
+  outline: 2px solid var(--ant-color-primary);
+  outline-offset: 1px;
+}
+
+.toolBtn[aria-pressed='true'] {
+  background: var(--ant-color-primary-bg);
+  color: var(--ant-color-primary);
+  border-color: var(--ant-color-primary-border);
+}
+
+.toolBtn:disabled {
+  color: var(--ant-color-text-quaternary);
+  cursor: not-allowed;
+}
+
+/* ---- Barre d'état ------------------------------------------------------ */
+
+.statusBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  font-size: 12px;
+  color: var(--ant-color-text-secondary);
+}
+
+.statusGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: var(--ant-color-text-quaternary);
+}
+.dotOk {
+  background: var(--ant-color-success);
+}
+.dotWait {
+  background: var(--ant-color-warning);
+}
+.dotOff {
+  background: var(--ant-color-error);
+}
+
+.presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 2px solid;
+  background: var(--ant-color-fill-secondary);
+  color: var(--ant-color-text);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.avatarMore {
+  background: var(--ant-color-fill-secondary);
+  color: var(--ant-color-text);
+}
+
+/* ---- Page de texte ----------------------------------------------------- */
+
+.paper {
+  background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border);
+  border-radius: var(--ant-border-radius-lg);
+  padding: 32px clamp(16px, 5vw, 56px);
+  min-height: 60vh;
+  color: var(--ant-color-text);
+}
+
+.paperReadonly {
+  background: var(--ant-color-bg-layout);
+}
+
+.paper :global(.ProseMirror) {
+  outline: none;
+  min-height: 52vh;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.paper :global(.ProseMirror p) {
+  margin: 0 0 0.7em;
+}
+
+.paper :global(.ProseMirror h1),
+.paper :global(.ProseMirror h2),
+.paper :global(.ProseMirror h3) {
+  margin: 1.1em 0 0.45em;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--ant-color-text-heading);
+}
+.paper :global(.ProseMirror h1) {
+  font-size: 1.8em;
+}
+.paper :global(.ProseMirror h2) {
+  font-size: 1.4em;
+}
+.paper :global(.ProseMirror h3) {
+  font-size: 1.15em;
+}
+
+.paper :global(.ProseMirror ul),
+.paper :global(.ProseMirror ol) {
+  padding-left: 1.6em;
+  margin: 0 0 0.7em;
+}
+
+.paper :global(.ProseMirror blockquote) {
+  margin: 0 0 0.8em;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--ant-color-primary-border);
+  color: var(--ant-color-text-secondary);
+}
+
+.paper :global(.ProseMirror code) {
+  font-family: var(--font-geist-mono), ui-monospace, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border-radius: var(--ant-border-radius-sm);
+  background: var(--ant-color-fill-tertiary);
+}
+
+.paper :global(.ProseMirror pre) {
+  margin: 0 0 0.8em;
+  padding: 12px 14px;
+  border-radius: var(--ant-border-radius);
+  background: var(--ant-color-fill-quaternary);
+  border: 1px solid var(--ant-color-border-secondary);
+  overflow-x: auto;
+}
+.paper :global(.ProseMirror pre code) {
+  padding: 0;
+  background: transparent;
+}
+
+.paper :global(.ProseMirror a) {
+  color: var(--ant-color-link);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.paper :global(.ProseMirror hr) {
+  border: 0;
+  border-top: 1px solid var(--ant-color-border);
+  margin: 1.2em 0;
+}
+
+.paper :global(.ProseMirror table) {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0 0 0.9em;
+  overflow: hidden;
+}
+.paper :global(.ProseMirror td),
+.paper :global(.ProseMirror th) {
+  position: relative;
+  min-width: 60px;
+  padding: 6px 10px;
+  vertical-align: top;
+  border: 1px solid var(--ant-color-border);
+}
+.paper :global(.ProseMirror th) {
+  background: var(--ant-color-fill-quaternary);
+  text-align: left;
+  font-weight: 700;
+}
+.paper :global(.ProseMirror .selectedCell::after) {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--ant-color-primary-bg);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Marque de commentaire (ancre dans le texte). */
+.paper :global(.ProseMirror [data-comment-id]),
+.paper :global(.ProseMirror mark.comment) {
+  background: var(--ant-color-warning-bg);
+  border-bottom: 2px solid var(--ant-color-warning-border);
+  color: inherit;
+  border-radius: 2px;
+}
+
+/* Pastille de mention (nœud mention). */
+.paper :global(.ProseMirror [data-type='mention']),
+.paper :global(.ProseMirror .mention) {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ant-color-primary-bg);
+  color: var(--ant-color-primary);
+  font-weight: 600;
+  font-size: 0.95em;
+  white-space: nowrap;
+}
+
+/* Curseurs distants (CollaborationCaret, rendu personnalisé : texte sur surface neutre, la
+   couleur de la personne ne porte jamais de texte). */
+.caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 2px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+.caretLabel {
+  position: absolute;
+  top: -1.7em;
+  left: -2px;
+  padding: 0 6px;
+  border: 1px solid;
+  border-radius: 3px;
+  background: var(--ant-color-bg-elevated);
+  color: var(--ant-color-text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  user-select: none;
+}
+.remoteSelection {
+  border-radius: 2px;
+}
+
+/* ---- Commentaires ------------------------------------------------------ */
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.panelBody {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.comment {
+  border: 1px solid var(--ant-color-border);
+  border-radius: var(--ant-border-radius);
+  padding: 10px 12px;
+  background: var(--ant-color-bg-container);
+}
+.commentResolved {
+  background: var(--ant-color-fill-quaternary);
+}
+.commentActive {
+  border-color: var(--ant-color-primary);
+}
+
+.commentAnchor {
+  display: block;
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 2px 8px;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ant-color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-left: 3px solid var(--ant-color-warning-border);
+  cursor: pointer;
+}
+.commentAnchor:focus-visible {
+  outline: 2px solid var(--ant-color-primary);
+}
+
+.commentMeta {
+  font-size: 12px;
+  color: var(--ant-color-text-secondary);
+}
+
+.commentText {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.replies {
+  margin: 8px 0 0;
+  padding: 0 0 0 10px;
+  list-style: none;
+  border-left: 2px solid var(--ant-color-border-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.commentActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.mentionChip {
+  color: var(--ant-color-primary);
+  font-weight: 600;
+}
+
+.composer {
+  position: relative;
+}
+
+.suggestBox {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 10;
+  margin-top: 4px;
+  background: var(--ant-color-bg-elevated);
+  border: 1px solid var(--ant-color-border);
+  border-radius: var(--ant-border-radius);
+  box-shadow: var(--da-shadow-popover);
+  list-style: none;
+  padding: 4px;
+}
+
+/* ---- Mention (popup dans l'éditeur) ------------------------------------ */
+
+.mentionPopup {
+  position: fixed;
+  z-index: 1100;
+  width: 270px;
+  background: var(--ant-color-bg-elevated);
+  border: 1px solid var(--ant-color-border);
+  border-radius: var(--ant-border-radius-lg);
+  box-shadow: var(--da-shadow-popover);
+  padding: 4px;
+  font-size: 13px;
+}
+.mentionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.mentionItem,
+.suggestItem {
+  padding: 7px 10px;
+  border-radius: var(--ant-border-radius-sm);
+  cursor: pointer;
+  color: var(--ant-color-text);
+}
+.mentionItem[aria-selected='true'],
+.mentionItem:hover,
+.suggestItem[aria-selected='true'],
+.suggestItem:hover {
+  background: var(--ant-color-primary-bg);
+  color: var(--ant-color-primary);
+}
+.mentionEmpty {
+  padding: 8px 10px;
+  color: var(--ant-color-text-secondary);
+}
+.mentionHelp {
+  margin: 4px 0 0;
+  padding: 6px 10px 4px;
+  border-top: 1px solid var(--ant-color-border-secondary);
+  font-size: 11px;
+  color: var(--ant-color-text-secondary);
+}
+
+/* ---- Divers ------------------------------------------------------------ */
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.banner {
+  margin: 0;
+}
+
+@media (max-width: 991px) {
+  .aside {
+    display: none;
+  }
+  .paper {
+    padding: 20px 16px;
+  }
+}
