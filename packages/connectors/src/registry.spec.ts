@@ -73,9 +73,16 @@ describe('ConnectorRegistry', () => {
     expect(() => r.register(fakeDefinition('x'))).toThrow(/déjà enregistré/);
   });
 
-  it('le registre par défaut fournit filesystem et imap', () => {
+  it('le registre par défaut fournit les connecteurs d’origine et ceux du lot 2b', () => {
     const r = createDefaultRegistry();
-    expect(r.list().map((d) => d.type)).toEqual(['filesystem', 'imap']);
+    expect(r.list().map((d) => d.type)).toEqual([
+      'filesystem',
+      'imap',
+      'google_drive',
+      'microsoft_onedrive',
+      'microsoft_sharepoint',
+      'microsoft_outlook',
+    ]);
   });
 });
 

@@ -978,3 +978,108 @@ describe('ConnectorsService', () => {
     });
   });
 });
+
+describe('ConnectorsService — types OAuth (lot 2b)', () => {
+  const REFRESH = 'refresh-factice-1234567890';
+  let captured: { onCredentialsChanged?: (c: Record<string, string>) => Promise<void> } = {};
+  const oauthDefinition: ConnectorDefinition = {
+    ...definition,
+    type: 'fake_oauth',
+    credentialFields: [],
+    credentialsSchema: z.object({ refreshToken: z.string().min(1) }).strict(),
+    oauth: { provider: 'google', scopes: ['https://www.googleapis.com/auth/drive.readonly'] },
+    create: (ctx) => {
+      captured = { onCredentialsChanged: ctx.deps.onCredentialsChanged };
+      return fakeConnector;
+    },
+  };
+  function setupOAuth(current = row({ connectorType: 'fake_oauth' })) {
+    const prisma = {
+      gedSourceConnector: {
+        findUnique: jest.fn().mockResolvedValue(current),
+        create: jest.fn((a: { data: Record<string, unknown> }) =>
+          Promise.resolve(row({ gedSourceConnectorId: 42, ...a.data })),
+        ),
+        update: jest.fn((a: { data: Record<string, unknown> }) =>
+          Promise.resolve({ ...current, ...a.data }),
+        ),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      appUserGroup: {
+        findMany: jest.fn(() => Promise.resolve([{ userGroupId: 5 }])),
+      },
+      dossier: { findUnique: jest.fn() },
+    };
+    const audit = { dataChange: jest.fn().mockResolvedValue(undefined) };
+    const registry = new ConnectorRegistry();
+    registry.register(oauthDefinition);
+    const service = new ConnectorsService(
+      prisma as never,
+      audit as never,
+      registry,
+      { add: jest.fn(), getJob: jest.fn() } as never,
+      { env: ENV_A },
+    );
+    return { service, prisma };
+  }
+  const create = { label: 'Drive', connectorType: 'fake_oauth', mode: 0 as const, config: {} };
+
+  it('create : identifiants saisis à la main refusés (400), rien n’est écrit', async () => {
+    const { service, prisma } = setupOAuth();
+    await expect(
+      service.create({ ...create, credentials: { refreshToken: REFRESH } }, admin),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.create({ ...create, credentialsRef: 'GED_CONNECTOR_SECRET_X' }, admin),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.gedSourceConnector.create).not.toHaveBeenCalled();
+  });
+
+  it('create sans identifiants : accepté (l’autorisation viendra du bouton)', async () => {
+    const { service, prisma } = setupOAuth();
+    await service.create(create, admin);
+    expect(prisma.gedSourceConnector.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('update : credentials / credentialsRef refusés (400) ; null (effacer) permis', async () => {
+    const { service, prisma } = setupOAuth();
+    await expect(
+      service.update(1, { credentials: { refreshToken: REFRESH } }, admin),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.update(1, { credentialsRef: 'GED_CONNECTOR_SECRET_X' }, admin),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.gedSourceConnector.update).not.toHaveBeenCalled();
+    await service.update(1, { credentials: null }, admin);
+    expect(prisma.gedSourceConnector.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('un type non OAuth accepte toujours des identifiants (régression)', async () => {
+    const { service } = setup();
+    await expect(
+      service.create({ ...baseCreate, credentials: { password: PASSWORD } }, admin),
+    ).resolves.toBeDefined();
+  });
+
+  it('testConnection : un jeton tourné est rechiffré et enregistré (garde optimiste), sans fuite', async () => {
+    const enc = encryptCredentials({ refreshToken: REFRESH }, loadKeyRing(ENV_A));
+    const { service, prisma } = setupOAuth(row({ connectorType: 'fake_oauth', ...enc }));
+    behaviour.authenticate.mockResolvedValue(undefined);
+    behaviour.listChanges.mockResolvedValue({
+      items: [],
+      deletedExternalIds: [],
+      nextToken: null,
+      hasMore: false,
+    });
+    behaviour.close.mockResolvedValue(undefined);
+    await service.testConnection(1);
+    expect(captured.onCredentialsChanged).toEqual(expect.any(Function));
+    await captured.onCredentialsChanged?.({ refreshToken: 'refresh-NOUVEAU-987654' });
+    const call = prisma.gedSourceConnector.updateMany.mock.calls[0][0];
+    expect(call.where).toEqual({ gedSourceConnectorId: 1, credentialsEnc: enc.credentialsEnc });
+    expect(JSON.stringify(call)).not.toContain('refresh-NOUVEAU');
+    expect(
+      decryptCredentials(call.data.credentialsEnc, call.data.credentialsKeyId, loadKeyRing(ENV_A)),
+    ).toEqual({ refreshToken: 'refresh-NOUVEAU-987654' });
+  });
+});

@@ -7,6 +7,7 @@ import {
   buildConnector,
   createDefaultRegistry,
   decryptCredentials,
+  encryptCredentials,
   loadKeyRing,
   redactSecrets,
   resolveCredentialsRef,
@@ -81,6 +82,12 @@ function connectorEnv(env: NodeJS.ProcessEnv, archivesPath: string): NodeJS.Proc
     GED_CONNECTOR_FS_ROOTS: env.GED_CONNECTOR_FS_ROOTS,
     GED_CONNECTOR_ALLOWED_INTERNAL_HOSTS: env.GED_CONNECTOR_ALLOWED_INTERNAL_HOSTS,
     ARCHIVES_PATH: archivesPath,
+    // Lot 2b — identifiants d'application OAuth (jamais d'autre variable : pas de JWT_SECRET…).
+    GED_GOOGLE_CLIENT_ID: env.GED_GOOGLE_CLIENT_ID,
+    GED_GOOGLE_CLIENT_SECRET: env.GED_GOOGLE_CLIENT_SECRET,
+    GED_MS_CLIENT_ID: env.GED_MS_CLIENT_ID,
+    GED_MS_CLIENT_SECRET: env.GED_MS_CLIENT_SECRET,
+    GED_MS_TENANT: env.GED_MS_TENANT,
   };
 }
 
@@ -156,7 +163,39 @@ export async function runSyncJob(
     connector = buildConnector(registry, record.connectorType, {
       config: record.config,
       credentials,
-      deps: { env: connectorEnv(env, deps.archivesPath), now },
+      deps: {
+        env: connectorEnv(env, deps.archivesPath),
+        now,
+        // Lot 2b — Microsoft fait tourner le jeton de rafraîchissement : le nouveau est chiffré et
+        // enregistré (garde optimiste : on n'écrase pas un chiffré modifié entre-temps).
+        onCredentialsChanged: async (next) => {
+          if (!record.credentialsEnc) return; // identifiants par référence : rien à réécrire
+          try {
+            const sealed = encryptCredentials(next, loadKeyRing(env));
+            const res = await deps.prisma.gedSourceConnector.updateMany({
+              where: {
+                gedSourceConnectorId: record.gedSourceConnectorId,
+                credentialsEnc: record.credentialsEnc,
+              },
+              data: {
+                credentialsEnc: sealed.credentialsEnc,
+                credentialsKeyId: sealed.credentialsKeyId,
+              },
+            });
+            if (res.count > 0) {
+              record.credentialsEnc = sealed.credentialsEnc;
+              record.credentialsKeyId = sealed.credentialsKeyId;
+            }
+          } catch {
+            // Un seul avertissement, sans détail : l'erreur pourrait citer un identifiant. Le jeton
+            // tourné reste valable en mémoire pour la passe ; le précédent reste en base.
+            log.warn(
+              { connectorId: record.gedSourceConnectorId },
+              'rotation du jeton de rafraîchissement non enregistrée',
+            );
+          }
+        },
+      },
     });
   } catch (err) {
     const raw = err instanceof Error ? err.message : String(err);

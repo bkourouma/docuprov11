@@ -2,6 +2,7 @@
 // contre ces types ; toute évolution se discute avec le chef de lot.
 import type { z } from 'zod';
 import type { GedSourceMode } from '@archivage/types';
+import type { OAuthApiClient, OAuthHttpClient, OAuthProviderId } from './oauth-contract';
 
 /** Identifiants déchiffrés d'une source (clé → valeur). Jamais journalisés, jamais renvoyés par l'API. */
 export type ConnectorCredentials = Record<string, string>;
@@ -126,8 +127,14 @@ export interface ConnectorDeps {
   /** Résolveur DNS pour la garde SSRF. Défaut : `dns.promises.lookup`. */
   resolveHost?: (host: string) => Promise<string[]>;
   now?: () => Date;
-  /** Environnement (défaut ) : GED_CONNECTOR_FS_ROOTS, ARCHIVES_PATH, GED_CONNECTOR_ALLOWED_INTERNAL_HOSTS. */
+  /** Environnement (défaut ) : GED_CONNECTOR_FS_ROOTS, ARCHIVES_PATH, GED_CONNECTOR_ALLOWED_INTERNAL_HOSTS, GED_GOOGLE_*, GED_MS_*. */
   env?: NodeJS.ProcessEnv;
+  /** Lot 2b — client HTTP des connecteurs OAuth (tests : simulé, aucun appel réseau). Défaut : client gardé (hôtes officiels). */
+  http?: OAuthHttpClient;
+  /** Lot 2b — client d'API OAuth complet (tests des connecteurs : remplace `http` + jeton). */
+  oauth?: OAuthApiClient;
+  /** Lot 2b — appelé quand le fournisseur fait tourner le jeton de rafraîchissement : à persister chiffré. */
+  onCredentialsChanged?: (next: ConnectorCredentials) => Promise<void>;
 }
 
 export interface ConnectorContext {
@@ -161,6 +168,8 @@ export interface ConnectorDefinition {
   configSchema: z.ZodType<unknown>;
   /** Schéma zod STRICT des identifiants (secrets). */
   credentialsSchema: z.ZodType<Record<string, string>>;
+  /** Lot 2b — présent pour les sources autorisées par OAuth 2.0 : fournisseur et périmètres MINIMAUX en lecture seule. */
+  oauth?: { provider: OAuthProviderId; scopes: readonly string[] };
   /** Lève (async-sûr) si la config est dangereuse (hôte interne : garde SSRF, chemin hors racine…). */
   assertConfigSafe(config: unknown, deps: ConnectorDeps): Promise<void>;
   create(ctx: ConnectorContext): SourceConnector;
