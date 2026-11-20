@@ -61,13 +61,14 @@ export class MailsController {
   ) {}
 
   /**
-   * Disponibilité de la saisie automatique (§05). L'écran interroge d'abord cet endpoint : sans
-   * clé API configurée, la case à cocher n'est pas proposée plutôt que d'échouer au premier usage.
+   * Disponibilité de la saisie automatique (§05). L'écran interroge d'abord cet endpoint : `enabled`
+   * exige l'IA activée ET la lecture locale (OCR) utilisable, sinon la case à cocher n'est pas
+   * proposée plutôt que d'échouer au premier usage.
    */
   @RequireMenu('/courriers/enregistrement')
   @Get('extraction-ia/disponibilite')
-  aiExtractionAvailability() {
-    return { enabled: this.aiExtraction.enabled };
+  async aiExtractionAvailability() {
+    return { enabled: await this.aiExtraction.isEnabled() };
   }
 
   /**

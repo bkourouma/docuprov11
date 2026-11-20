@@ -6,6 +6,7 @@ import { logger } from './logger';
 import { prisma } from './db';
 import {
   ACQUISITION_QUEUE,
+  GED_AI_QUEUE,
   REMINDER_JOBS,
   REMINDERS_QUEUE,
   type AcquisitionJobData,
@@ -13,6 +14,8 @@ import {
 } from './queue';
 import { join } from 'node:path';
 import { createBrandLoader, createMailer, loadInlineLogo, type Mailer } from '@archivage/mailer';
+import type { GedAiPipelineJobData } from '@archivage/types';
+import { createAiPipelineProcessor } from './processors/ai-pipeline.processor';
 import { processBatch } from './processors/acquisition.processor';
 import {
   runDateButoireReminders,
@@ -147,6 +150,29 @@ function main(): void {
     logger.error({ jobId: job?.id, err: err.message }, 'job failed'),
   );
 
+  // Socle IA : pipeline lecture → classement → extraction. Concurrence 1 (un fournisseur local est
+  // souvent mono-GPU). Sans configuration IA le job réussit immédiatement (« IA désactivée »).
+  const aiWorker = new Worker<GedAiPipelineJobData>(
+    GED_AI_QUEUE,
+    createAiPipelineProcessor(prisma),
+    { connection: connection as unknown as ConnectionOptions, concurrency: 1 },
+  );
+  aiWorker.on('ready', () => logger.info('ged-ai worker ready'));
+  aiWorker.on('completed', (job, result) =>
+    logger.info(
+      {
+        jobId: job.id,
+        documentId: job.data.documentId,
+        disabled: result.disabled,
+        ...(result.disabled ? {} : { skipped: result.skipped, decisions: result.decisions.length }),
+      },
+      'ged-ai job completed',
+    ),
+  );
+  aiWorker.on('failed', (job, err) =>
+    logger.error({ jobId: job?.id, err: err.message }, 'ged-ai job failed'),
+  );
+
   void startReminders(
     connection as unknown as ConnectionOptions,
     {
@@ -158,7 +184,7 @@ function main(): void {
   ).catch((err: Error) => logger.error({ err: err.message }, 'démarrage des rappels impossible'));
 
   logger.info(
-    `Worker booted (NODE_ENV=${env.NODE_ENV}); listening on queues "${ACQUISITION_QUEUE}" and "${REMINDERS_QUEUE}".`,
+    `Worker booted (NODE_ENV=${env.NODE_ENV}); listening on queues "${ACQUISITION_QUEUE}", "${REMINDERS_QUEUE}" and "${GED_AI_QUEUE}".`,
   );
 }
 
