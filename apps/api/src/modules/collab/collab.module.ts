@@ -30,6 +30,6 @@ import { CollabServerService } from './server/collab-server.service';
     CollabServerService,
     CollabDocumentsService,
   ],
-  exports: [CollabAccessService, CollabServerService],
+  exports: [CollabAccessService, CollabServerService, CollabDocumentsService],
 })
 export class CollabModule {}

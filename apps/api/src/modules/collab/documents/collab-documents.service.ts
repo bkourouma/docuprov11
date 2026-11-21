@@ -136,6 +136,29 @@ export class CollabDocumentsService {
     return this.createAndAudit(dto.label, dto.spaceId, state, user, null, []);
   }
 
+  /**
+   * Création depuis un modèle (lot 4c) : le HTML est assaini par `stateFromHtml`. Mêmes droits et
+   * même audit que `createDocument`.
+   */
+  async createDocumentFromHtml(
+    spaceId: number,
+    label: string,
+    html: string,
+    user: AuthUser,
+  ): Promise<GedCollabCreated> {
+    this.assertCanCreate(user);
+    await this.assertCanContribute(spaceId, user);
+    const state = this.stateFromHtml(html);
+    return this.createAndAudit(
+      label.slice(0, MAX_DOCUMENT_LABEL),
+      spaceId,
+      state,
+      user,
+      'Création depuis un modèle',
+      [],
+    );
+  }
+
   async importNewDocument(
     file: UploadedDocxFile | undefined,
     dto: ImportCollabDocumentDto,

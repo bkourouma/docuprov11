@@ -196,7 +196,13 @@ export default function EspaceDetailPage() {
   const isOwner = space.myAccess === 'owner';
   const slug = space.publicationSlug;
 
-  const actions = space.canManage ? (
+  const newDocumentButton = space.canContribute ? (
+    <Button icon={<Add size={iconDefaults.size} />} onClick={() => router.push(`/editeur/nouveau?spaceId=${id}`)}>
+      Nouveau document
+    </Button>
+  ) : null;
+
+  const manageActions = space.canManage ? (
     <>
       <Button icon={<Edit size={iconDefaults.size} />} onClick={() => setEditing(true)}>
         Modifier
@@ -222,7 +228,15 @@ export default function EspaceDetailPage() {
         </Button>
       )}
     </>
-  ) : undefined;
+  ) : null;
+
+  const actions =
+    newDocumentButton || manageActions ? (
+      <>
+        {newDocumentButton}
+        {manageActions}
+      </>
+    ) : undefined;
 
   return (
     <div>
