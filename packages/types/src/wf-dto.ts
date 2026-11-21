@@ -318,3 +318,27 @@ export const emergencyStopSchema = z.object({
   reason: z.string().max(500).optional(),
 });
 export type EmergencyStopInput = z.infer<typeof emergencyStopSchema>;
+
+// ---------------------------------------------------------------------------
+// Moteur (lot W1) — configuration d'escalade d'une étape (ajout rétro-compatible)
+// ---------------------------------------------------------------------------
+
+/**
+ * Escalade déclarée dans le graphe : `step.config.escalation`. Quand l'échéance d'une tâche humaine est
+ * dépassée, le worker ré-affecte la MÊME tâche à `assignee` (nouvelle échéance `dueInHours`, OBLIGATOIRE : sans elle aucune minuterie d'échéance ne serait recréée), au plus
+ * `maxEscalations` fois (défaut 1). Sans escalade déclarée (ou une fois épuisée), la tâche passe à
+ * « expirée » et l'instance est suspendue (reprise manuelle). Partagé api (validation à la publication) /
+ * worker (exécution des minuteries).
+ */
+export const wfEscalationConfigSchema = z.object({
+  assignee: z
+    .object({
+      kind: z.enum(['user', 'group', 'role']),
+      id: z.number().int().positive(),
+    })
+    .strict(),
+  dueInHours: z.number().int().positive().max(8760), // au plus un an
+  maxEscalations: z.number().int().min(1).max(5).optional(),
+  message: z.string().max(500).optional(),
+});
+export type WfEscalationConfig = z.infer<typeof wfEscalationConfigSchema>;

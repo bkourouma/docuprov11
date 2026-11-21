@@ -75,7 +75,7 @@ const wfStepSchema = z.object({
   type: z.enum(WF_TASK_TYPE_KEYS),
   description: z.string().optional(),
   assignee: wfAssigneeSchema.optional(),
-  dueInHours: positiveInt.optional(),
+  dueInHours: positiveInt.max(8760).optional(), // au plus un an
   reminderAfterHours: positiveInt.optional(),
   config: z.record(z.unknown()).optional(),
   agent: wfAgentStepSpecSchema.optional(),

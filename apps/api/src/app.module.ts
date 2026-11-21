@@ -31,6 +31,9 @@ import { DraftingModule } from './modules/drafting/drafting.module';
 import { SemanticSearchModule } from './modules/semantic-search/semantic-search.module';
 import { SpacesModule } from './modules/spaces/spaces.module';
 import { UsersModule } from './modules/users/users.module';
+// --- Docu-Flow W1 ---
+import { WorkflowsModule } from './modules/workflows/workflows.module';
+// --- fin Docu-Flow W1 ---
 import { HealthController } from './health.controller';
 
 @Module({
@@ -77,6 +80,9 @@ import { HealthController } from './health.controller';
     // --- Lot 4c : rédaction assistée ---
     DraftingModule,
     // --- fin Lot 4c ---
+    // --- Docu-Flow W1 ---
+    WorkflowsModule,
+    // --- fin Docu-Flow W1 ---
   ],
   providers: [
     // Deny-by-default at the transport layer: every route needs a JWT unless @Public().
