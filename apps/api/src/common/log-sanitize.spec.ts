@@ -2,7 +2,7 @@ import { Controller, Get, Logger as NestLogger, type INestApplication } from '@n
 import { Test } from '@nestjs/testing';
 import { Logger, LoggerModule } from 'nestjs-pino';
 import request from 'supertest';
-import { pinoHttpOptions, sanitizeUrl } from './log-sanitize';
+import { isWebhookUrl, pinoHttpOptions, sanitizeUrl, serializeReq } from './log-sanitize';
 
 @Controller()
 class ProbeController {
@@ -32,6 +32,54 @@ describe('sanitizeUrl', () => {
       '/api/x?page=2&access_token=[masqué]&Client_Secret=[masqué]&API-KEY=[masqué]&pwd=1&password=[masqué]',
     );
     expect(sanitizeUrl('/api/x')).toBe('/api/x');
+  });
+});
+
+describe('sanitizeUrl : variantes de préfixe webhook', () => {
+  const Q = '?hub.verify_token=SUPERSECRETTOKEN&a=1';
+  it.each([
+    ['/API/GED/Webhooks/whatsapp/1', '/API/GED/Webhooks/whatsapp/1'],
+    ['/api//ged/webhooks/whatsapp/1', '/api//ged/webhooks/whatsapp/1'],
+    ['//api///ged//webhooks//whatsapp/1', '//api///ged//webhooks//whatsapp/1'],
+    ['https://host.example:8080/api/ged/webhooks/whatsapp/1', 'https://host.example:8080/api/ged/webhooks/whatsapp/1'],
+    ['HTTP://host/Api//Ged/WEBHOOKS/x', 'HTTP://host/Api//Ged/WEBHOOKS/x'],
+  ])('supprime la query de %s', (path, expected) => {
+    const out = sanitizeUrl(`${path}${Q}#frag`);
+    expect(out).toBe(expected);
+    expect(String(out)).not.toContain('SUPERSECRETTOKEN');
+    expect(String(out)).not.toContain('verify_token');
+  });
+  it('ne confond pas une route ordinaire', () => {
+    expect(isWebhookUrl('/api/ged/webhook/x')).toBe(false);
+    expect(isWebhookUrl('/api/autre?next=/api/ged/webhooks/x')).toBe(false);
+    expect(sanitizeUrl('https://h/api/autre?access_token=zzz&page=1')).toBe(
+      'https://h/api/autre?access_token=[masqué]&page=1',
+    );
+  });
+  it('tolère les valeurs non chaîne', () => {
+    expect(sanitizeUrl(undefined)).toBeUndefined();
+    expect(isWebhookUrl(undefined)).toBe(false);
+    expect(pinoHttpOptions.autoLogging.ignore({ url: '/API//ged/webhooks/w?t=1' })).toBe(true);
+    expect(pinoHttpOptions.autoLogging.ignore({})).toBe(false);
+  });
+});
+
+describe('serializeReq', () => {
+  it.each([[null], [undefined], ['chaîne'], [42]])('ne lève pas pour %p', (v) => {
+    expect(() => serializeReq(v)).not.toThrow();
+    expect(serializeReq(v)).toEqual({});
+  });
+  it('nettoie url et supprime query', () => {
+    const out = serializeReq({
+      id: 1,
+      method: 'GET',
+      url: '/API//ged/webhooks/w/1?hub.verify_token=SUPERSECRETTOKEN',
+      query: { hub: 'SUPERSECRETTOKEN' },
+      headers: {},
+    });
+    expect(out.url).toBe('/API//ged/webhooks/w/1');
+    expect(out).not.toHaveProperty('query');
+    expect(JSON.stringify(out)).not.toContain('SUPERSECRETTOKEN');
   });
 });
 

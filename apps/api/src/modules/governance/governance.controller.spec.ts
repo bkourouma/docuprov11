@@ -179,6 +179,30 @@ describe('GovernanceController : délégation', () => {
     expect('comparison' in res.proposal).toBe(false);
   });
 
+  it('validate sensibilité : get 404 après application => vue minimale, applied conservé', async () => {
+    const { c, review, query } = make();
+    const applied = { action: 'confidentiality_set', at: 'x', by: 70 };
+    review.validate.mockResolvedValue({ applied, kind: 'sensitivity' });
+    query.get.mockRejectedValue(new NotFoundException());
+    const res = await c.validate(11, {}, user);
+    expect(res).toEqual({ proposal: { minimal: true, id: '11', status: 1 }, applied });
+    expect(query.getForAdminReview).not.toHaveBeenCalled();
+  });
+
+  it('validate doublon : get 404 => 404 conservé', async () => {
+    const { c, review, query } = make();
+    review.validate.mockResolvedValue({ applied: null, kind: 'duplicate_exact' });
+    query.get.mockRejectedValue(new NotFoundException());
+    await expect(c.validate(11, {}, user)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('validate sensibilité : autre erreur de get non masquée', async () => {
+    const { c, review, query } = make();
+    review.validate.mockResolvedValue({ applied: null, kind: 'sensitivity' });
+    query.get.mockRejectedValue(new Error('base indisponible'));
+    await expect(c.validate(11, {}, user)).rejects.toThrow('base indisponible');
+  });
+
   it('validate sans effet (applied absent) => applied null', async () => {
     const { c, review } = make();
     review.validate.mockResolvedValue({});

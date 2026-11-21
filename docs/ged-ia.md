@@ -312,10 +312,10 @@ pnpm test                                                # tous les paquets (Tur
 3. **Journal dit « append-only ».** Le schéma et le commentaire de `ai-decision.service.ts` disent le journal append-only ; la revue modifie `status`, `validated_by` et `validated_at`.
 4. **Commentaires du schéma.** `provider` est dit « validé par l'API » : l'API ne contrôle que la longueur. `api_key_ref` évoque un « identifiant de coffre » : non implémenté, seul un nom de variable est accepté. `ck_ged_ai_setting_dimension` ne vérifie que > 0 : c'est l'API qui impose 1024.
 5. **`OPENAI_MODEL` déclarée sans lecteur.** `apps/api/src/config/env.ts` la déclare avec un défaut, mais aucun code ne la lit. Le modèle vient de `ged_ai_setting.model`.
-7. **Pas de relance.** Un échec fournisseur reste une décision `Erreur`. Une nouvelle tentative suppose un nouvel appel à `analyze`.
-8. **Extraction des courriers : OCR avant contrôle.** `POST /api/courriers/extraction-ia` ne vérifie pas `isEnabled()` avant la lecture locale : avec l'IA désactivée, l'OCR tourne, puis la réponse est 503.
-9. **Noms libres non détectés.** Ni le pipeline ni l'extraction des courriers ne détectent les noms libres : les libellés de correspondants ou de types de document, et le texte OCR d'un courrier, envoyés au cloud, ne sont masqués que par les règles configurées et les entités par défaut (§ 4).
-10. **Documentation d'exploitation hors de ce document.** `.env.example` indique encore « sans clé, la case n'apparaît pas » : la disponibilité de la saisie automatique est désormais IA activée ET lecture locale utilisable (§ 9).
+6. **Pas de relance.** Un échec fournisseur reste une décision `Erreur`. Une nouvelle tentative suppose un nouvel appel à `analyze`.
+7. **Extraction des courriers : OCR avant contrôle.** `POST /api/courriers/extraction-ia` ne vérifie pas `isEnabled()` avant la lecture locale : avec l'IA désactivée, l'OCR tourne, puis la réponse est 503.
+8. **Noms libres non détectés.** Ni le pipeline ni l'extraction des courriers ne détectent les noms libres : les libellés de correspondants ou de types de document, et le texte OCR d'un courrier, envoyés au cloud, ne sont masqués que par les règles configurées et les entités par défaut (§ 4).
+9. **Documentation d'exploitation hors de ce document.** `.env.example` indique encore « sans clé, la case n'apparaît pas » : la disponibilité de la saisie automatique est désormais IA activée ET lecture locale utilisable (§ 9).
 
 ## 13. Durcissements réseau et clés (dernier passage)
 

@@ -34,6 +34,8 @@ Noms de personnes : le masquage du socle ne les couvre pas. La détection des no
 - Doublon : archivage LOGIQUE du doublon (`document.is_frozen = true`), lien vers l'original conservé dans `output` et l'audit. Réversible ; rien n'est supprimé. Refusé si l'original est lui-même gelé ou épuré.
 - Sensibilité : pose de la confidentialité proposée. Direction recalculée sur l'état vivant. Élévation : un clic, niveau de permission >= 3. Abaissement : corps `confirmLowering: true` ET (administrateur OU niveau 5 avec rang propre >= rang du document).
 - Données personnelles : prise d'acte, aucun effet sur le document.
+- Rejet : même niveau minimal que la validation de la même nature (doublon et sensibilité : niveau de permission 3 ; données personnelles : niveau 2). Un niveau insuffisant donne un 403 ; l'écran affiche « Votre niveau d'accès ne vous permet pas de relire cette proposition. ».
+- Vue minimale : après une validation de sensibilité réussie, si le document n'est plus ouvrable par l'utilisateur (élévation au-delà de son niveau), la relecture ne renvoie plus 404 mais `{ proposal: { minimal: true, id, status }, applied }`, sans donnée du document ni de la proposition. Les autres natures conservent le 404.
 - Rejet d'une proposition orpheline (document ou original supprimé) : possible pour un administrateur seulement (jamais la validation).
 - La route générique `/ged/ai/decisions/:id/validate|reject` du module ai refuse (409) les décisions `ged-governance-v1` : « utilisez l'écran Gouvernance ».
 - Validation et rejet : revendication atomique (409 si déjà traitée), journal d'audit (`DataChangeAudit`).

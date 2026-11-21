@@ -142,6 +142,8 @@ export const governanceApi = {
 export function errorMessage(e: GovernanceApiError, context: 'load' | 'review' | 'analyze' = 'load'): string {
   switch (e.kind) {
     case 'forbidden':
+      // Refus de revue (niveau d'accès insuffisant sur le document) ≠ pas d'accès au menu.
+      if (context === 'review') return 'Votre niveau d’accès ne vous permet pas de relire cette proposition.';
       return 'Vous n’avez pas accès à la gouvernance.';
     case 'not_found':
       return 'Cette proposition n’existe plus ou n’est plus accessible.';
