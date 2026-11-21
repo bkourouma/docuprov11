@@ -13,6 +13,9 @@ import { SPACES_MENU } from '../spaces/spaces.menus';
 // --- Lot 5 : gouvernance ---
 import { GOVERNANCE_MENU } from '../governance/governance.menus';
 // --- fin Lot 5 ---
+// --- Docu-Flow W1 ---
+import { WORKFLOWS_MENUS } from '../workflows/workflows.menus';
+// --- fin Docu-Flow W1 ---
 
 export interface MenuPermission {
   key: string; // clé de route (ex. /admin/users)
@@ -147,6 +150,11 @@ export const MENU_CATALOG: MenuPermission[] = [
     section: 'Sécurité Documentaire',
   },
 
+  // --- Docu-Flow W1 ---
+  { key: WORKFLOWS_MENUS.design, label: 'Conception des workflows', section: 'Docu-Flow' },
+  { key: WORKFLOWS_MENUS.launch, label: 'Lancer un workflow', section: 'Docu-Flow' },
+  { key: WORKFLOWS_MENUS.admin, label: 'Administration des workflows', section: 'Docu-Flow' },
+  // --- fin Docu-Flow W1 ---
   { key: '/admin/users', label: 'Utilisateurs', section: 'Administration' },
   { key: '/admin/roles', label: 'Rôles', section: 'Administration' },
   {

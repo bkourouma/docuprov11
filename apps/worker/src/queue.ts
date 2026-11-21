@@ -47,3 +47,8 @@ export { GED_GOVERNANCE_QUEUE } from '@archivage/types';
 /** File des messages WhatsApp entrants (producteur api, consommateur worker). */
 export { GED_WHATSAPP_QUEUE } from '@archivage/types';
 // --- fin Lot 2c ---
+
+// --- Docu-Flow W1 : minuteries ---
+/** Minuteries durables du workflow (`wf_timer`) : planificateur répétable + consommateur, tous deux dans le worker. */
+export const WF_TIMERS_QUEUE = 'wf-timers';
+// --- fin Docu-Flow W1 ---
