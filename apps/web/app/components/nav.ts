@@ -51,6 +51,25 @@ export const NAV: NavSection[] = [
         keywords: ['rechercher', 'export', 'P3'],
       },
       {
+        key: '/espaces',
+        label: 'Espaces',
+        icon: 'dossier',
+        keywords: ['espace', 'partage', 'collaboration', 'publication', 'membres', 'ged'],
+      },
+      {
+        key: '/recherche-ia',
+        label: 'Recherche IA',
+        icon: 'sparkle',
+        keywords: ['question', 'réponse', 'sémantique', 'ia', 'assistant', 'intelligence artificielle'],
+      },
+      // Lot 5 : gouvernance (doublons, données personnelles, sensibilité).
+      {
+        key: '/gouvernance',
+        label: 'Gouvernance',
+        icon: 'roles',
+        keywords: ['doublon', 'données personnelles', 'rgpd', 'sensibilité', 'confidentialité', 'nettoyage', 'ia'],
+      },
+      {
         key: '/archives/integrite',
         label: 'Intégrité du fonds',
         icon: 'lock',
@@ -336,6 +355,12 @@ export const NAV: NavSection[] = [
         label: 'Paramétrage e-mail',
         icon: 'mail',
         keywords: ['e-mail', 'email', 'notification', 'logo', 'gabarit', 'marque', 'identité'],
+      },
+      {
+        key: '/connecteurs',
+        label: 'Connecteurs',
+        icon: 'download',
+        keywords: ['source', 'import', 'synchronisation', 'messagerie', 'dossier partagé', 'ged'],
       },
     ],
   },

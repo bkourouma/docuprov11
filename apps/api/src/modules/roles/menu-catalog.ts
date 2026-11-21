@@ -8,6 +8,11 @@
  */
 import { ARCHIVES_MENUS } from '../archives/archives.menus';
 import { SECURITY_MENUS } from '../access-inquiries/security.menus';
+import { SEMANTIC_SEARCH_MENU } from '../semantic-search/semantic-search.menus';
+import { SPACES_MENU } from '../spaces/spaces.menus';
+// --- Lot 5 : gouvernance ---
+import { GOVERNANCE_MENU } from '../governance/governance.menus';
+// --- fin Lot 5 ---
 
 export interface MenuPermission {
   key: string; // clé de route (ex. /admin/users)
@@ -47,6 +52,10 @@ export const MENU_CATALOG: MenuPermission[] = [
   { key: MENU_DASHBOARD_ARCHIVES, label: 'Tableaux de bord', section: 'Docu-Archives' },
   { key: '/acquisition', label: 'Acquisition par lot', section: 'Docu-Archives' },
   { key: '/search', label: 'Recherche', section: 'Docu-Archives' },
+  { key: SPACES_MENU, label: 'Espaces', section: 'Docu-Archives' },
+  { key: SEMANTIC_SEARCH_MENU, label: 'Recherche IA', section: 'Docu-Archives' },
+  // Lot 5 : gouvernance (doublons, données personnelles, sensibilité) — menu dédié, refusé par défaut.
+  { key: GOVERNANCE_MENU, label: 'Gouvernance', section: 'Docu-Archives' },
   { key: '/admin/geolocalisation', label: 'Géolocalisation', section: 'Paramétrage Archives' },
   { key: '/admin/classification-plans', label: 'Plan de classement', section: 'Paramétrage Archives' },
   // '/admin/dossier-categories' a été RETIRÉ du catalogue, pas seulement masqué : la table
@@ -145,6 +154,10 @@ export const MENU_CATALOG: MenuPermission[] = [
     label: 'Paramétrage e-mail',
     section: 'Administration',
   },
+  // Connecteurs de sources GED : administration pure (contrôleur `@RequireAdmin`). La clé est
+  // listée dans HIDDEN_MENU_KEYS plus bas pour n'être PAS assignable à un rôle (une permission
+  // accordée serait refusée par l'API) ; l'administrateur et le rôle système la voient via MENU_KEYS.
+  { key: '/connecteurs', label: 'Connecteurs', section: 'Administration' },
 
   // --- Docu-Courriers (opérationnel) --- §04.3
   {
@@ -236,6 +249,8 @@ export const HIDDEN_MENU_KEYS: string[] = [
   // les tableaux de bord, les intercalaires QR et le défaut du paramétrage des types. Seule son
   // ADMINISTRATION disparaît de l'interface ; les lectures (GET) n'ont jamais exigé ce menu.
   '/admin/geolocalisation',
+  // Administration seule (cf. entrée `/connecteurs` du catalogue) : non assignable à un rôle.
+  '/connecteurs',
 ];
 
 /** Toutes les clés connues (y compris l'accueil et les écrans masqués). */

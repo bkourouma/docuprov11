@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import { configureWhatsappRawBody } from './modules/connectors/whatsapp-raw-body'; // Lot 2c
 
 // JSON.stringify cannot serialize BigInt natively. Several Prisma columns are BigInt
 // (e.g. DocumentFile.byteLength), so without this any response carrying one would crash
@@ -15,6 +16,7 @@ import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  configureWhatsappRawBody(app); // Lot 2c : corps brut du webhook WhatsApp, avant les parseurs de Nest
   const logger = app.get(Logger);
   app.useLogger(logger);
 

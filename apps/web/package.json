@@ -9,16 +9,25 @@
     "build": "node scripts/ensure-no-dev.mjs && next build",
     "start": "next start -p 5000",
     "lint": "next lint",
-    "test": "echo \"(@archivage/web) no tests yet\""
+    "test": "tsx --test app/lib/editeur.test.ts app/lib/redaction.test.ts app/gouvernance/gouvernance-api.test.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.2",
     "@ant-design/nextjs-registry": "^1.0.2",
     "@ant-design/plots": "^2.6.8",
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
+    "@archivage/editor": "workspace:^",
     "@archivage/mailer": "workspace:*",
     "@archivage/types": "workspace:*",
     "@archivage/ui": "workspace:*",
+    "@hocuspocus/provider": "^4.9.0",
+    "@tiptap/core": "^3.35.0",
+    "@tiptap/extension-collaboration": "^3.35.0",
+    "@tiptap/extension-collaboration-caret": "^3.35.0",
+    "@tiptap/pm": "^3.35.0",
+    "@tiptap/react": "^3.35.0",
+    "@tiptap/suggestion": "^3.35.0",
+    "@tiptap/y-tiptap": "^3.3.1",
     "antd": "^5.22.0",
     "geist": "^1.7.2",
     "lucide-react": "^1.18.0",
@@ -27,7 +36,8 @@
     "pdfjs-dist": "^4.10.38",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-grid-layout": "^2.2.3"
+    "react-grid-layout": "^2.2.3",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@archivage/config": "workspace:*",
@@ -37,6 +47,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }

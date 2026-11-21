@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { AiModule } from '../ai/ai.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
@@ -18,13 +19,14 @@ import { MailSearchService } from './mail-search.service';
 import { MailScannedDocumentsService } from './mail-scanned.service';
 import { MailFicheService } from './mail-fiche.service';
 import { MailAiExtractionService } from './mail-ai-extraction.service';
+import { MailTextExtractor } from './mail-text-extractor';
 
 /**
  * Module Docu-Courriers. AuthModule fournit MenuPermissionGuard (@RequireMenu). PrismaService
  * (@Global) et HierarchyService (@Global via CommonModule) sont disponibles sans import.
  */
 @Module({
-  imports: [AuthModule, NotificationsModule],
+  imports: [AuthModule, NotificationsModule, AiModule],
   // Ordre important : MailsController porte la route paramétrée greedy `courriers/:id`. Les
   // contrôleurs à sous-chemins littéraux (referentials, organigramme) et les routes imputations/
   // documents sont enregistrés AVANT, sinon `GET courriers/organigramme` serait capté par `:id`.
@@ -48,6 +50,7 @@ import { MailAiExtractionService } from './mail-ai-extraction.service';
     MailScannedDocumentsService,
     MailFicheService,
     MailAiExtractionService,
+    MailTextExtractor,
   ],
   exports: [
     DashboardService,

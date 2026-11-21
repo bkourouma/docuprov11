@@ -1,5 +1,8 @@
 import IORedis from 'ioredis';
 
+/** File du pipeline IA (producteur api, consommateur worker) — nom défini dans le contrat partagé. */
+export { GED_AI_QUEUE } from '@archivage/types';
+
 /** Must match the API producer (apps/api/.../queue.constants.ts). */
 export const ACQUISITION_QUEUE = 'acquisition';
 
@@ -25,3 +28,22 @@ export type ReminderJobName = (typeof REMINDER_JOBS)[keyof typeof REMINDER_JOBS]
 export function createRedis(url: string): IORedis {
   return new IORedis(url, { maxRetriesPerRequest: null });
 }
+
+// --- Lot 3 : indexation sémantique ---
+/** File d'indexation (segmentation + embeddings) — nom défini dans le contrat partagé. */
+export { GED_EMBEDDING_QUEUE } from '@archivage/types';
+// --- fin lot 3 ---
+
+// --- Lot 2a : connecteurs ---
+/** File des synchronisations de sources GED (producteur api, consommateur worker). */
+export { GED_CONNECTOR_SYNC_QUEUE } from '@archivage/types';
+// --- fin Lot 2a ---
+
+// --- Lot 5 : nettoyage et gouvernance ---
+/** File des analyses de gouvernance (producteur api, consommateur worker). */
+export { GED_GOVERNANCE_QUEUE } from '@archivage/types';
+// --- fin Lot 5 ---
+// --- Lot 2c : WhatsApp ---
+/** File des messages WhatsApp entrants (producteur api, consommateur worker). */
+export { GED_WHATSAPP_QUEUE } from '@archivage/types';
+// --- fin Lot 2c ---

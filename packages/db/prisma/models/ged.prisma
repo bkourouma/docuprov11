@@ -1,0 +1,411 @@
+// --- GED IA : fondations de données (11 tables) ---
+//
+// Lot 0 du chantier « GED IA » : TOUT le schéma est posé ici, en une seule migration
+// (`20261120120000_add_ged_ia_foundations`), pour que les lots suivants n'aient plus à y toucher.
+// Principes du chantier :
+//  - IA locale OU cloud (avec masquage) OU désactivée, au choix du client ;
+//  - cadre de connecteurs de sources (copie / indexation en place / synchro), avec provenance et
+//    dédoublonnage par empreinte SHA-256 ;
+//  - recherche sémantique pgvector, filtrée par les droits ;
+//  - espaces (privé, partage, collaboration, publication) et versions ;
+//  - traçabilité de chaque décision de l'IA.
+//
+// Conventions reprises du dépôt (cf. archives.prisma, courriers.prisma) :
+//  - Mono-tenant : une installation = un client. Pas de colonne TenantId ; la configuration IA est
+//    donc une LIGNE UNIQUE (même procédé que `email_template_setting`).
+//  - Pas d'énumération Prisma : états en `Int @db.SmallInt` + CHECK `ck_*` (SQL brut, dans la
+//    migration). Miroir TypeScript : packages/types/src/ged.ts.
+//  - Horodatages `TIMESTAMPTZ(0)` en UTC ; tables/colonnes en snake_case via `@map`.
+//  - Acteurs métier → `app_user_group` (acteur effectif). Traces d'édition sans FK (`updatedBy`).
+//  - Contraintes non exprimables en Prisma (CHECK, uniques partiels, extension `vector`, index
+//    HNSW) : SQL brut dans la migration, copié à l'identique dans prisma/sql/ged.sql (ré-exécutable).
+//
+// Écarts assumés :
+//  - `document_version` EXISTE DÉJÀ (numéro, version courante, validation, fichiers) : elle n'est pas
+//    redéfinie ni modifiée. Les attributs propres à la GED (empreinte, nature du changement,
+//    provenance, décision IA à l'origine) vivent dans `ged_version_info`, en 1-1.
+//  - Dimension d'embedding FIGÉE à 1024 (`vector(1024)`, ex. bge-m3 / multilingual-e5-large) : pgvector
+//    n'indexe en HNSW que des colonnes de dimension fixe. Changer de modèle d'une autre dimension
+//    = nouvelle migration + ré-indexation (`ged_ai_setting.embedding_dimension` le consigne).
+//  - Aucun secret en clair : jetons OAuth chiffrés par l'application (`credentials_enc`) ou simple
+//    référence à un coffre (`credentials_ref`) ; clé d'API cloud par référence (`api_key_ref`).
+
+// ===========================================================================
+// 1. Configuration IA du client
+// ===========================================================================
+
+/// Configuration IA du client — LIGNE UNIQUE (`ged_ai_setting_id` = 1, CHECK en SQL brut).
+///
+/// `mode` : 0 désactivée, 1 locale (modèle hébergé chez le client), 2 cloud (fournisseur externe).
+/// IA désactivée par défaut : aucune donnée ne sort et aucun appel n'est fait tant que le client n'a
+/// pas choisi. En mode cloud, le masquage est OBLIGATOIRE (CHECK `ck_ged_ai_setting_cloud_masking`) :
+/// les `ged_ai_masking_rule` actives s'appliquent à tout texte avant envoi.
+model GedAiSetting {
+  gedAiSettingId     Int      @id @default(1) @map("ged_ai_setting_id")
+  mode               Int      @default(0) @db.SmallInt // 0=désactivée,1=locale,2=cloud (CHECK raw SQL)
+  /// Fournisseur : `ollama`, `vllm`, `openai`, `anthropic`, `mistral`… (clé libre, validée par l'API).
+  provider           String?  @db.VarChar(50)
+  /// Modèle génératif (classement, extraction, résumé, questions-réponses).
+  model              String?  @db.VarChar(200)
+  /// Modèle d'embedding de la recherche sémantique.
+  embeddingModel     String?  @map("embedding_model") @db.VarChar(200)
+  /// Dimension produite par `embeddingModel` — doit valoir celle de `ged_document_chunk.embedding`.
+  embeddingDimension Int      @default(1024) @map("embedding_dimension")
+  endpoint           String?  @db.VarChar(500)
+  /// RÉFÉRENCE de la clé d'API (nom de variable d'environnement ou identifiant de coffre), JAMAIS la clé.
+  apiKeyRef          String?  @map("api_key_ref") @db.VarChar(200)
+  /// Masquage des données avant envoi. Forcé à true en cloud (CHECK).
+  maskingEnabled     Boolean  @default(true) @map("masking_enabled")
+  /// Seuil de confiance (0..1) au-dessus duquel une décision peut être appliquée sans validation
+  /// humaine. `null` = jamais d'application automatique (toute décision attend une validation).
+  autoApplyThreshold Decimal? @map("auto_apply_threshold") @db.Decimal(4, 3)
+  timeoutSeconds     Int      @default(60) @map("timeout_seconds")
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+  updatedBy          Int?     @map("updated_by") // no FK : trace d'édition, pas une contrainte métier
+
+  @@map("ged_ai_setting")
+}
+
+/// Règle de masquage appliquée au texte avant tout envoi vers un fournisseur cloud.
+///
+/// `kind` : 0 expression régulière, 1 mot ou expression exacte, 2 entité prédéfinie (le `pattern`
+/// porte alors son code : `iban`, `email`, `phone`, `nir`, `card`…, résolu par le code applicatif).
+model GedAiMaskingRule {
+  gedAiMaskingRuleId Int      @id @default(autoincrement()) @map("ged_ai_masking_rule_id")
+  label              String   @db.VarChar(200)
+  kind               Int      @default(0) @db.SmallInt // 0=regex,1=exact,2=entité prédéfinie (CHECK raw SQL)
+  pattern            String   @db.Text
+  /// Texte substitué au motif trouvé.
+  replacement        String   @default("[MASQUÉ]") @db.VarChar(100)
+  isActive           Boolean  @default(true) @map("is_active")
+  sortOrder          Int      @default(0) @map("sort_order")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  @@index([isActive, sortOrder])
+  @@map("ged_ai_masking_rule")
+}
+
+// ===========================================================================
+// 2. Traçabilité des décisions de l'IA
+// ===========================================================================
+
+/// Une décision (ou proposition) de l'IA — journal append-only de ce que l'IA a vu et produit.
+///
+/// Le texte d'entrée n'est conservé que MASQUÉ et tronqué (`inputExcerpt`) ; `inputHash` (SHA-256 du
+/// texte réellement envoyé) permet de prouver ce qui a été soumis sans le stocker en entier.
+/// `documentId` est mis à NULL si le document disparaît : la trace de la décision survit au document.
+///
+/// `task` : 0 classement, 1 extraction de métadonnées, 2 résumé, 3 type de document,
+///          4 réponse à une question (RAG), 5 similarité / doublon, 6 correction OCR, 7 autre.
+/// `status` : 0 proposée (attend validation), 1 validée, 2 rejetée, 3 appliquée automatiquement
+///            (confiance ≥ seuil), 4 en erreur.
+/// `mode` : mode IA EN VIGUEUR au moment de la décision (1 locale, 2 cloud) — figé, car la
+///          configuration peut changer ensuite.
+model GedAiDecision {
+  gedAiDecisionId  BigInt    @id @default(autoincrement()) @map("ged_ai_decision_id")
+  documentId       Int?      @map("document_id")
+  sourceItemId     BigInt?   @map("source_item_id")
+  task             Int       @db.SmallInt // CHECK raw SQL : 0..7
+  mode             Int       @db.SmallInt // CHECK raw SQL : 1|2
+  provider         String?   @db.VarChar(50)
+  model            String    @db.VarChar(200)
+  /// Version du gabarit de requête, pour rejouer / comparer une décision.
+  promptVersion    String?   @map("prompt_version") @db.VarChar(50)
+  inputExcerpt     String?   @map("input_excerpt") @db.Text
+  inputHash        String?   @map("input_hash") @db.VarChar(64)
+  /// `true` si le masquage a été appliqué avant l'appel.
+  inputMasked      Boolean   @default(false) @map("input_masked")
+  output           Json?     @db.JsonB
+  /// Score de confiance 0..1 ; `null` si le modèle n'en fournit pas.
+  confidence       Decimal?  @db.Decimal(4, 3)
+  status           Int       @default(0) @db.SmallInt // CHECK raw SQL : 0..4
+  validatedBy      Int?      @map("validated_by")
+  validatedAt      DateTime? @map("validated_at") @db.Timestamptz(0)
+  /// Auteur de la demande (acteur à l'origine de l'appel) — pas de FK : journal.
+  requestedBy      Int?      @map("requested_by")
+  promptTokens     Int?      @map("prompt_tokens")
+  completionTokens Int?      @map("completion_tokens")
+  durationMs       Int?      @map("duration_ms")
+  errorMessage     String?   @map("error_message") @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  document        Document?       @relation(fields: [documentId], references: [documentId], onDelete: SetNull)
+  sourceItem      GedSourceItem?  @relation(fields: [sourceItemId], references: [gedSourceItemId], onDelete: SetNull)
+  validatedByUser AppUserGroup?   @relation("GedAiDecisionValidatedBy", fields: [validatedBy], references: [userGroupId])
+  versionInfos    GedVersionInfo[]
+
+  @@index([documentId, createdAt])
+  @@index([sourceItemId])
+  @@index([status, task])
+  @@index([createdAt])
+  @@map("ged_ai_decision")
+}
+
+// ===========================================================================
+// 3. Connecteurs de sources
+// ===========================================================================
+
+/// Connecteur vers une source externe (dossier réseau, SharePoint, Drive, messagerie, WebDAV…).
+///
+/// `connectorType` : clé libre `[a-z0-9_]+` (`filesystem`, `sharepoint`, `gdrive`, `imap`…) — ouverte
+/// pour que l'ajout d'un connecteur ne demande pas de migration ; l'API la valide contre son registre.
+/// `mode` : 0 copie (le binaire est importé dans le coffre), 1 indexation en place (rien n'est copié,
+///          seuls texte et embeddings sont gardés), 2 synchro (copie tenue à jour avec la source).
+/// `status` : 0 inactif, 1 actif, 2 en erreur, 3 autorisation expirée (OAuth à renouveler).
+///
+/// Secrets : `credentialsEnc` = jetons OAuth CHIFFRÉS par l'application (enveloppe AES-GCM, base64) ;
+/// `credentialsKeyId` = identifiant de la clé de chiffrement (rotation) ; `credentialsRef` =
+/// alternative, référence à un coffre externe. Jamais de jeton en clair dans cette table.
+/// `changeToken` : jeton de reprise de la source (delta link, page token, historyId, curseur).
+model GedSourceConnector {
+  gedSourceConnectorId Int       @id @default(autoincrement()) @map("ged_source_connector_id")
+  label                String    @db.VarChar(200)
+  connectorType        String    @map("connector_type") @db.VarChar(40)
+  mode                 Int       @default(0) @db.SmallInt // CHECK raw SQL : 0..2
+  status               Int       @default(0) @db.SmallInt // CHECK raw SQL : 0..3
+  /// Paramétrage NON secret (racine à parcourir, filtres, identifiant de dossier distant…).
+  config               Json?     @db.JsonB
+  credentialsEnc       String?   @map("credentials_enc") @db.Text
+  credentialsKeyId     String?   @map("credentials_key_id") @db.VarChar(100)
+  credentialsRef       String?   @map("credentials_ref") @db.VarChar(200)
+  /// Date d'expiration de l'autorisation, si la source en fournit une.
+  credentialsExpiresAt DateTime? @map("credentials_expires_at") @db.Timestamptz(0)
+  changeToken          String?   @map("change_token") @db.Text
+  syncIntervalMinutes  Int?      @map("sync_interval_minutes") // null = synchro manuelle uniquement
+  /// Dossier de destination des documents créés par copie / synchro.
+  targetDossierId      Int?      @map("target_dossier_id")
+  lastSyncAt           DateTime? @map("last_sync_at") @db.Timestamptz(0)
+  lastSuccessAt        DateTime? @map("last_success_at") @db.Timestamptz(0)
+  lastError            String?   @map("last_error") @db.Text
+  isActive             Boolean   @default(true) @map("is_active")
+  createdBy            Int?      @map("created_by") // no FK : trace de création
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  targetDossier Dossier?              @relation(fields: [targetDossierId], references: [dossierId], onDelete: SetNull)
+  items         GedSourceItem[]
+  syncRuns      GedSourceSyncRun[]
+
+  @@index([connectorType])
+  @@index([isActive, status])
+  @@map("ged_source_connector")
+}
+
+/// Une passe de synchronisation d'un connecteur (historique + diagnostic).
+/// `status` : 0 en cours, 1 réussie, 2 partielle (erreurs sur certains éléments), 3 échouée.
+model GedSourceSyncRun {
+  gedSourceSyncRunId   BigInt    @id @default(autoincrement()) @map("ged_source_sync_run_id")
+  connectorId          Int       @map("connector_id")
+  status               Int       @default(0) @db.SmallInt // CHECK raw SQL : 0..3
+  startedAt            DateTime  @default(now()) @map("started_at") @db.Timestamptz(0)
+  finishedAt           DateTime? @map("finished_at") @db.Timestamptz(0)
+  itemsSeen            Int       @default(0) @map("items_seen")
+  itemsCreated         Int       @default(0) @map("items_created")
+  itemsUpdated         Int       @default(0) @map("items_updated")
+  itemsDeleted         Int       @default(0) @map("items_deleted")
+  itemsDuplicate       Int       @default(0) @map("items_duplicate")
+  itemsFailed          Int       @default(0) @map("items_failed")
+  changeTokenBefore    String?   @map("change_token_before") @db.Text
+  changeTokenAfter     String?   @map("change_token_after") @db.Text
+  errorMessage         String?   @map("error_message") @db.Text
+
+  connector GedSourceConnector @relation(fields: [connectorId], references: [gedSourceConnectorId], onDelete: Cascade)
+
+  @@index([connectorId, startedAt])
+  @@map("ged_source_sync_run")
+}
+
+/// Élément d'une source : PROVENANCE du document ou du contenu indexé.
+///
+/// Porte l'origine (identifiant, URL, auteur, dates d'origine, droits d'origine) et l'empreinte
+/// SHA-256 qui sert au dédoublonnage : deux éléments de même `contentHash` sont le même contenu,
+/// quelle que soit la source ; le second pointe vers le premier (`duplicateOfId`) au lieu de créer un
+/// second document. `contentHash` reste `null` tant que le binaire n'a pas été lu (indexation en
+/// place différée). `documentId` n'est renseigné qu'en mode copie / synchro.
+///
+/// `state` : 0 découvert, 1 copié, 2 indexé en place, 3 modifié à la source (à resynchroniser),
+///           4 supprimé à la source, 5 en erreur, 6 doublon.
+model GedSourceItem {
+  gedSourceItemId BigInt    @id @default(autoincrement()) @map("ged_source_item_id")
+  connectorId     Int       @map("connector_id")
+  /// Identifiant de l'élément DANS la source (id de fichier, chemin, UID de message).
+  externalId      String    @map("external_id") @db.VarChar(500)
+  originUrl       String?   @map("origin_url") @db.Text
+  originPath      String?   @map("origin_path") @db.Text
+  name            String    @db.VarChar(500)
+  mimeType        String?   @map("mime_type") @db.VarChar(200)
+  byteLength      BigInt?   @map("byte_length")
+  originAuthor    String?   @map("origin_author") @db.VarChar(300)
+  originCreatedAt  DateTime? @map("origin_created_at") @db.Timestamptz(0)
+  originModifiedAt DateTime? @map("origin_modified_at") @db.Timestamptz(0)
+  /// Empreinte SHA-256 (hexadécimal minuscule, 64 car.) du contenu — clé de dédoublonnage.
+  contentHash     String?   @map("content_hash") @db.VarChar(64)
+  /// Marqueur de version côté source (ETag, révision) pour détecter une modification sans relire.
+  remoteVersion   String?   @map("remote_version") @db.VarChar(200)
+  /// Droits d'origine (ACL de la source), conservés tels quels pour audit et reprise éventuelle.
+  originAcl       Json?     @map("origin_acl") @db.JsonB
+  /// Autres métadonnées d'origine propres au connecteur.
+  originMetadata  Json?     @map("origin_metadata") @db.JsonB
+  state           Int       @default(0) @db.SmallInt // CHECK raw SQL : 0..6
+  documentId      Int?      @map("document_id")
+  duplicateOfId   BigInt?   @map("duplicate_of_id")
+  errorMessage    String?   @map("error_message") @db.Text
+  firstSeenAt     DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(0)
+  lastSeenAt      DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(0)
+  indexedAt       DateTime? @map("indexed_at") @db.Timestamptz(0)
+
+  connector   GedSourceConnector @relation(fields: [connectorId], references: [gedSourceConnectorId], onDelete: Cascade)
+  document    Document?          @relation(fields: [documentId], references: [documentId], onDelete: SetNull)
+  duplicateOf GedSourceItem?     @relation("GedSourceItemDuplicate", fields: [duplicateOfId], references: [gedSourceItemId], onDelete: SetNull)
+  duplicates  GedSourceItem[]    @relation("GedSourceItemDuplicate")
+  chunks      GedDocumentChunk[]
+  decisions   GedAiDecision[]
+  versionInfos GedVersionInfo[]
+
+  @@unique([connectorId, externalId])
+  @@index([contentHash])
+  @@index([documentId])
+  @@index([duplicateOfId])
+  @@index([connectorId, state])
+  @@map("ged_source_item")
+}
+
+// ===========================================================================
+// 4. Recherche sémantique (pgvector)
+// ===========================================================================
+
+/// Segment de texte d'un document (ou d'un élément indexé en place) et son embedding.
+///
+/// Rattaché à un document (`documentId`) OU à un élément de source (`sourceItemId`) — au moins l'un
+/// des deux (CHECK). Les DROITS ne sont pas dupliqués ici : la recherche joint `document` (et ses
+/// permissions / confidentialité / espaces) et filtre avant de renvoyer — un segment ne sort jamais
+/// d'une requête sans que l'appelant ait le droit sur son document. Les segments d'une version
+/// périmée sont supprimés à la ré-indexation.
+///
+/// `embedding` est `vector(1024)` : colonne créée et indexée (HNSW cosinus) en SQL brut ; Prisma ne
+/// la gère qu'en lecture/écriture brute (`$queryRaw` / `$executeRaw`).
+model GedDocumentChunk {
+  gedDocumentChunkId BigInt    @id @default(autoincrement()) @map("ged_document_chunk_id")
+  documentId         Int?      @map("document_id")
+  documentVersionId  Int?      @map("document_version_id")
+  sourceItemId       BigInt?   @map("source_item_id")
+  chunkIndex         Int       @map("chunk_index")
+  content            String    @db.Text
+  contentHash        String    @map("content_hash") @db.VarChar(64)
+  tokenCount         Int?      @map("token_count")
+  pageFrom           Int?      @map("page_from")
+  pageTo             Int?      @map("page_to")
+  embedding          Unsupported("vector(1024)")
+  /// Modèle ayant produit `embedding` : deux modèles ne sont pas comparables entre eux.
+  embeddingModel     String    @map("embedding_model") @db.VarChar(200)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  document        Document?        @relation(fields: [documentId], references: [documentId], onDelete: Cascade)
+  documentVersion DocumentVersion? @relation(fields: [documentVersionId], references: [documentVersionId], onDelete: Cascade)
+  sourceItem      GedSourceItem?   @relation(fields: [sourceItemId], references: [gedSourceItemId], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([documentVersionId])
+  @@index([sourceItemId])
+  @@map("ged_document_chunk")
+}
+
+// ===========================================================================
+// 5. Espaces et versions
+// ===========================================================================
+
+/// Espace de travail documentaire.
+///
+/// `kind` : 0 privé (propriétaire seul), 1 partage (lecture par des membres), 2 collaboration
+///          (contribution par des membres), 3 publication (diffusé, éventuellement hors
+///          authentification via `publicationSlug`).
+/// Un espace regroupe des documents sans les déplacer (`ged_space_document`) : le classement
+/// (dossier, plan) reste celui du document.
+model GedSpace {
+  gedSpaceId      Int       @id @default(autoincrement()) @map("ged_space_id")
+  label           String    @db.VarChar(200)
+  description     String?   @db.Text
+  kind            Int       @db.SmallInt // CHECK raw SQL : 0..3
+  ownerUserGroupId Int      @map("owner_user_group_id")
+  /// Identifiant public d'une publication (URL stable). Unique ; `null` hors publication.
+  publicationSlug String?   @unique @map("publication_slug") @db.VarChar(120)
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(0)
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  owner     AppUserGroup       @relation("GedSpaceOwner", fields: [ownerUserGroupId], references: [userGroupId])
+  members   GedSpaceMember[]
+  documents GedSpaceDocument[]
+  versionInfos GedVersionInfo[] @relation("GedVersionInfoSpace")
+
+  @@index([ownerUserGroupId])
+  @@index([kind, isActive])
+  @@map("ged_space")
+}
+
+/// Membre d'un espace : un acteur OU un rôle (exactement un des deux, CHECK `ck_ged_space_member_grantee`).
+/// `permission` : 0 lecture, 1 contribution, 2 gestion (membres, paramètres).
+model GedSpaceMember {
+  gedSpaceMemberId Int      @id @default(autoincrement()) @map("ged_space_member_id")
+  spaceId          Int      @map("space_id")
+  userGroupId      Int?     @map("user_group_id")
+  roleId           Int?     @map("role_id")
+  permission       Int      @default(0) @db.SmallInt // CHECK raw SQL : 0..2
+  addedBy          Int?     @map("added_by") // no FK : trace
+  addedAt          DateTime @default(now()) @map("added_at") @db.Timestamptz(0)
+
+  space     GedSpace      @relation(fields: [spaceId], references: [gedSpaceId], onDelete: Cascade)
+  userGroup AppUserGroup? @relation("GedSpaceMemberUser", fields: [userGroupId], references: [userGroupId], onDelete: Cascade)
+  role      Role?         @relation("GedSpaceMemberRole", fields: [roleId], references: [roleId], onDelete: Cascade)
+
+  // Un acteur / un rôle n'apparaît qu'une fois par espace : uniques partiels (raw SQL), car
+  // l'autre colonne est NULL et un unique composite ne la verrouillerait pas.
+  @@index([spaceId])
+  @@index([userGroupId])
+  @@index([roleId])
+  @@map("ged_space_member")
+}
+
+/// Appartenance d'un document à un espace (clé composite).
+model GedSpaceDocument {
+  spaceId    Int      @map("space_id")
+  documentId Int      @map("document_id")
+  addedBy    Int?     @map("added_by") // no FK : trace
+  addedAt    DateTime @default(now()) @map("added_at") @db.Timestamptz(0)
+
+  space    GedSpace @relation(fields: [spaceId], references: [gedSpaceId], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [documentId], onDelete: Cascade)
+
+  @@id([spaceId, documentId])
+  @@index([documentId])
+  @@map("ged_space_document")
+}
+
+/// Attributs GED d'une version de document (1-1 avec `document_version`, qui n'est pas modifiée).
+///
+/// `contentHash` : SHA-256 du contenu de CETTE version (permet de détecter qu'une « nouvelle version »
+/// est identique à la précédente). `changeKind` : 0 création, 1 modification, 2 synchro depuis la
+/// source, 3 restauration d'une version antérieure, 4 modification par l'IA (alors `aiDecisionId`).
+model GedVersionInfo {
+  gedVersionInfoId       Int      @id @default(autoincrement()) @map("ged_version_info_id")
+  documentVersionId      Int      @unique @map("document_version_id")
+  spaceId                Int?     @map("space_id")
+  contentHash            String?  @map("content_hash") @db.VarChar(64)
+  changeKind             Int      @default(0) @map("change_kind") @db.SmallInt // CHECK raw SQL : 0..4
+  changeSummary          String?  @map("change_summary") @db.Text
+  sourceItemId           BigInt?  @map("source_item_id")
+  aiDecisionId           BigInt?  @map("ai_decision_id")
+  restoredFromVersionId  Int?     @map("restored_from_version_id")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  documentVersion      DocumentVersion  @relation("GedVersionInfoVersion", fields: [documentVersionId], references: [documentVersionId], onDelete: Cascade)
+  restoredFromVersion  DocumentVersion? @relation("GedVersionInfoRestoredFrom", fields: [restoredFromVersionId], references: [documentVersionId], onDelete: SetNull)
+  space                GedSpace?        @relation("GedVersionInfoSpace", fields: [spaceId], references: [gedSpaceId], onDelete: SetNull)
+  sourceItem           GedSourceItem?   @relation(fields: [sourceItemId], references: [gedSourceItemId], onDelete: SetNull)
+  aiDecision           GedAiDecision?   @relation(fields: [aiDecisionId], references: [gedAiDecisionId], onDelete: SetNull)
+
+  @@index([contentHash])
+  @@index([spaceId])
+  @@map("ged_version_info")
+}
