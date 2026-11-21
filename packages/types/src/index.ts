@@ -13,3 +13,8 @@ export * from './ged-governance-detect';
 // --- fin Lot 5 ---
 export * from './ged-collab';
 export * from './ged-drafting';
+// --- Docu-Flow (lot W0) ---
+export * from './wf-enums';
+export * from './wf-events';
+export * from './wf-graph';
+export * from './wf-dto';
