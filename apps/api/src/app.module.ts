@@ -27,6 +27,7 @@ import { QueueModule } from './modules/queue/queue.module';
 import { ReferentialsModule } from './modules/referentials/referentials.module';
 import { DocVersionsModule } from './modules/doc-versions/doc-versions.module';
 import { RolesModule } from './modules/roles/roles.module';
+import { DraftingModule } from './modules/drafting/drafting.module';
 import { SemanticSearchModule } from './modules/semantic-search/semantic-search.module';
 import { SpacesModule } from './modules/spaces/spaces.module';
 import { UsersModule } from './modules/users/users.module';
@@ -73,6 +74,9 @@ import { HealthController } from './health.controller';
     // --- Lot 5 : gouvernance ---
     GovernanceModule,
     // --- fin Lot 5 ---
+    // --- Lot 4c : rédaction assistée ---
+    DraftingModule,
+    // --- fin Lot 4c ---
   ],
   providers: [
     // Deny-by-default at the transport layer: every route needs a JWT unless @Public().

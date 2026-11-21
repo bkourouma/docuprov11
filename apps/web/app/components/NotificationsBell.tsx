@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { Badge, Button, Dropdown, Empty, List, Spin, Tooltip, Typography } from 'antd';
 import dayjs from 'dayjs';
 import { icons } from '../theme/icons';
@@ -21,6 +22,7 @@ const POLL_MS = 60_000;
  * Chaque acteur ne voit que ses propres notifications (le back filtre sur son user_group).
  */
 export function NotificationsBell() {
+  const router = useRouter();
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<NotificationRow[]>([]);
@@ -62,6 +64,16 @@ export function NotificationsBell() {
       rs.map((r) => (r.notificationId === n.notificationId ? { ...r, isRead: true } : r)),
     );
     setUnread((u) => Math.max(0, u - 1));
+  };
+
+  /** Destination d'une notification : seul un document de l'éditeur en a une (les autres : comportement inchangé). */
+  const destinationOf = (n: NotificationRow): string | null =>
+    n.targetType === 'document' && n.targetId != null ? `/editeur/${n.targetId}` : null;
+
+  const openNotification = (n: NotificationRow, href: string) => {
+    setOpen(false);
+    void readOne(n);
+    router.push(href);
   };
 
   const readAll = async () => {
@@ -110,11 +122,20 @@ export function NotificationsBell() {
           size="small"
           style={{ maxHeight: 380, overflow: 'auto' }}
           dataSource={rows}
-          renderItem={(n) => (
+          renderItem={(n) => {
+            const href = destinationOf(n);
+            const onKeyDown = (e: KeyboardEvent) => {
+              if (href && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                openNotification(n, href);
+              }
+            };
+            return (
             <List.Item
-              onClick={() => void readOne(n)}
+              onClick={() => (href ? openNotification(n, href) : void readOne(n))}
+              {...(href ? { role: 'link', tabIndex: 0, onKeyDown, 'aria-label': n.message } : {})}
               style={{
-                cursor: n.isRead ? 'default' : 'pointer',
+                cursor: href || !n.isRead ? 'pointer' : 'default',
                 padding: '10px 12px',
                 background: n.isRead ? undefined : 'var(--ant-color-primary-bg, #e8eefc)',
               }}
@@ -132,7 +153,8 @@ export function NotificationsBell() {
                 }
               />
             </List.Item>
-          )}
+            );
+          }}
         />
       )}
     </div>

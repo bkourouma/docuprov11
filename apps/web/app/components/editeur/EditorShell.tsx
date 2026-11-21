@@ -9,7 +9,7 @@ import { HocuspocusProvider, WebSocketStatus } from '@hocuspocus/provider';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCaret from '@tiptap/extension-collaboration-caret';
-import { Check, ChevronDown, FileDown, FileUp, History, MessageSquare, Save, X } from 'lucide-react';
+import { Check, ChevronDown, FileDown, FileUp, History, MessageSquare, Save, Sparkles, X } from 'lucide-react';
 import { COMMENTS_KEY, EDITOR_FRAGMENT, createEditorExtensions, listComments } from '@archivage/editor';
 import { PageHeader } from '../PageHeader';
 import { EmptyState } from '../EmptyState';
@@ -33,12 +33,13 @@ import {
 import { EditorToolbar } from './EditorToolbar';
 import { CommentsPanel, makeDraft, type CommentDraft } from './CommentsPanel';
 import { VersionHistoryPanel } from './VersionHistoryPanel';
+import { DraftingPanel } from './DraftingPanel';
 import { createMentionSuggestion } from './mention-suggestion';
 import styles from './editeur.module.css';
 
 const ICON = { size: 16, strokeWidth: iconDefaults.strokeWidth } as const;
 
-type Panel = 'comments' | 'history' | null;
+type Panel = 'comments' | 'history' | 'drafting' | null;
 type ConnState = 'connecting' | 'connected' | 'disconnected';
 type CloseBanner =
   | { type: 'structure' }
@@ -380,6 +381,15 @@ function EditorCanvas({
   const wide = screens.lg === true;
 
   const [panel, setPanel] = useState<Panel>(null);
+
+  // `?assist=1` (création depuis un modèle) : ouvre le panneau de rédaction assistée au chargement.
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get('assist') === '1') setPanel('drafting');
+    } catch {
+      /* URL illisible : panneau fermé */
+    }
+  }, []);
   const [draft, setDraft] = useState<CommentDraft | null>(null);
   const [openComments, setOpenComments] = useState(0);
   const [historyKey, setHistoryKey] = useState(0);
@@ -569,7 +579,8 @@ function EditorCanvas({
             ? 'Modifications en attente de connexion'
             : null;
 
-  const panelTitle = panel === 'history' ? 'Historique des versions' : 'Commentaires';
+  const panelTitle =
+    panel === 'history' ? 'Historique des versions' : panel === 'drafting' ? 'Rédiger avec l’IA' : 'Commentaires';
   const panelBody =
     panel === 'history' ? (
       <VersionHistoryPanel
@@ -579,6 +590,8 @@ function EditorCanvas({
         onRestored={(v) => message.success(`Version ${v.versionNumber} créée à partir de la restauration.`)}
         onError={(m) => message.error(m)}
       />
+    ) : panel === 'drafting' && editor ? (
+      <DraftingPanel editor={editor} documentId={documentId} readOnly={readOnly} onClose={closePanel} />
     ) : panel === 'comments' && editor ? (
       <CommentsPanel
         editor={editor}
@@ -632,6 +645,9 @@ function EditorCanvas({
             </Button>
             <Button icon={<History {...ICON} />} aria-pressed={panel === 'history'} onClick={() => toggle('history')}>
               Historique
+            </Button>
+            <Button icon={<Sparkles {...ICON} />} aria-pressed={panel === 'drafting'} onClick={() => toggle('drafting')}>
+              Rédiger avec l’IA
             </Button>
             <Dropdown
               trigger={['click']}

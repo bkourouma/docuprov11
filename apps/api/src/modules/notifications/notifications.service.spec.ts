@@ -119,6 +119,17 @@ describe('NotificationsService', () => {
       expect(email.send.mock.calls[0][0].link).toBe('/courriers/suivi/42');
     });
 
+    it('joint le lien vers le document de l’éditeur', async () => {
+      email.enabled = true;
+      prisma.notification.createMany.mockResolvedValue({ count: 1 });
+      prisma.appUserGroup.findMany.mockResolvedValue([{ user: { email: 'awa@example.ci' } }]);
+
+      await service.createMany([5], 'msg', { type: 'document', id: 7 });
+      await flush();
+
+      expect(email.send.mock.calls[0][0].link).toBe('/editeur/7');
+    });
+
     it('ignore les acteurs sans adresse e-mail', async () => {
       email.enabled = true;
       prisma.notification.createMany.mockResolvedValue({ count: 1 });

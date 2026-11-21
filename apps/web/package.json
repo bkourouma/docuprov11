@@ -9,7 +9,7 @@
     "build": "node scripts/ensure-no-dev.mjs && next build",
     "start": "next start -p 5000",
     "lint": "next lint",
-    "test": "tsx --test app/lib/editeur.test.ts"
+    "test": "tsx --test app/lib/editeur.test.ts app/lib/redaction.test.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.2",

@@ -16,7 +16,7 @@ import {
   type CollabPersistenceService,
 } from '../persistence/collab-persistence.service';
 import type { CollabServerService } from '../server/collab-server.service';
-import { MAX_DOCX_UPLOAD_BYTES } from './collab-documents.dto';
+import { MAX_DOCUMENT_LABEL, MAX_DOCX_UPLOAD_BYTES } from './collab-documents.dto';
 import {
   CollabDocumentsService,
   buildContentDisposition,
@@ -577,6 +577,55 @@ describe('createDocument', () => {
     const h = setup({ space: { kind: GedSpaceKind.Prive, ownerUserGroupId: 11 } });
     h.audit.dataChange.mockRejectedValue(new Error('journal indisponible'));
     await expect(h.service.createDocument({ spaceId: 3, label: 'X' }, user)).resolves.toMatchObject({ documentId: 77 });
+  });
+});
+
+describe('createDocumentFromHtml', () => {
+  it('droit de contribution refusé : 403 (lecture seule) ou 404 (espace invisible), rien n’est créé', async () => {
+    const ro = setup({
+      space: {
+        kind: GedSpaceKind.Collaboration,
+        members: [{ userGroupId: 11, roleId: null, permission: GedSpacePermission.Lecture }],
+      },
+    });
+    await expect(ro.service.createDocumentFromHtml(3, 'Modèle', '<p>x</p>', user)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    const hidden = setup({ space: { kind: GedSpaceKind.Prive } });
+    await expect(hidden.service.createDocumentFromHtml(3, 'Modèle', '<p>x</p>', user)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    const machine = setup({ space: { kind: GedSpaceKind.Prive, ownerUserGroupId: 11 } });
+    await expect(
+      machine.service.createDocumentFromHtml(3, 'Modèle', '<p>x</p>', { ...user, userGroupId: null }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(ro.persistence.createDocument).not.toHaveBeenCalled();
+    expect(hidden.persistence.createDocument).not.toHaveBeenCalled();
+    expect(machine.persistence.createDocument).not.toHaveBeenCalled();
+  });
+
+  it('contenu initial = HTML passé par la conversion d’assainissement ; libellé borné ; audit', async () => {
+    const h = setup({ space: { kind: GedSpaceKind.Prive, ownerUserGroupId: 11 } });
+    const spy = jest.spyOn(editor, 'htmlToYDoc');
+    const html = '<h1>Titre</h1><p>Corps</p>';
+    const label = 'L'.repeat(MAX_DOCUMENT_LABEL + 20);
+    const res = await h.service.createDocumentFromHtml(3, label, html, user);
+    expect(spy).toHaveBeenCalledWith(html);
+    expect(res).toEqual({ documentId: 77, label: 'L'.repeat(MAX_DOCUMENT_LABEL), warnings: [] });
+    const input = h.persistence.createDocument.mock.calls[0][0] as { state: Uint8Array };
+    expect(input).toMatchObject({
+      label: 'L'.repeat(MAX_DOCUMENT_LABEL),
+      spaceId: 3,
+      user,
+      changeSummary: 'Création depuis un modèle',
+    });
+    const decoded = editor.decodeState(input.state);
+    expect(editor.yDocToHtml(decoded)).toBe(html);
+    decoded.destroy();
+    expect(h.audit.dataChange).toHaveBeenCalledWith(
+      expect.objectContaining({ objectRef: 'document:77', newValue: 'space-attached:3' }),
+    );
+    spy.mockRestore();
   });
 });
 

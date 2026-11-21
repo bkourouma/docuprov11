@@ -10,6 +10,12 @@ import { icons } from '../../theme/icons';
 import { fontSize } from '../../theme/tokens';
 import { espacesApi, type GedSpaceSummary } from '../../lib/espaces';
 import { editeurApi } from '../../lib/editeur';
+import {
+  GED_DRAFT_EMPTY_TEMPLATE_ID,
+  isEmptyTemplate,
+  redactionApi,
+  type GedDraftTemplatesResponse,
+} from '../../lib/redaction';
 
 const { Text } = Typography;
 
@@ -17,6 +23,7 @@ interface FormValues {
   spaceId: number;
   label?: string;
   withImport?: boolean;
+  templateId?: string;
 }
 
 const errMsg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
@@ -32,6 +39,19 @@ function NouveauDocumentForm() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const withImport = Form.useWatch('withImport', form);
+  const [catalog, setCatalog] = useState<GedDraftTemplatesResponse | null>(null);
+  const [catalogFailed, setCatalogFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    redactionApi
+      .listTemplates()
+      .then((c) => alive && setCatalog(c))
+      .catch(() => alive && setCatalogFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const preselected = Number(params.get('spaceId'));
 
@@ -77,12 +97,17 @@ function NouveauDocumentForm() {
     }
     setSubmitting(true);
     try {
+      // Import DOCX et modèle sont exclusifs : l'import l'emporte, le modèle est alors ignoré.
+      const tpl = v.withImport || catalogFailed ? GED_DRAFT_EMPTY_TEMPLATE_ID : (v.templateId ?? GED_DRAFT_EMPTY_TEMPLATE_ID);
+      const fromTemplate = !v.withImport && !isEmptyTemplate(tpl);
       const created =
         v.withImport && file
           ? await editeurApi.importAsNew(file, v.spaceId, v.label)
-          : await editeurApi.createDocument(v.spaceId, v.label!.trim());
+          : fromTemplate
+            ? await redactionApi.createDocument({ spaceId: v.spaceId, templateId: tpl, label: v.label!.trim() })
+            : await editeurApi.createDocument(v.spaceId, v.label!.trim());
       created.warnings.slice(0, 5).forEach((w) => message.warning(w));
-      router.push(`/editeur/${created.documentId}`);
+      router.push(fromTemplate ? `/editeur/${created.documentId}?assist=1` : `/editeur/${created.documentId}`);
     } catch (e) {
       setFormError(errMsg(e, 'Création impossible.'));
       setSubmitting(false);
@@ -105,7 +130,13 @@ function NouveauDocumentForm() {
             <Skeleton active paragraph={{ rows: 4 }} />
           </div>
         ) : (
-          <Form<FormValues> form={form} layout="vertical" requiredMark={false} onFinish={onFinish}>
+          <Form<FormValues>
+            form={form}
+            layout="vertical"
+            requiredMark={false}
+            onFinish={onFinish}
+            initialValues={{ templateId: GED_DRAFT_EMPTY_TEMPLATE_ID }}
+          >
             <Form.Item
               name="spaceId"
               label="Espace"
@@ -125,6 +156,28 @@ function NouveauDocumentForm() {
             >
               <Input maxLength={200} placeholder="Ex. : Compte rendu du comité" />
             </Form.Item>
+            {catalog && (
+              <Form.Item
+                name="templateId"
+                label="Modèle"
+                extra={
+                  withImport
+                    ? 'Indisponible avec l’import DOCX : le contenu vient du fichier.'
+                    : 'Un modèle ouvre l’éditeur avec l’assistant de rédaction.'
+                }
+              >
+                <Select
+                  disabled={!!withImport}
+                  options={catalog.templates.map((t) => ({ value: t.id, label: t.label }))}
+                  aria-label="Modèle"
+                />
+              </Form.Item>
+            )}
+            {catalogFailed && (
+              <Text type="secondary" role="status" style={{ display: 'block', marginBottom: 16, fontSize: fontSize.xs }}>
+                Les modèles ne sont pas disponibles pour le moment : le document sera créé vide.
+              </Text>
+            )}
             <Form.Item name="withImport" valuePropName="checked">
               <Checkbox>Importer un DOCX</Checkbox>
             </Form.Item>

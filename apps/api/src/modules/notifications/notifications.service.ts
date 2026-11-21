@@ -27,6 +27,7 @@ export interface CreateNotificationInput {
 /** Écran à ouvrir depuis l'e-mail, par type de cible. */
 const TARGET_LINK: Record<string, (id: number) => string> = {
   mail: (id) => `/courriers/suivi/${id}`,
+  document: (id) => `/editeur/${id}`,
 };
 
 export interface NotificationRow {
