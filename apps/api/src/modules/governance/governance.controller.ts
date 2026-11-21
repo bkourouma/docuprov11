@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import {
+  GedAiDecisionStatus,
+  GovernanceKind,
   governanceAnalyzeRequestSchema,
   governanceListQuerySchema,
   governanceValidateRequestSchema,
@@ -77,8 +79,21 @@ export class GovernanceController {
     @Body(new ZodValidationPipe(governanceValidateRequestSchema)) body: GovernanceValidateRequest,
     @CurrentUser() user: AuthUser,
   ): Promise<GovernanceReviewResponse> {
-    const { applied } = await this.review.validate(id, user, body);
-    return { proposal: await this.viewOf(id, user), applied: applied ?? null };
+    const { applied, kind } = await this.review.validate(id, user, body);
+    try {
+      return { proposal: await this.viewOf(id, user), applied: applied ?? null };
+    } catch (e) {
+      // Sensibilité : la validation est DÉJÀ appliquée ; si elle a élevé le niveau au-delà de ce que
+      // l'utilisateur peut ouvrir, la relecture est un 404 trompeur. On renvoie une vue minimale
+      // (id, statut, aucune donnée du document). Les autres natures propagent le 404.
+      if (kind === GovernanceKind.Sensibilite && e instanceof NotFoundException) {
+        return {
+          proposal: { minimal: true, id: String(id), status: GedAiDecisionStatus.Validee },
+          applied: applied ?? null,
+        };
+      }
+      throw e;
+    }
   }
 
   @Post('proposals/:id/reject')

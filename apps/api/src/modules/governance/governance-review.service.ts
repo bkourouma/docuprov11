@@ -126,7 +126,7 @@ export class GovernanceReviewService {
     id: number,
     user: AuthUser,
     body: GovernanceValidateRequest,
-  ): Promise<{ applied: GovernanceApplied | null }> {
+  ): Promise<{ applied: GovernanceApplied | null; kind: GovernanceKind }> {
     const proposal = await this.loadVisible(id, user);
     this.assertProposed(proposal);
 
@@ -139,11 +139,7 @@ export class GovernanceReviewService {
     const output = proposal.output;
     let outcome: ValidationOutcome;
     if (isDuplicate(output)) {
-      if (level < LEVEL_MODIFICATION) {
-        throw new ForbiddenException(
-          'Archiver un doublon exige le droit de modification sur ce document.',
-        );
-      }
+      this.assertReviewLevel(output, level);
       outcome = await this.prisma.$transaction((tx) =>
         this.validateDuplicate(tx, proposal, output, user),
       );
@@ -152,9 +148,7 @@ export class GovernanceReviewService {
         this.validateSensitivity(tx, proposal, output, user, level, confirmLowering),
       );
     } else {
-      if (level < LEVEL_CONSULTATION) {
-        throw new ForbiddenException('Droit de consultation requis sur ce document.');
-      }
+      this.assertReviewLevel(output, level);
       outcome = await this.prisma.$transaction(async (tx) => {
         await this.claim(tx, proposal.decisionId, GedAiDecisionStatus.Validee, user);
         return {
@@ -169,7 +163,7 @@ export class GovernanceReviewService {
     }
 
     await this.writeAudit(proposal.decisionId, user, outcome.audit);
-    return { applied: outcome.applied };
+    return { applied: outcome.applied, kind: output.kind };
   }
 
   /**
@@ -179,6 +173,14 @@ export class GovernanceReviewService {
   async reject(id: number, user: AuthUser): Promise<void> {
     const proposal = await this.loadForReview(id, user, true);
     this.assertProposed(proposal);
+
+    // Même niveau minimal que la validation de la même nature. Une proposition orpheline (document
+    // supprimé, rejet réservé à l'administrateur par loadForReview) n'a plus de droit documentaire.
+    if (!proposal.orphan && proposal.documentId != null) {
+      const level = await this.documents.getEffectivePermissionLevel(proposal.documentId, user);
+      if (level == null) throw new NotFoundException(NOT_FOUND_MESSAGE);
+      this.assertReviewLevel(proposal.output, level);
+    }
 
     await this.prisma.$transaction((tx) =>
       this.claim(tx, proposal.decisionId, GedAiDecisionStatus.Rejetee, user),
@@ -288,6 +290,28 @@ export class GovernanceReviewService {
       (user.isAdmin !== true && user.userId <= 0)
     ) {
       throw new ForbiddenException('Revue réservée à un utilisateur authentifié.');
+    }
+  }
+
+  /**
+   * Niveau minimal commun à la validation ET au rejet d'une proposition, selon sa nature : doublon et
+   * sensibilité exigent la modification (3), données personnelles la consultation (2).
+   */
+  private assertReviewLevel(output: GovernanceOutput, level: number): void {
+    if (isDuplicate(output)) {
+      if (level < LEVEL_MODIFICATION) {
+        throw new ForbiddenException(
+          'Traiter une proposition de doublon exige le droit de modification sur ce document.',
+        );
+      }
+    } else if (isSensitivity(output)) {
+      if (level < LEVEL_MODIFICATION) {
+        throw new ForbiddenException(
+          'Traiter une proposition de confidentialité exige le droit de modification sur ce document.',
+        );
+      }
+    } else if (level < LEVEL_CONSULTATION) {
+      throw new ForbiddenException('Droit de consultation requis sur ce document.');
     }
   }
 
@@ -434,11 +458,7 @@ export class GovernanceReviewService {
 
     // Toute validation de sensibilité modifie (ou confirme) la protection du document : droit de
     // modification exigé, y compris quand il n'y a finalement rien à changer.
-    if (level < LEVEL_MODIFICATION) {
-      throw new ForbiddenException(
-        'Modifier la confidentialité exige le droit de modification sur ce document.',
-      );
-    }
+    this.assertReviewLevel(output, level);
 
     const direction: 'raise' | 'lower' | 'same' =
       current == null

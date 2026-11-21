@@ -4,7 +4,7 @@ name: docupro-demo
 
 services:
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: docupro-demo-postgres
     restart: unless-stopped
     env_file:

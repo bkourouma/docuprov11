@@ -406,8 +406,19 @@ export interface GovernanceAnalyzeResponse {
   message: string | null;
 }
 
+/**
+ * Vue minimale renvoyée quand la proposition validée n'est plus ouvrable par l'utilisateur (sensibilité
+ * élevée au-delà de son niveau d'accès) : aucune donnée de la proposition ni du document.
+ */
+export interface GovernanceMinimalProposalView {
+  minimal: true;
+  id: string;
+  status: GovernanceStatus;
+}
+
 export interface GovernanceReviewResponse {
-  proposal: GovernanceProposalView;
+  /** Vue complète, ou vue minimale (`minimal: true`) si l'utilisateur ne peut plus ouvrir la proposition. */
+  proposal: GovernanceProposalView | GovernanceMinimalProposalView;
   /** Effet appliqué au document (`null` pour un rejet ou une donnée personnelle, qui ne modifie rien). */
   applied: GovernanceApplied | null;
 }

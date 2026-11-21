@@ -713,9 +713,9 @@ describe('GovernanceReviewService — doublons', () => {
     const t = setup({ decisions: [decision(duplicateOutput())], levels: { [DOC]: 2, [ORIGINAL]: 5 } });
     expect(await errorOf(t.service.validate(99, ORDINARY, {}))).toBeInstanceOf(ForbiddenException);
     expect(t.doc(DOC).isFrozen).toBe(false);
-    // Le rejet n'exige que l'accès.
-    await t.service.reject(99, ORDINARY);
-    expect(t.decision().status).toBe(GedAiDecisionStatus.Rejetee);
+    // Le rejet exige le même niveau que la validation (modification).
+    expect(await errorOf(t.service.reject(99, ORDINARY))).toBeInstanceOf(ForbiddenException);
+    expect(t.decision().status).toBe(GedAiDecisionStatus.Proposee);
   });
 
   it('original == doublon : 409 à la validation', async () => {
@@ -778,7 +778,7 @@ describe('GovernanceReviewService — données personnelles, rejet, audit', () =
     ['pii', piiOutput()],
     ['sensibilité', sensitivityOutput()],
   ])('rejet (%s) : aucun effet document, statut Rejetée, audit écrit', async (_l, output) => {
-    const t = setup({ decisions: [decision(output)] });
+    const t = setup({ decisions: [decision(output)], levels: { [DOC]: 3 } });
     await t.service.reject(99, ORDINARY);
     expect(t.prisma.document.updateMany).not.toHaveBeenCalled();
     expect(t.prisma.gedAiDecision.update).not.toHaveBeenCalled();
@@ -793,6 +793,31 @@ describe('GovernanceReviewService — données personnelles, rejet, audit', () =
       oldValue: 'proposée',
       newValue: expect.stringMatching(/^rejet \(.+, document #10\)$/),
     });
+  });
+
+  it.each([
+    ['doublon', duplicateOutput()],
+    ['sensibilité', sensitivityOutput()],
+  ])('rejet (%s) : niveau consultation (2) insuffisant => 403, proposition inchangée', async (_l, output) => {
+    const t = setup({ decisions: [decision(output)], levels: { [DOC]: 2, [ORIGINAL]: 5 } });
+    expect(await errorOf(t.service.reject(99, ORDINARY))).toBeInstanceOf(ForbiddenException);
+    expect(t.decision().status).toBe(GedAiDecisionStatus.Proposee);
+    expect(t.audit.dataChange).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['doublon', duplicateOutput()],
+    ['sensibilité', sensitivityOutput()],
+  ])('rejet (%s) : niveau modification (3) suffisant => accepté', async (_l, output) => {
+    const t = setup({ decisions: [decision(output)], levels: { [DOC]: 3 } });
+    await expect(t.service.reject(99, ORDINARY)).resolves.toBeUndefined();
+    expect(t.decision().status).toBe(GedAiDecisionStatus.Rejetee);
+  });
+
+  it('rejet (pii) : consultation (2) suffit', async () => {
+    const t = setup({ decisions: [decision(piiOutput())], levels: { [DOC]: 2 } });
+    await expect(t.service.reject(99, ORDINARY)).resolves.toBeUndefined();
+    expect(t.decision().status).toBe(GedAiDecisionStatus.Rejetee);
   });
 
   it('aucune donnée personnelle brute dans l’audit (pii validée puis rejetée)', async () => {

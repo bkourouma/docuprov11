@@ -3,6 +3,24 @@ import { stdSerializers } from 'pino';
 /** Préfixe des routes publiques de webhook : jamais de query dans les journaux. */
 export const WEBHOOK_PATH_PREFIX = '/api/ged/webhooks/';
 
+/**
+ * Vrai si l'URL (relative ou absolue, avec ou sans query) vise une route de webhook : préfixe
+ * insensible à la casse, `//` répétés tolérés, schéma+hôte ignorés.
+ */
+export function isWebhookUrl(url: string | undefined): boolean {
+  if (typeof url !== 'string') return false;
+  let path = url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, '');
+  const cut = path.search(/[?#]/);
+  if (cut !== -1) path = path.slice(0, cut);
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    /* chemin non décodable : testé tel quel */
+  }
+  path = path.replace(/\/{2,}/g, '/').toLowerCase();
+  return path.startsWith(WEBHOOK_PATH_PREFIX);
+}
+
 const SENSITIVE_PARAM = /token|secret|signature|key|password/i;
 const MASK = '[masqué]';
 
@@ -15,7 +33,7 @@ export function sanitizeUrl(url: string | undefined): string | undefined {
   const q = url.indexOf('?');
   if (q === -1) return url;
   const path = url.slice(0, q);
-  if (path.startsWith(WEBHOOK_PATH_PREFIX)) return path;
+  if (isWebhookUrl(path)) return path;
   const hash = url.indexOf('#', q);
   const query = url.slice(q + 1, hash === -1 ? undefined : hash);
   const cleaned = query
@@ -37,6 +55,7 @@ export function sanitizeUrl(url: string | undefined): string | undefined {
 
 /** Sérialiseur `req` : sérialiseur standard de pino, URL nettoyée, `query` supprimée. */
 export function serializeReq(req: unknown): Record<string, unknown> {
+  if (req == null || typeof req !== 'object') return {};
   const out = { ...(stdSerializers.req(req as never) as unknown as Record<string, unknown>) };
   out.url = sanitizeUrl(out.url as string | undefined);
   delete out.query;
@@ -49,7 +68,7 @@ export const pinoHttpOptions = {
   // journal de requête pour ce préfixe ; `serializers.req` protège aussi les journaux applicatifs
   // émis pendant la requête (pino-http crée `req.log` avant `autoLogging.ignore`).
   autoLogging: {
-    ignore: (req: { url?: string }) => (req.url ?? '').startsWith(WEBHOOK_PATH_PREFIX),
+    ignore: (req: { url?: string }) => isWebhookUrl(req.url),
   },
   serializers: { req: serializeReq },
   redact: {

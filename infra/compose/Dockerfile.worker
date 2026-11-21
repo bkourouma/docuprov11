@@ -28,6 +28,7 @@ COPY packages/pdf/package.json packages/pdf/package.json
 COPY packages/qr/package.json packages/qr/package.json
 COPY packages/sealing/package.json packages/sealing/package.json
 COPY packages/storage/package.json packages/storage/package.json
+COPY packages/connectors/package.json packages/connectors/package.json
 COPY packages/editor/package.json packages/editor/package.json
 COPY packages/types/package.json packages/types/package.json
 COPY packages/ui/package.json packages/ui/package.json

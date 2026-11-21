@@ -410,7 +410,7 @@ function main(): void {
   ).catch((err: Error) => logger.error({ err: err.message }, 'démarrage des rappels impossible'));
 
   logger.info(
-    `Worker booted (NODE_ENV=${env.NODE_ENV}); listening on queues "${ACQUISITION_QUEUE}", "${REMINDERS_QUEUE}", "${GED_AI_QUEUE}", "${GED_CONNECTOR_SYNC_QUEUE}" and "${GED_GOVERNANCE_QUEUE}".`,
+    `Worker booted (NODE_ENV=${env.NODE_ENV}); listening on queues "${ACQUISITION_QUEUE}", "${REMINDERS_QUEUE}", "${GED_AI_QUEUE}", "${GED_EMBEDDING_QUEUE}", "${GED_CONNECTOR_SYNC_QUEUE}", "${GED_GOVERNANCE_QUEUE}" and "${GED_WHATSAPP_QUEUE}".`,
   );
 }
 
