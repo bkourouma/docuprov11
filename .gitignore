@@ -6,6 +6,8 @@ node_modules/
 dist/
 build/
 .next/
+# Dossiers de sortie Next propres à chaque pile E2E (ARCHIVAGE_WEB_DIST_DIR, apps/e2e)
+.next-e2e*/
 out/
 *.tsbuildinfo
 
