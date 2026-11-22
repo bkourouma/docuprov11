@@ -289,6 +289,12 @@ export class InMemoryProposalStore implements AsstProposalStore {
     const row = id === null ? undefined : this.proposals.get(id);
     // Compare-and-set : introuvable, statut ou version différents de ceux attendus -> null (aucune écriture).
     if (!row || row.status !== t.expectedStatus || row.rowVersion !== t.expectedRowVersion) return null;
+    // Seul le CAS vers « confirmée » exige un échange NON masqué (course avec la suppression) : échange masqué = CAS
+    // perdu (`null`, aucune écriture, aucune erreur de garde). Les autres transitions n'en dépendent pas.
+    if (t.to === AsstProposalStatus.Confirmed) {
+      const conv = this.conversations.get(row.conversationId);
+      if (!conv || conv.deletedAt !== null) return null;
+    }
 
     // --- Règles de asst_proposal_guard (levée d'erreur, comme l'exception SQL) ---
     const from = row.status;

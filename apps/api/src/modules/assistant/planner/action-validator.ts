@@ -15,12 +15,26 @@ import type { AuthUser } from '../../auth/auth.types';
 import { ActionApplierRegistry } from '../../workflow-agent-catalog/appliers/action-applier.registry';
 import { EffectRefusedError, RELANCE_MAX_PER_TARGET_PER_DAY } from '../../workflow-agent-catalog/catalog.contracts';
 import { charLength, neutralizeLine, sanitizeText, truncateSafe } from '../../workflow-agents/injection/untrusted';
-import { buildActionSummary, cleanLabel, safeMailReference, type SummaryItem, type SummaryMailRef } from './action-summary';
-import { formatClarificationContent, parseClarificationContent } from './clarification-format';
 import {
+  buildActionSummary,
+  buildConfirmationSummary,
+  cleanLabel,
+  safeMailReference,
+  type SummaryItem,
+  type SummaryMailRef,
+} from './action-summary';
+import {
+  INTENT_CONFIRM_SUMMARY_MAX,
+  formatClarificationContent,
+  formatIntentConfirmation,
+  parseClarificationContent,
+} from './clarification-format';
+import {
+  confirmationAnswer,
   decideDelay,
   decideInputationType,
   distinctlyDesignated,
+  hasIntentMark,
   intentAllows,
   isSignificant,
   liveUserTexts,
@@ -56,8 +70,32 @@ import {
 // renvoyé, puis COMPLÈTE lui-même tout le reste (motif, message de relance, type, délai, brouillon). Aucun texte du
 // modèle, d'un courrier ou d'un nom d'acteur n'est repris comme consigne. Échec fermé : au moindre doute, une
 // question (`clarify`) ou un refus (`refuse`), avec un message français construit par le code.
+//
+// Principe « échec fermé par question » (`intent-guards.ts`) : un ordre accompagné d'une marque de réserve n'est
+// JAMAIS proposé directement ; tous les contrôles ordinaires sont faits, puis la question de confirmation (résumé
+// construit par le code, deux choix) remplace `ok: true`. Le « oui » suivant rejoue la validation (preuves fraîches) et
+// n'aboutit que si le résumé recalculé est IDENTIQUE à celui de la question (`intentConfirmation`).
 
 type Failure = Extract<ActionValidationOutcome, { ok: false }>;
+
+/**
+ * Confirmation d'intention en cours (principe « échec fermé par question », `intent-guards.ts`) : le message courant
+ * répond « Oui, prépare cette action » à la question de confirmation précédente, dont `summary` est le résumé relu
+ * (`parseIntentConfirmation`). Transmis par le planificateur en plus des champs de `ActionValidationInput` (contrat
+ * interne `planner.types.ts` laissé inchangé) ; absent ou `null` = pas de confirmation.
+ */
+export interface IntentConfirmationContext {
+  summary: string;
+}
+export type ActionValidationRequest = ActionValidationInput & { intentConfirmation?: IntentConfirmationContext | null };
+
+/** Codes des issues du principe de confirmation. */
+export const INTENT_CONFIRMATION_REASON = 'intent_confirmation';
+const MSG_CONFIRMATION_MISMATCH =
+  "Ce qui serait préparé ne correspond plus exactement à ce que vous avez confirmé : rien n'est proposé. Reformulez votre demande.";
+const MSG_CONFIRMATION_INVALID = "Confirmation non reconnue : rien n'est proposé. Reformulez votre demande.";
+const MSG_CONFIRMATION_TOO_LONG =
+  "Votre message contient une réserve (négation, condition, report, question ou substitution) et la proposition est trop longue pour être confirmée en une fois : rien n'est proposé. Faites des demandes séparées, sans réserve.";
 
 /** Arrêt immédiat de la validation sur un REFUS métier (jamais propagé hors du validateur). */
 class ValidationStop extends Error {
@@ -191,7 +229,7 @@ export class AsstActionValidatorService implements AsstActionValidator {
     @Inject(ActionApplierRegistry) private readonly registry: ActionApplierRegistry,
   ) {}
 
-  async validate(input: ActionValidationInput): Promise<ActionValidationOutcome> {
+  async validate(input: ActionValidationRequest): Promise<ActionValidationOutcome> {
     try {
       return await this.run(input);
     } catch (e) {
@@ -205,7 +243,7 @@ export class AsstActionValidatorService implements AsstActionValidator {
   // Déroulé
   // -------------------------------------------------------------------------
 
-  private async run(input: ActionValidationInput): Promise<ActionValidationOutcome> {
+  private async run(input: ActionValidationRequest): Promise<ActionValidationOutcome> {
     const raw = Array.isArray(input.rawActions) ? input.rawActions : [];
     const maxActions =
       Number.isInteger(input.maxActions) && input.maxActions >= 1
@@ -231,14 +269,27 @@ export class AsstActionValidatorService implements AsstActionValidator {
 
     // Historique : l'appelant (planificateur) ne transmet que les messages qui portent encore l'intention (réponse à
     // une question de précision) ; défense en profondeur, une annulation rend caducs les ordres qui la précèdent.
-    const current = typeof input.userMessage === 'string' ? input.userMessage : '';
-    const previous = liveUserTexts(
-      current,
+    const message = typeof input.userMessage === 'string' ? input.userMessage : '';
+    const live = liveUserTexts(
+      message,
       (Array.isArray(input.previousUserMessages) ? input.previousUserMessages : [])
         .filter((t): t is string => typeof t === 'string')
         .slice(-HISTORY_MAX),
     );
+    // Confirmation d'intention : le message courant n'est qu'un « oui » ; la validation REJOUE les textes du tour qui
+    // a posé la question (dernier message de la chaîne = « courant » de ce tour-là, les autres = précédents), avec les
+    // preuves FRAÎCHES de cette requête. Le résumé recalculé devra être identique à celui qui a été confirmé.
+    const confirmation =
+      input.intentConfirmation && typeof input.intentConfirmation.summary === 'string' ? input.intentConfirmation : null;
+    if (confirmation && (confirmationAnswer(message) !== 'yes' || live.length === 0)) {
+      refuse('intent_confirmation_invalid', MSG_CONFIRMATION_INVALID);
+    }
+    const current = confirmation ? (live[live.length - 1] ?? '') : message;
+    const previous = confirmation ? live.slice(0, -1) : live;
     const userTexts = [current, ...previous];
+    // Niveau 2 du principe : une marque de réserve n'importe où dans les textes retenus => question de confirmation
+    // (jamais de proposition directe). Sans objet quand l'utilisateur vient de confirmer.
+    const marked = !confirmation && userTexts.some((t) => hasIntentMark(t));
     const positive = (t: string): string => splitPolarity(t).positive;
     const ctx: Ctx = {
       input,
@@ -255,8 +306,9 @@ export class AsstActionValidatorService implements AsstActionValidator {
       relanceTargets: new Map(),
     };
 
-    // 1. Intention : un ordre de l'utilisateur pour CHAQUE outil proposé. Ce contrôle précède toute lecture et
-    // toute génération (aucun brouillon n'est rédigé pour une demande qui le refuse).
+    // 1. Intention (niveau 1 du principe) : un ordre POSITIF de l'utilisateur pour CHAQUE outil proposé ; sinon refus,
+    // jamais une question. Ce contrôle précède toute lecture et toute génération (aucun brouillon n'est rédigé pour
+    // une demande qui le refuse). Le niveau 2 (marques de réserve => confirmation) est appliqué après les contrôles.
     for (const a of raw) {
       if (!intentAllows(a.tool, userTexts)) {
         refuse(
@@ -292,27 +344,45 @@ export class AsstActionValidatorService implements AsstActionValidator {
         draftKeys.add(k);
       }
     }
-    if (firstClarify) return firstClarify;
+    if (firstClarify) {
+      // Après une confirmation, une nouvelle précision voudrait dire que l'action a changé : refus (pas de boucle).
+      if (confirmation) refuse('intent_confirmation_mismatch', MSG_CONFIRMATION_MISMATCH);
+      return firstClarify;
+    }
+
+    // Résumé de ce qui serait préparé, construit SANS génération (un brouillon est décrit par modèle, courrier, espace).
+    const items: SummaryItem[] = prepared.map((p) =>
+      p.kind === 'brouillon'
+        ? { kind: 'brouillon', mail: p.mail ? toSummaryMail(p.mail) : null, templateLabel: p.template.label, spaceLabel: p.space.label }
+        : p.summary,
+    );
+
+    // Principe « échec fermé par question » : message marqué => question de confirmation construite par le code, après
+    // TOUS les autres contrôles (un refus ordinaire reste un refus) et AVANT toute génération de brouillon.
+    if (marked || confirmation) {
+      for (const p of prepared) if (p.kind !== 'brouillon') this.finalCheck(p.action);
+      const shown = buildConfirmationSummary(items, INTENT_CONFIRM_SUMMARY_MAX);
+      if (shown === null) refuse('intent_confirmation_too_long', MSG_CONFIRMATION_TOO_LONG);
+      if (marked) {
+        const question = formatIntentConfirmation(shown);
+        if (question === null) refuse('intent_confirmation_too_long', MSG_CONFIRMATION_TOO_LONG);
+        return { ok: false, kind: 'clarify', reason: INTENT_CONFIRMATION_REASON, message: question };
+      }
+      // LIAISON : l'utilisateur ne confirme que ce qui lui a été montré, mot pour mot.
+      if (confirmation && shown !== confirmation.summary) refuse('intent_confirmation_mismatch', MSG_CONFIRMATION_MISMATCH);
+    }
 
     // Génération des brouillons (budgétée par le planificateur) EN DERNIER : rien n'est dépensé si une autre action
-    // est refusée ou demande une précision.
+    // est refusée, demande une précision ou attend une confirmation.
     const finals: AsstProposedAction[] = [];
-    const items: SummaryItem[] = [];
     let aiDecisionId: string | null = null;
     for (const p of prepared) {
       if (p.kind === 'brouillon') {
         const { action, decisionId } = await this.generateDraft(ctx, p);
         finals.push(action);
-        items.push({
-          kind: 'brouillon',
-          mail: p.mail ? toSummaryMail(p.mail) : null,
-          templateLabel: p.template.label,
-          spaceLabel: p.space.label,
-        });
         aiDecisionId ??= decisionId;
       } else {
         finals.push(p.action);
-        items.push(p.summary);
       }
     }
 

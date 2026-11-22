@@ -200,12 +200,14 @@ export type AsstErrorBodyDto = {
 
 /**
  * Caractères de contrôle interdits : NUL, C0 (sauf tabulation, LF, CR), DEL et C1.
- * Le texte multiligne (message) autorise tabulation, LF et CR ; le titre (affiché sur une ligne) les refuse aussi.
+ * Le texte multiligne (message) autorise tabulation, LF et CR ; le titre (affiché sur une ligne) les refuse aussi,
+ * ainsi que les séparateurs de ligne Unicode U+0085 (déjà dans C1), U+2028 et U+2029. Dans le message (texte libre),
+ * U+2028 et U+2029 restent des sauts de ligne autorisés.
  */
 // eslint-disable-next-line no-control-regex
 const ASST_CONTROL_CHARS_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/;
 // eslint-disable-next-line no-control-regex
-const ASST_TITLE_FORBIDDEN_RE = /[\u0000-\u001F\u007F-\u009F]/;
+const ASST_TITLE_FORBIDDEN_RE = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/;
 const noControlChars = (v: string): boolean => !ASST_CONTROL_CHARS_RE.test(v);
 const NO_CONTROL_MESSAGE = 'Le texte contient des caractères de contrôle interdits.';
 const NO_TITLE_CONTROL_MESSAGE = 'Le titre ne doit contenir ni retour à la ligne ni caractère de contrôle.';

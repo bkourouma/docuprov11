@@ -1,5 +1,5 @@
 import { ASST_SUMMARY_MAX_CHARS } from '@archivage/types';
-import { buildActionSummary, cleanLabel, safeMailReference, type SummaryItem } from './action-summary';
+import { buildActionSummary, buildConfirmationSummary, cleanLabel, safeMailReference, type SummaryItem } from './action-summary';
 
 const MAIL = { mailId: 4321, reference: 'CE/2026/0042', title: 'Demande de subvention' };
 
@@ -126,5 +126,43 @@ describe('aides', () => {
     expect(cleanLabel('a\nb', 10)).toBe('a b');
     expect(cleanLabel('\u200B', 10)).toBe('(sans nom)');
     expect(Array.from(cleanLabel('y'.repeat(100), 10))).toHaveLength(10);
+  });
+});
+
+describe('buildConfirmationSummary (question de confirmation d’intention)', () => {
+  const IMPUTATION: SummaryItem = {
+    kind: 'imputation',
+    mail: MAIL,
+    recipients: [{ label: 'Awa Diallo — DAF' }],
+    typeLabel: 'Pour Suivi',
+    typeIsDefault: true,
+    delayDays: 3,
+  };
+  const DRAFT: SummaryItem = { kind: 'brouillon', mail: MAIL, templateLabel: 'Accusé de réception', spaceLabel: 'Espace Juridique' };
+
+  it('un effet : une ligne, sans en-tête, sans puce ni point final', () => {
+    expect(buildConfirmationSummary([IMPUTATION], 500)).toBe(
+      'Imputer le courrier n°4321 (réf. CE/2026/0042) « Demande de subvention » à « Awa Diallo — DAF » : type « Pour Suivi » (type par défaut), délai de 3 jours',
+    );
+  });
+
+  it('plusieurs effets : une ligne « - … » par effet ; brouillon décrit sans génération', () => {
+    const s = buildConfirmationSummary([{ ...IMPUTATION, recipients: [{ label: 'Awa Diallo — DAF' }, { label: 'Moussa Keita — DRH' }] }, DRAFT], 1000) ?? '';
+    const lines = s.split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines.every((l) => l.startsWith('- '))).toBe(true);
+    expect(lines[2]).toBe(
+      "- Préparer un brouillon de réponse au courrier n°4321 (réf. CE/2026/0042) « Demande de subvention » (modèle « Accusé de réception ») dans l'espace « Espace Juridique » : document brouillon, rien n'est envoyé.",
+    );
+  });
+
+  it('déterministe ; libellés resserrés si nécessaire ; `null` plutôt qu’un résumé tronqué', () => {
+    expect(buildConfirmationSummary([IMPUTATION], 500)).toBe(buildConfirmationSummary([IMPUTATION], 500));
+    const long: SummaryItem = { ...IMPUTATION, recipients: [{ label: 'N'.repeat(200) }] };
+    const s = buildConfirmationSummary([long], 200) ?? '';
+    expect(len(s)).toBeLessThanOrEqual(200);
+    expect(s).toContain('N'.repeat(10));
+    expect(buildConfirmationSummary([long], 40)).toBeNull();
+    expect(buildConfirmationSummary([], 500)).toBeNull();
   });
 });

@@ -114,21 +114,30 @@ export class AsstProposalStoreService implements AsstProposalStore {
   async deleteConversation(userId: number, conversationId: string, now: Date): Promise<boolean> {
     const id = parseAsstId(conversationId);
     if (id === null) return false;
-    // Un seul UPDATE conditionnel (atomique) : masquage immédiat. `purge_at` ne passe à `now` que si l'échange ne
-    // porte AUCUNE trace d'exécution : proposition appliquée (2) ou en échec (5), ou confirmée (1), qui deviendra
-    // l'une des deux. Dans ce cas la trace est conservée jusqu'à l'échéance de purge d'origine.
-    const count = await this.prisma.$executeRaw`
-      UPDATE "asst_conversation" AS c
-      SET "deleted_at" = ${now},
-          "updated_at" = ${now},
-          "purge_at" = CASE
-            WHEN EXISTS (SELECT 1 FROM "asst_proposal" p
-                         WHERE p."conversation_id" = c."asst_conversation_id" AND p."status" IN (1, 2, 5))
-            THEN c."purge_at"
-            ELSE ${now}
-          END
-      WHERE c."asst_conversation_id" = ${id} AND c."user_id" = ${userId} AND c."deleted_at" IS NULL`;
-    return count > 0;
+    // Transaction en deux instructions. (1) Verrou de ligne sur l'échange : il se met en file derrière une confirmation
+    // en cours (qui détient un verrou partagé sur l'échange, voir `confirmProposal`) et la valide avant de continuer.
+    // (2) UPDATE conditionnel lancé APRÈS le verrou, donc avec un instantané qui voit le statut confirmé (1) :
+    // `purge_at` ne passe à `now` que si l'échange ne porte AUCUNE trace d'exécution : proposition appliquée (2) ou en
+    // échec (5), ou confirmée (1), qui deviendra l'une des deux. Dans ce cas la trace est conservée jusqu'à l'échéance.
+    return this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ id: bigint }[]>`
+        SELECT "asst_conversation_id" AS id FROM "asst_conversation"
+        WHERE "asst_conversation_id" = ${id} AND "user_id" = ${userId} AND "deleted_at" IS NULL
+        FOR UPDATE`;
+      if (locked.length === 0) return false;
+      const count = await tx.$executeRaw`
+        UPDATE "asst_conversation" AS c
+        SET "deleted_at" = ${now},
+            "updated_at" = ${now},
+            "purge_at" = CASE
+              WHEN EXISTS (SELECT 1 FROM "asst_proposal" p
+                           WHERE p."conversation_id" = c."asst_conversation_id" AND p."status" IN (1, 2, 5))
+              THEN c."purge_at"
+              ELSE ${now}
+            END
+        WHERE c."asst_conversation_id" = ${id} AND c."user_id" = ${userId} AND c."deleted_at" IS NULL`;
+      return count > 0;
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -262,6 +271,9 @@ export class AsstProposalStoreService implements AsstProposalStore {
    * Compare-and-set : `updateMany` conditionnel sur le statut ET `row_version` attendus. Écrit dans `t.db`
    * (transaction de l'exécuteur) s'il est fourni. `null` si la condition ne correspond plus. Une violation de CHECK
    * ou de déclencheur LÈVE l'erreur PostgreSQL telle quelle.
+   * Seul le CAS vers « confirmée » (0 -> 1) exige en plus que l'échange ne soit pas masqué (fermeture de la course
+   * avec la suppression) ; les autres transitions n'en dépendent pas (une exécution en cours doit pouvoir se terminer,
+   * les propositions d'un échange masqué peuvent expirer). Échange masqué = CAS perdu : `null`.
    */
   async transitionProposal(t: AsstProposalTransition): Promise<AsstProposalDto | null> {
     const allowed = ASST_PROPOSAL_TRANSITIONS[t.expectedStatus];
@@ -286,13 +298,41 @@ export class AsstProposalStoreService implements AsstProposalStore {
       data.errorCode = t.errorCode ?? null;
       data.errorMessage = t.errorMessage ?? null;
     }
-    const { count } = await db.asstProposal.updateMany({
-      where: { asstProposalId: id, status: t.expectedStatus, rowVersion: t.expectedRowVersion },
-      data,
-    });
+    let count: number;
+    if (t.to === AsstProposalStatus.Confirmed) {
+      count = await this.confirmProposal(db, id, t);
+    } else {
+      ({ count } = await db.asstProposal.updateMany({
+        where: { asstProposalId: id, status: t.expectedStatus, rowVersion: t.expectedRowVersion },
+        data,
+      }));
+    }
     if (count === 0) return null;
     const row = await db.asstProposal.findUnique({ where: { asstProposalId: id } });
     return row ? toProposalDto(row) : null;
+  }
+
+  /**
+   * CAS 0 -> 1 en UNE instruction : la CTE prend un verrou partagé sur la ligne de l'échange NON masqué et la mise à
+   * jour n'a lieu que si ce verrou est obtenu. Une suppression concurrente (verrou exclusif) attend la validation de
+   * la confirmation puis voit le statut 1 (purge_at conservée) ; une suppression déjà validée exclut l'échange du
+   * verrou après réévaluation (aucune ligne touchée). Jamais « masqué ET confirmé avec purge_at abaissée ».
+   */
+  private async confirmProposal(db: Prisma.TransactionClient, id: bigint, t: AsstProposalTransition): Promise<number> {
+    return db.$executeRaw`
+      WITH conv AS (
+        SELECT c."asst_conversation_id" AS id
+        FROM "asst_conversation" c
+        JOIN "asst_proposal" p ON p."conversation_id" = c."asst_conversation_id"
+        WHERE p."asst_proposal_id" = ${id} AND c."deleted_at" IS NULL
+        FOR SHARE OF c
+      )
+      UPDATE "asst_proposal"
+      SET "status" = ${t.to}, "row_version" = "row_version" + 1, "updated_at" = ${t.now}, "confirmed_at" = ${t.now}
+      WHERE "asst_proposal_id" = ${id}
+        AND "status" = ${t.expectedStatus}
+        AND "row_version" = ${t.expectedRowVersion}
+        AND "conversation_id" IN (SELECT id FROM conv)`;
   }
 
   async listExpirableProposals(now: Date, limit: number): Promise<AsstProposalDto[]> {

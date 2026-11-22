@@ -50,6 +50,14 @@ Transitions légales (déclencheur `asst_proposal_guard`) :
 | 1 confirmée | 2 appliquée | aucune |
 | 1 confirmée | 5 échec | aucune |
 
+Le compare-and-set de confirmation (0 vers 1) exige en plus que l'échange ne soit PAS masqué (`deleted_at IS NULL`),
+dans la même instruction : la conversation est verrouillée en partage (`FOR SHARE`) par une CTE, puis la mise à jour
+n'a lieu que si le verrou est obtenu. Un échange masqué entre la lecture de la proposition et la confirmation fait
+perdre le CAS (aucune ligne touchée, résultat `null`, que l'exécuteur traduit en conflit 409 « confirmation
+concurrente ») ; la proposition reste au statut 0. Les autres transitions (1 vers 2, 1 vers 5, 0 vers 3, 0 vers 4)
+ne dépendent PAS du masquage : une exécution en cours doit pouvoir se terminer et les propositions d'un échange masqué
+peuvent expirer ou être refusées.
+
 Toute autre transition est refusée (par exemple 0 vers 2, 0 vers 5, 1 vers 3, 1 vers 4, tout retour en arrière).
 Sans changement de statut (0 vers 0, 1 vers 1), seuls `row_version` et `updated_at` peuvent changer.
 Les mises à jour qui changent de statut doivent renseigner dans la même instruction les dates et le résultat
@@ -91,8 +99,11 @@ alors que la conversation existe est refusé si une proposition appliquée ou en
   - **Avec une trace d'exécution** (proposition appliquée (2) ou en échec (5) ; une confirmée (1) est traitée de même,
     car elle deviendra l'un ou l'autre) : l'échange est SEULEMENT masqué ; `purge_at` n'est PAS abaissée. Il disparaît
     des listes mais la trace reste en base jusqu'à l'échéance d'origine (90 jours), puis la purge la supprime.
-  - La décision est prise par un seul `UPDATE` conditionnel (sous-requête `EXISTS` sur `asst_proposal`), donc
-    atomique face à une transition concurrente.
+  - La décision est prise dans une transaction : verrou exclusif de la ligne de l'échange (`SELECT ... FOR UPDATE`),
+    puis `UPDATE` conditionnel (sous-requête `EXISTS` sur `asst_proposal`) lancé après le verrou. Il se met en file
+    derrière une confirmation concurrente (verrou partagé du CAS 0 vers 1, voir §3) et voit alors le statut 1 :
+    jamais « échange masqué ET proposition confirmée avec `purge_at` abaissée ». Si le masquage gagne, la
+    confirmation perd son CAS et la proposition reste au statut 0.
 - **Suppression d'un message** (`deleteMessage`) : un seul `DELETE ... WHERE ... AND NOT EXISTS (proposition)`, limité
   aux échanges non masqués de l'utilisateur. Un message qui porte une proposition (quel que soit son statut) n'est
   jamais supprimé (la cascade emporterait une trace) ; retour `false`, jamais d'exception.

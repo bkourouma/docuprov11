@@ -13,9 +13,16 @@ import { normalizeWords } from './intent-guards';
 /** Phrase fixe qui remplace une réponse revendiquant une action. */
 export const PLANNER_MSG_ACTION_CLAIM = "Aucune action n'a été effectuée ; une action n'est appliquée qu'après votre confirmation.";
 
+/**
+ * Ligne fixe ajoutée par le CODE à la fin de TOUTE réponse libre du modèle (`answer`) : le filtre lexical ci-dessous
+ * n'est pas exhaustif ; cette ligne garantit que l'utilisateur lit, à chaque réponse libre, qu'aucune action n'a été
+ * faite. Jamais sur les messages construits par le code, les propositions ou les questions de précision.
+ */
+export const PLANNER_MSG_INFO_ONLY = "Information seulement : aucune action n'a été effectuée.";
+
 /** Participes passés d'actions (sans accents), avec accord facultatif (« imputée », « imputés »…). */
 const FR_PART =
-  '(?:impute|relance|redige|cree|envoye|transmis|enregistre|supprime|affecte|attribue|assigne|applique|effectue|execute|depose|notifie|prevenu|valide|confirme|archive|modifie|programme|planifie|prepare|realise|ajoute|signe|delegue|ecrit|repondu|traite|rappele|transfere|expedie|soumis|confie|redirige)(?:e?s?)';
+  '(?:impute|relance|redige|cree|envoye|transmis|enregistre|supprime|affecte|attribue|assigne|applique|effectue|execute|depose|notifie|prevenu|valide|confirme|archive|modifie|programme|planifie|prepare|realise|ajoute|signe|delegue|ecrit|repondu|traite|rappele|transfere|expedie|soumis|confie|redirige|procede)(?:e?s?)';
 const FR_INF =
   '(?:imputer|relancer|rediger|creer|envoyer|transmettre|enregistrer|supprimer|affecter|attribuer|assigner|appliquer|effectuer|executer|deposer|notifier|prevenir|valider|confirmer|archiver|preparer|ecrire|repondre|traiter|rappeler|transferer|expedier|confier|deleguer)';
 const EN_PART =
@@ -37,7 +44,26 @@ const FR_JUST_DID = new RegExp(
   `\\b(?:je viens|nous venons|on vient|l assistant vient) (?:de|d)(?: [a-z]+){0,2}? ${FR_INF}\\b`,
 );
 const DONE_PHRASES =
-  /\b(?:c est fait|c est chose faite|voila qui est fait|c est regle|c est effectue|c est envoye|c est transmis|c est enregistre|done|all done|it s done|its done|that s done|task completed|completed successfully|successfully)\b/;
+  /\b(?:c est fait|c est chose faite|chose faite|voila qui est fait|c est regle|c est effectue|c est envoye|c est transmis|c est enregistre|c est impute|c est termine|mission accomplie|ca y est|done|all done|all set|it s done|its done|that s done|task completed|completed successfully|successfully)\b/;
+/**
+ * Formes COURTES (une phrase entière) : « Fait. », « Imputé. », « Effectué », « Terminé », « Réalisé », « OK, fait »,
+ * « Reminder sent », « Mail assigned. », « Assignment done », « Processed ».
+ */
+const SHORT_DONE_SENTENCE =
+  /^(?:(?:ok|okay|voila|bien|bon|c est|tout est|ca y est|et|all|it s|its)\s+)*(?:fait|faite|faits|faites|effectue|effectuee|effectues|effectuees|termine|terminee|termines|realise|realisee|realises|traite|traitee|traites|envoye|envoyee|envoyes|transmis|transmise|impute|imputee|imputes|imputees|relancee|relances|procede|done|completed|complete|sent|assigned|processed|finished|handled|forwarded|dispatched)$/;
+const EN_SHORT_SUBJECT_DONE = /^(?:[a-z0-9]+ ){1,3}(?:assigned|sent|processed|done|completed|forwarded|dispatched|handled)$/;
+/** « j'ai procédé à », « je procède à l'imputation ». */
+const FR_PROCEED =
+  /\b(?:je|j ai|nous|nous avons|on|on a|l assistant|l assistant a) (?:procede|procedons|procedes) (?:a|au|aux)\b|\b(?:je l ai|nous l avons|on l a) (?:fait|termine)\b|\bj ai fait le necessaire\b/;
+/**
+ * Présent ou présent progressif d'une action par l'assistant (« j'impute ce courrier », « je relance Awa », « je rédige
+ * en ce moment », « I'm assigning it now ») ; pas après « que » (« voulez-vous que j'impute ? » est une question).
+ */
+const FR_PRESENT = new RegExp(
+  '(?<!\\b(?:que|qu|si) )\\b(?:j|je|nous|on|l assistant) (?:l |les |lui |leur )?(?:impute|imputons|relance|relancons|redige|redigeons|transmets|transmettons|envoie|envoyons|affecte|affectons|assigne|assignons|depose|deposons|notifie|notifions)\\b',
+);
+const EN_PROGRESSIVE = /\b(?:i m|i am|we re|we are|the assistant is) (?:now )?(?:assigning|sending|forwarding|reminding|drafting|processing|creating|dispatching|allocating)\b/;
+const NOUN_IN_PROGRESS = /\b(?:imputation|relance|assignation|affectation|envoi|transmission|assignment|reminder) (?:en cours|ok|in progress)\b/;
 const FR_NOUN_DONE = new RegExp(
   `\\b${FR_ACTION_NOUN}((?: [a-z0-9]+){0,4}?) (?:(?:a ete|ont ete|est|sont|bien|deja|desormais) )*${FR_DONE_PART}\\b`,
   'g',
@@ -95,9 +121,17 @@ export function claimsActionDone(text: unknown): boolean {
     PASSIVE.test(norm) ||
     SUBJECT_PART_TO.test(norm) ||
     EN_FIRST_PERSON.test(norm) ||
-    EN_SUBJECT_TO.test(norm)
+    EN_SUBJECT_TO.test(norm) ||
+    FR_PROCEED.test(norm) ||
+    FR_PRESENT.test(norm) ||
+    EN_PROGRESSIVE.test(norm) ||
+    NOUN_IN_PROGRESS.test(norm)
   ) {
     return true;
+  }
+  for (const sentence of sanitizeText(text, 8_000).split(/[.!?;\n…]+/)) {
+    const s = normalizeWords(sentence);
+    if (s && (SHORT_DONE_SENTENCE.test(s) || EN_SHORT_SUBJECT_DONE.test(s))) return true;
   }
   const accented = sanitizeText(text, 8_000)
     .normalize('NFC')

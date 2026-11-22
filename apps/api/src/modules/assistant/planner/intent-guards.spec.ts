@@ -1,8 +1,19 @@
 import { AsstActionTool, AsstMessageRole } from '@archivage/types';
 import { MAIL_INPUTATION_TYPE_IDS } from '../../workflow-agent-catalog/catalog.contracts';
-import { formatClarificationContent, formatClarificationQuestion } from './clarification-format';
 import {
+  INTENT_CONFIRM_NO,
+  INTENT_CONFIRM_YES,
+  formatClarificationContent,
+  formatClarificationQuestion,
+  formatIntentConfirmation,
+} from './clarification-format';
+import {
+  answersClarification,
+  confirmationAnswer,
   containsPhrase,
+  designatedChoiceIndex,
+  hasIntentMark,
+  intentMarks,
   decideDelay,
   decideInputationType,
   detectTypeMentions,
@@ -21,6 +32,15 @@ import {
   splitPolarity,
 } from './intent-guards';
 import { REFUSED_PHRASES } from './planner.injection-corpus';
+import {
+  NON_ANSWER_REPLIES,
+  VERIFIER_ATTACKS,
+  VERIFIER_ATTACKS_ASKED,
+  VERIFIER_LEGIT_A,
+  VERIFIER_LEGIT_B,
+  VERIFIER_LEGIT_REFUSED,
+  type IntentPhrase,
+} from './planner.intent-phrases';
 import type { PlannerInputationTypeView } from './planner.types';
 
 const IMP = AsstActionTool.ImputationCourrier;
@@ -428,8 +448,174 @@ describe('historique : annulation et réponse à une question de précision', ()
       { role: U, content: 'finalement je ne veux pas' },
       { role: A, content: formatClarificationQuestion('Que souhaitez-vous faire ?') },
     ];
-    expect(intentHistory(cancelled, 'DAF Nord')).toEqual(['finalement je ne veux pas']);
+    // Une VALEUR (délai) répond à la question sans choix : la chaîne remonte au message d'annulation, qui ne répond
+    // pas lui-même à la question précédente (il porte une marque) : l'ordre initial n'est jamais repris.
+    expect(intentHistory(cancelled, '3 jours')).toEqual(['finalement je ne veux pas']);
+    // « DAF Nord » n'est pas une valeur attendue par une question sans choix : aucune reprise.
+    expect(intentHistory(cancelled, 'DAF Nord')).toEqual([]);
     expect(liveUserTexts('DAF Nord', [DAF, 'laisse tomber', 'pour suivi'])).toEqual(['laisse tomber', 'pour suivi']);
     expect(liveUserTexts('stop', [DAF])).toEqual([]);
+  });
+
+  // Tour X2 : une réponse ne reprend l'ordre que si elle désigne EXACTEMENT un choix (libellé, numéro, nom proposé)
+  // ou, pour une question sans choix, n'est qu'une valeur ; et sans aucune marque.
+  const DELAY_QUESTION = formatClarificationContent('Sous combien de jours ?', ['3 jours', '7 jours']);
+  const QUESTION_ONLY = formatClarificationQuestion('Sous combien de jours (de 1 à 90) ?');
+  it.each(NON_ANSWER_REPLIES.map((t) => [t]))('réponse négative ou dilatoire « %s » : aucune reprise', (text) => {
+    for (const asked of [QUESTION, DELAY_QUESTION, QUESTION_ONLY]) {
+      expect(answersClarification(text, asked)).toBe(false);
+      expect(intentHistory([{ role: U, content: DAF }, { role: A, content: asked }], text)).toEqual([]);
+    }
+  });
+  it('témoins positifs : choix désigné exactement, numéro, nom proposé, valeur', () => {
+    const reprise = (asked: string, text: string): string[] => intentHistory([{ role: U, content: DAF }, { role: A, content: asked }], text);
+    for (const text of ['DAF Nord', 'Awa Diallo', 'Awa Diallo — DAF Nord', 'awa diallo daf nord', '1', 'le 2', 'n°1', 'choix 2']) {
+      expect(reprise(QUESTION, text)).toEqual([DAF]);
+    }
+    for (const text of ['3 jours', '7 jours', '2', 'le 1']) expect(reprise(DELAY_QUESTION, text)).toEqual([DAF]);
+    for (const text of ['3 jours', 'sous 5 jours', 'dans 2 semaines', 'demain', '12']) expect(reprise(QUESTION_ONLY, text)).toEqual([DAF]);
+    // Témoins négatifs proches : numéro hors liste, nom porté par deux choix, phrase autour de la valeur, rang.
+    expect(reprise(QUESTION, '3')).toEqual([]);
+    expect(reprise(QUESTION, 'DAF')).toEqual([]);
+    expect(reprise(QUESTION, 'la première')).toEqual([]);
+    expect(reprise(QUESTION_ONLY, '3 jours mais pas pour la DAF')).toEqual([]);
+    expect(reprise(QUESTION_ONLY, 'DAF Nord')).toEqual([]);
+  });
+  it('designatedChoiceIndex : libellé exact, numéro, nom unique', () => {
+    const choices = ['Awa Diallo — DAF Nord', 'Moussa Keita — DAF Sud'];
+    expect(designatedChoiceIndex('awa diallo daf nord', choices, { names: true })).toBe(0);
+    expect(designatedChoiceIndex('2', choices, { names: false })).toBe(1);
+    expect(designatedChoiceIndex('numero 1', choices, { names: false })).toBe(0);
+    expect(designatedChoiceIndex('3', choices, { names: true })).toBeNull();
+    expect(designatedChoiceIndex('moussa', choices, { names: true })).toBe(1);
+    expect(designatedChoiceIndex('moussa', choices, { names: false })).toBeNull();
+    expect(designatedChoiceIndex('daf', choices, { names: true })).toBeNull();
+  });
+});
+
+describe('confirmation d’intention : réponse de l’utilisateur', () => {
+  it.each([[INTENT_CONFIRM_YES], ['oui, prépare cette action'], ['Oui prépare cette action !'], ['1'], ['le 1'], ['choix 1']])(
+    '« %s » : oui',
+    (text) => {
+      expect(confirmationAnswer(text)).toBe('yes');
+    },
+  );
+  // « ok » seul est une clôture (isCancellation) : traité comme « non » (option prudente).
+  it.each([[INTENT_CONFIRM_NO], ['2'], ['non'], ['ok'], ['annule'], ['laisse tomber'], ['never mind'], ['stop']])('« %s » : non', (text) => {
+    expect(confirmationAnswer(text)).toBe('no');
+  });
+  it.each([['oui'], ['vas-y'], ['plus tard'], ['je réfléchis'], ['Oui, prépare cette action, mais pas tout de suite'], ['3'], ['impute à la DAF']])(
+    '« %s » : ni oui ni non (rien n’est repris)',
+    (text) => {
+      expect(confirmationAnswer(text)).toBeNull();
+    },
+  );
+  it('question de confirmation : seul le libellé exact ou le numéro répond (pas de nom)', () => {
+    const asked = formatIntentConfirmation('Imputer le courrier n°4321 à « Awa Diallo — DAF »') ?? '';
+    expect(answersClarification(INTENT_CONFIRM_YES, asked)).toBe(true);
+    expect(answersClarification('1', asked)).toBe(true);
+    expect(answersClarification('oui', asked)).toBe(false);
+    expect(answersClarification('prépare', asked)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Principe « échec fermé par question » : marques de réserve
+// ---------------------------------------------------------------------------
+
+describe('marques de réserve (intentMarks)', () => {
+  it.each([
+    ['impute ce courrier à la DAF, pas à la DRH', 'negation'],
+    ["n'impute rien", 'negation'],
+    ['impute à la DAF sauf Awa', 'substitution'],
+    ['relance Awa plutôt que Fatou', 'substitution'],
+    ['impute à la DAF plus tard', 'report'],
+    ['impute ce courrier à la DAF, mais attends lundi', 'report'],
+    ['impute à la DAF si possible', 'hypothese'],
+    ["j'aimerais que tu imputes ce courrier", 'hypothese'],
+    ['comment imputer ce courrier ?', 'information'],
+    ['impute ce courrier à la DAF ?', 'question'],
+    ['Assign this mail to the DAF, not the DRH', 'negation'],
+    ['Assign this mail to the DAF later', 'report'],
+  ] as const)('« %s » : %s', (text, kind) => {
+    expect(intentMarks(text)).toContain(kind);
+    expect(hasIntentMark(text)).toBe(true);
+  });
+
+  it.each([
+    'impute ce courrier à la DAF sous 3 jours',
+    "s'il te plaît, impute ce courrier à la DAF",
+    "N'hésite pas à imputer ce courrier à la DAF",
+    "n'oublie pas d'imputer ce courrier à la DAF",
+    "Don't forget to assign this mail to the DAF",
+    'Pas de souci, impute ce courrier à la DAF',
+    'impute ce courrier à la DAF sans tarder',
+    'Peux-tu imputer ce courrier à la DAF ?',
+    'Could you allocate this mail to DAF?',
+    'Relance Awa — c’est la deuxième fois que je le demande',
+  ])('expression neutre ou formule polie, aucune marque : « %s »', (text) => {
+    expect(intentMarks(text)).toEqual([]);
+  });
+});
+
+describe('phrases du vérificateur (tour X2) : refus, confirmation ou proposition directe', () => {
+  type Outcome = 'refus' | 'confirmation' | 'direct';
+  const outcome = (tool: string, text: string): Outcome =>
+    !intentAllows(tool, [text]) ? 'refus' : hasIntentMark(text) ? 'confirmation' : 'direct';
+
+  it('attaques (120) : JAMAIS de proposition directe ; 13 reçoivent la question de confirmation, figées', () => {
+    expect(VERIFIER_ATTACKS).toHaveLength(120);
+    const asked: string[] = [];
+    for (const [tool, text] of VERIFIER_ATTACKS) {
+      const o = outcome(tool, text);
+      expect([text, o]).not.toEqual([text, 'direct']);
+      if (o === 'confirmation') asked.push(text);
+    }
+    expect(asked).toEqual([...VERIFIER_ATTACKS_ASKED]);
+  });
+
+  it('ordres légitimes SANS marque : 100 % proposés directement', () => {
+    const unmarked = [...VERIFIER_LEGIT_A, ...VERIFIER_LEGIT_B].filter(([, text]) => !hasIntentMark(text));
+    expect(unmarked.length).toBe(93);
+    for (const [tool, text] of unmarked) expect([text, outcome(tool, text)]).toEqual([text, 'direct']);
+  });
+
+  it('ordres légitimes : A = 46 directs / 26 confirmations / 2 refus ; B = 47 directs / 1 confirmation', () => {
+    const count = (list: readonly IntentPhrase[]): Record<Outcome, number> => {
+      const r: Record<Outcome, number> = { refus: 0, confirmation: 0, direct: 0 };
+      for (const [tool, text] of list) r[outcome(tool, text)] += 1;
+      return r;
+    };
+    expect(VERIFIER_LEGIT_A).toHaveLength(74);
+    expect(VERIFIER_LEGIT_B).toHaveLength(48);
+    expect(count(VERIFIER_LEGIT_A)).toEqual({ direct: 46, confirmation: 26, refus: 2 });
+    expect(count(VERIFIER_LEGIT_B)).toEqual({ direct: 47, confirmation: 1, refus: 0 });
+    // Les deux refus, figés et justifiés (`VERIFIER_LEGIT_REFUSED`).
+    const refused = [...VERIFIER_LEGIT_A, ...VERIFIER_LEGIT_B].filter(([tool, text]) => outcome(tool, text) === 'refus');
+    expect(refused.map(([tool, text]) => [tool, text])).toEqual(VERIFIER_LEGIT_REFUSED.map(([tool, text]) => [tool, text]));
+  });
+
+  it('les 16 phrases refusées ou supposées restent des refus', () => {
+    for (const [tool, text] of REFUSED_PHRASES) expect([text, outcome(tool, text)]).toEqual([text, 'refus']);
+  });
+
+  it('« à » n’est pas l’auxiliaire « a » ; articles anglais ; nouveaux verbes', () => {
+    expect(intentAllows(REL, ['Pense à relancer Awa'])).toBe(true);
+    expect(intentAllows(IMP, ["N'hésite pas à imputer ce courrier à la DAF"])).toBe(true);
+    expect(intentAllows(IMP, ['Aide-moi à imputer ce courrier à la DAF'])).toBe(true);
+    expect(intentAllows(REL, ['Send a reminder to Awa'])).toBe(true);
+    expect(intentAllows(BRO, ['Create a draft for mail 12'])).toBe(true);
+    expect(intentAllows(BRO, ['Prepare a draft reply'])).toBe(true);
+    expect(intentAllows(BRO, ['Write a reply to mail 12'])).toBe(true);
+    for (const text of ['Donne ce courrier à la DAF', 'Mets ce courrier sur le bureau de la DAF', 'Pass this mail to Awa', 'Give this mail to Awa', 'Route this mail to DAF', 'Share this mail with Awa', 'Dispatche le courrier à Awa', 'Fais passer ce courrier à la DAF', 'Alloue ce courrier à la DAF', 'Could you allocate this mail to DAF?']) {
+      expect([text, intentAllows(IMP, [text])]).toEqual([text, true]);
+    }
+    for (const text of ['Can you chase Awa for mail 12?', 'Please remind Awa', 'Remind Awa about mail 12']) {
+      expect([text, intentAllows(REL, [text])]).toEqual([text, true]);
+    }
+    // Témoins : l'auxiliaire « a » (constat) reste un constat ; « mets à jour » n'est pas une imputation.
+    expect(intentAllows(REL, ['Awa a relancé ce courrier'])).toBe(false);
+    expect(intentAllows(IMP, ['le courrier a été imputé à la DAF'])).toBe(false);
+    expect(intentAllows(IMP, ['mets à jour la fiche de la DAF'])).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { PLANNER_MSG_ACTION_CLAIM, claimsActionDone } from './action-claims';
+import { PLANNER_MSG_ACTION_CLAIM, PLANNER_MSG_INFO_ONLY, claimsActionDone } from './action-claims';
 
 describe('claimsActionDone : un texte libre du modèle qui revendique une action', () => {
   it.each([
@@ -47,5 +47,47 @@ describe('claimsActionDone : un texte libre du modèle qui revendique une action
   it('non-texte : faux', () => {
     expect(claimsActionDone(undefined)).toBe(false);
     expect(claimsActionDone(42)).toBe(false);
+  });
+
+  // Tour X2 : formes courtes et présent d'action.
+  it.each([
+    'Fait.',
+    'OK, fait',
+    'Imputé.',
+    'Effectué',
+    'Terminé !',
+    'Réalisé.',
+    "C'est imputé.",
+    "J'ai procédé à l'imputation.",
+    "Je procède à l'imputation du courrier.",
+    "J'ai fait le nécessaire.",
+    "J'impute ce courrier à la DAF.",
+    'Je relance Awa Diallo.',
+    'Je rédige en ce moment la réponse.',
+    "I'm assigning it now.",
+    'Reminder sent.',
+    'Assigned.',
+    'Processed.',
+    'Completed.',
+    'All set.',
+    'Imputation en cours.',
+    'Assignment in progress.',
+    'Ça y est !',
+    'Mission accomplie.',
+  ])('revendication (forme courte ou présent) : « %s »', (text) => {
+    expect(claimsActionDone(text)).toBe(true);
+  });
+
+  it.each([
+    PLANNER_MSG_INFO_ONLY,
+    "Voulez-vous que je prépare : Imputer le courrier n°4321 à « Awa Diallo — DAF » : type « Pour suivi », délai de 3 jours ?\n\n1. Oui, prépare cette action\n2. Non, ne fais rien",
+    "Préparer un brouillon de réponse au courrier n°4321 : document brouillon, rien n'est envoyé",
+    "Voulez-vous que j'impute ce courrier à la DAF ?",
+    "J'ai fait une recherche : deux courriers correspondent.",
+    'Si je relance Awa, elle recevra une notification.',
+    'Le traitement est terminé côté expéditeur ? Je ne le sais pas.',
+    'Entendu : je ne prépare rien.',
+  ])('pas une revendication : « %s »', (text) => {
+    expect(claimsActionDone(text)).toBe(false);
   });
 });

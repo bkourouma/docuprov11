@@ -547,4 +547,81 @@ suite(title, () => {
     await store.deleteConversation(owner, elsewhere.conversationId, at(2000));
     expect(await store.deleteMessage(owner, elsewhere.conversationId, free2.messageId)).toBe(false);
   });
+
+  it('course purge : échange masqué entre getProposal et la confirmation -> CAS perdu (null), statut 0 conservé', async () => {
+    const userId = nextUser();
+    const { conv, proposal } = await seed(userId);
+    // Lecture réussie (échange encore visible), puis suppression, puis tentative de confirmation avec la lecture périmée.
+    const read = await store.getProposal(userId, proposal.proposalId);
+    expect(read).toMatchObject({ status: 0, rowVersion: 0 });
+    expect(await store.deleteConversation(userId, conv.conversationId, at(1000))).toBe(true);
+    expect(await store.transitionProposal(tr(read as AsstProposalDto, AsstProposalStatus.Confirmed, at(2000)))).toBeNull();
+    // Même avec une transaction fournie (t.db) : CAS perdu, rien n'est écrit.
+    const viaTx = await prisma.$transaction((tx) =>
+      store.transitionProposal({ ...tr(read as AsstProposalDto, AsstProposalStatus.Confirmed, at(2000)), db: tx }),
+    );
+    expect(viaTx).toBeNull();
+    const row = await prisma.asstProposal.findUnique({ where: { asstProposalId: BigInt(proposal.proposalId) } });
+    expect(row).toMatchObject({ status: 0, rowVersion: 0, confirmedAt: null });
+    // Les autres transitions ne dépendent pas du masquage : un échange masqué peut voir sa proposition refusée.
+    expect(await store.transitionProposal(tr(read as AsstProposalDto, AsstProposalStatus.Refused, at(3000)))).toMatchObject({
+      status: 3,
+      rowVersion: 1,
+    });
+  });
+
+  it('course purge concurrente : jamais « échange masqué ET proposition confirmée avec purge_at abaissée »', async () => {
+    const userId = nextUser();
+    const expectedPurge = T0.getTime() + ASST_RETENTION_DAYS * 86_400_000;
+    const deleteAt = at(3000);
+    let confirmedWins = 0;
+    let deleteWins = 0;
+    for (let i = 0; i < 15; i += 1) {
+      const { conv, proposal } = await seed(userId);
+      const [confirmed, deleted] = await Promise.all([
+        store.transitionProposal(tr(proposal, AsstProposalStatus.Confirmed, at(1000))),
+        store.deleteConversation(userId, conv.conversationId, deleteAt),
+      ]);
+      expect(deleted).toBe(true);
+      const conversation = await rowOf(conv.conversationId);
+      const stored = await prisma.asstProposal.findUnique({ where: { asstProposalId: BigInt(proposal.proposalId) } });
+      expect(conversation?.deletedAt?.getTime()).toBe(deleteAt.getTime());
+      if (confirmed !== null) {
+        // La confirmation a gagné : le masquage voit le statut 1 et conserve purge_at (trace d'exécution en cours).
+        confirmedWins += 1;
+        expect(stored).toMatchObject({ status: 1, rowVersion: 1 });
+        expect(conversation?.purgeAt.getTime()).toBe(expectedPurge);
+      } else {
+        // Le masquage a gagné : la proposition reste proposée ; purge_at abaissée est alors cohérente (aucune trace).
+        deleteWins += 1;
+        expect(stored).toMatchObject({ status: 0, rowVersion: 0, confirmedAt: null });
+        expect(conversation?.purgeAt.getTime()).toBe(deleteAt.getTime());
+      }
+    }
+    expect(confirmedWins + deleteWins).toBe(15);
+  });
+
+  it('masquage d’une proposition confirmée (1) : purge_at conservée, 1 -> 2 réussit ensuite, purgeDue ne supprime pas avant l’échéance', async () => {
+    const userId = nextUser();
+    const { conv, proposal } = await seed(userId);
+    const confirmed = (await store.transitionProposal(tr(proposal, AsstProposalStatus.Confirmed, at(1000)))) as AsstProposalDto;
+    expect(confirmed.status).toBe(1);
+    const expectedPurge = T0.getTime() + ASST_RETENTION_DAYS * 86_400_000;
+
+    expect(await store.deleteConversation(userId, conv.conversationId, at(2000))).toBe(true);
+    const hidden = await rowOf(conv.conversationId);
+    expect(hidden?.deletedAt?.getTime()).toBe(at(2000).getTime());
+    expect(hidden?.purgeAt.getTime()).toBe(expectedPurge);
+
+    // L'exécution en cours se termine malgré le masquage (1 -> 2 ne dépend pas de la visibilité).
+    const applied = await store.transitionProposal(tr(confirmed, AsstProposalStatus.Applied, at(3000), { result: { effects: [] } }));
+    expect(applied).toMatchObject({ status: 2, rowVersion: 2 });
+
+    // Avant l'échéance : ni purgé ni compté en erreur.
+    const out = await purge.purgeDue(new Date(), 1000);
+    expect(out.skipped).toBe(0);
+    expect(await existsConv(conv.conversationId)).toBe(true);
+    expect(await prisma.asstProposal.count({ where: { conversationId: BigInt(conv.conversationId) } })).toBe(1);
+    expect((await rowOf(conv.conversationId))?.purgeAt.getTime()).toBe(expectedPurge);
+  });
 });

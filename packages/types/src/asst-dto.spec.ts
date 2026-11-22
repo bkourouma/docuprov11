@@ -161,10 +161,15 @@ describe('requêtes', () => {
   });
 
   it('createConversationBody.title : refuse contrôle et retours à la ligne, accepte accents et emoji', () => {
-    for (const bad of ['a\u0000b', 'a\nb', 'a\rb', 'a\tb', 'a\u001Bb', 'a\u007Fb', 'a\u0090b']) {
+    for (const bad of ['a\u0000b', 'a\nb', 'a\rb', 'a\tb', 'a\u001Bb', 'a\u007Fb', 'a\u0090b', 'a\u0085b', 'a\u2028b', 'a\u2029b', '\u2028']) {
       expect(createConversationBody.safeParse({ title: bad }).success).toBe(false);
     }
     expect(createConversationBody.safeParse({ title: 'Courrier été 📬' }).success).toBe(true);
+  });
+
+  it('postMessageBody.content : U+2028 et U+2029 (sauts de ligne de texte libre) restent acceptés, U+0085 refusé (comportement inchangé)', () => {
+    expect(postMessageBody.safeParse({ content: 'ligne 1\u2028ligne 2\u2029ligne 3' }).success).toBe(true);
+    expect(postMessageBody.safeParse({ content: 'a\u0085b' }).success).toBe(false);
   });
 
   it('confirmProposalBody : argsHash = SHA-256 hexadécimal minuscule', () => {

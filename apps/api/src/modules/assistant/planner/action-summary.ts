@@ -109,3 +109,19 @@ export function buildActionSummary(items: readonly SummaryItem[], max: number = 
   }
   return truncateSafe(text, max);
 }
+
+/**
+ * Résumé inclus dans la QUESTION DE CONFIRMATION D'INTENTION (`clarification-format.ts`) : sans en-tête ; une seule
+ * ligne sans puce pour un seul effet, sinon une ligne « - … » par effet. Construit SANS génération (un brouillon est
+ * décrit par son modèle, son courrier et son espace). Déterministe : recalculé à la confirmation, il doit être
+ * identique. `null` s'il ne tient pas dans `max` sans être tronqué (jamais un résumé partiel à confirmer).
+ */
+export function buildConfirmationSummary(items: readonly SummaryItem[], max: number): string | null {
+  if (items.length === 0) return null;
+  for (const cap of LABEL_CAPS) {
+    const lines = items.flatMap((i) => linesFor(i, cap));
+    const text = lines.length === 1 ? (lines[0] ?? '').replace(/^- /, '').replace(/\.$/, '') : lines.join('\n');
+    if (text.length > 0 && Array.from(text).length <= max) return text;
+  }
+  return null;
+}

@@ -1,7 +1,13 @@
 import { AsstActionTool, AsstMessageRole } from '@archivage/types';
 import { MAIL_INPUTATION_TYPE_IDS } from '../../workflow-agent-catalog/catalog.contracts';
 import { sanitizeText } from '../../workflow-agents/injection/untrusted';
-import { isClarificationContent } from './clarification-format';
+import {
+  INTENT_CONFIRM_NO,
+  INTENT_CONFIRM_YES,
+  isClarificationContent,
+  isIntentConfirmationChoices,
+  parseClarificationContent,
+} from './clarification-format';
 import type { PlannerInputationTypeView } from './planner.types';
 
 // Gardes d'INTENTION du validateur d'actions (fonctions pures, sans accès aux données).
@@ -10,6 +16,46 @@ import type { PlannerInputationTypeView } from './planner.types';
 // l'utilisateur (message courant et messages précédents de l'échange), jamais un texte de courrier, un nom d'acteur
 // ou une sortie du modèle. Elles sont TOLÉRANTES (casse, accents, conjugaisons usuelles, français et anglais) mais
 // l'échec reste fermé : en cas de doute, le validateur pose une question ou refuse.
+//
+// PRINCIPE « ÉCHEC FERMÉ PAR QUESTION » (tour de correction X2). Une liste de négations ne peut pas rattraper toutes
+// les formulations libres ; la décision se fait donc en DEUX niveaux :
+//  1. `intentAllows` : existe-t-il un ordre POSITIF pour l'outil (analyse par propositions, négations et hypothèses
+//     écartées) ? Non : refus `intent_not_established` (rien du tout) ;
+//  2. `intentMarks` : le message ENTIER (aucun découpage) porte-t-il une MARQUE de refus, de report, de doute,
+//     d'hypothèse, de demande d'information ou de substitution ? Oui : AUCUNE proposition directe, le validateur pose
+//     la question de confirmation construite par le code (« Voulez-vous que je prépare : … ? », deux choix).
+// Seul un ordre SANS AUCUNE MARQUE est proposé directement. La liste des marques est volontairement LARGE (un mot
+// douteux est une marque) : un faux positif ne coûte qu'une question, un faux négatif ne survient que si le texte ne
+// porte AUCUN des mots ci-dessous. Marques reconnues (repliées : sans accents, casse ignorée, pleine chasse ramenée,
+// invisibles retirés) :
+//  - négation, refus : « ne » / « n' » devant un mot, pas, jamais, plus (« plus tard », « plus besoin », « plus la
+//    peine », « plus jamais »), aucun(e)(s), sans, rien, ni, non, nul(le), inutile, interdit…, impossible…, refus…,
+//    contre, oppos… (« m'oppose »), évit…, annul…, supprim…, désactiv…, arrêt…, cess…, stop, bad, mauvais(e), idée ;
+//    not, never, no (sauf « no 12 »), without, nothing, none, nobody, nor, neither, cannot, refrain, avoid…, cancel…,
+//    « don't / won't / can't… » (et « dont » devant un verbe anglais) ;
+//  - report : attend…, patient…, wait…, hold, tard (« plus tard »), later, avant (« avant de »), report…, différ…,
+//    postpone…, defer…, suspend… (« pas maintenant », « pas encore », « pas tout de suite », « ne bouge pas » via
+//    « pas » / « ne ») ;
+//  - substitution : plutôt, lieu (« au lieu de »), place (« à la place »), instead, rather, sauf, except…, excepté,
+//    hormis, excluding, autre(s), ou, or, otherwise, sinon ;
+//  - hypothèse, doute : si, « s'il », if, whether, « faut-il », « dois-je », « doit-on », devr…(conditionnel),
+//    faudrait, faudra, supposons, imaginons, admettons, suppose, imagine, hypothèse…, wonder…, maybe, perhaps,
+//    « peut-être », éventuel…, probablement, probably, possibly, should, would, might, could, shall, croi… (« je crois
+//    que »), pens… (sauf « pense à »), think, believe, guess, doute…, doubt, hésit…, hesitate, réfléchi…, réflexion,
+//    tant (« tant que »), quand, lorsque, « me demande » / « se demande », demandais ; conditionnel (mot en -rais,
+//    -rait, -rions, -riez, -raient : « j'imputerais », « que se passerait-il », « ça donnerait ») ; imparfait d'un
+//    verbe d'ordre (« si j'imputais ») ;
+//  - demande d'information : comment, pourquoi, quoi (« c'est quoi »), « qu'est-ce », « est-ce que », quel(le)(s),
+//    lequel…, combien, statut, status, liste…, list…, expliqu…, explain…, montr…, affich…, display…, vérifi…,
+//    check…, consult…, résum…, summar…, « dis-moi », « tell me », how, why, what, which, who, whom, whose, when,
+//    where, show, « qui » en tête de phrase ; et toute phrase qui contient « ? » sans formule polie de demande
+//    (« peux-tu », « pouvez-vous », « pourrais-tu », « pourriez-vous », « can you », « could you »).
+// Idiomes NEUTRES (ne sont pas des marques) : « s'il te plaît », « s'il vous plaît », please, « n'hésite pas (à) »,
+// « n'oublie pas (de) », « ne pas oublier (de) », « ne pas hésiter », « don't forget », « don't hesitate »,
+// « sans tarder », « pas de souci(s) », merci ; et les formules polies ci-dessus (ni conditionnel ni question).
+// Un ordre légitime qui porte une marque (« impute à la DAF mais pas à la DRH », « si possible, impute… ») passe donc
+// par la question de confirmation : c'est voulu. Ses passages niés restent EXCLUS (partition `splitPolarity`), même
+// après confirmation.
 
 /** Borne de lecture d'un texte utilisateur (caractères) : au-delà, le texte est coupé avant analyse. */
 export const USER_TEXT_MAX_CHARS = 8_000;
@@ -93,6 +139,14 @@ const IMPUTATION_PATTERNS: readonly RegExp[] = [
   /\bforward[a-z]*\b/,
   /\bsend\s+(it|this|this\s+mail|this\s+letter|the\s+mail|the\s+letter)?\s*to\b/,
   /\bhand\s+(it\s+|this\s+)?over\b/,
+  // Verbes d'ordre courants, CIBLE EXPLICITE exigée (« donne ce courrier à la DAF », « pass this mail to Awa »).
+  /\bdonne(s|z|r)?\b(\s+[a-z0-9]+){0,4}?\s+(a|au|aux)\b/,
+  /\bmet(s|tez|tre|tons)?\b(?!\s+a\s+jour)(\s+[a-z0-9]+){0,5}?\s+(a|au|aux|sur\s+le\s+bureau|en\s+copie)\b/,
+  /\balloue(s|z|r)?\b(\s+[a-z0-9]+){0,4}?\s+(a|au|aux)\b/,
+  /\bpass\s+(it|this|that|the)\b(\s+[a-z0-9]+){0,3}?\s+to\b/,
+  /\bgive\b(\s+[a-z0-9]+){0,4}?\s+to\b/,
+  /\broute\b(\s+[a-z0-9]+){0,4}?\s+to\b/,
+  /\bshare\b(\s+[a-z0-9]+){0,4}?\s+with\b/,
 ];
 
 const RELANCE_PATTERNS: readonly RegExp[] = [
@@ -156,6 +210,24 @@ const BOUNDARY_SEQUENCES: readonly (readonly string[])[] = [
   ['par', 'contre'], ['en', 'revanche'], ['au', 'contraire'], ['a', 'la', 'place'],
 ];
 
+/**
+ * Verbe d'ordre (tous outils) : « et » / « and » suivi, dans les 3 mots, d'un tel verbe ouvre une NOUVELLE proposition
+ * (« ne l'impute pas à la DRH et impute-le à la DAF »). Sans risque depuis le principe de confirmation : la négation
+ * qui précède reste une MARQUE du message (question de confirmation), et ce découpage ne fait qu'empêcher une
+ * négation de déborder sur l'ordre suivant (et d'en EXCLURE la cible). « et à la DRH » (sans verbe) ne coupe pas.
+ */
+const ORDER_VERB_WORD =
+  /^(?:imput|affect|attribu|assign|transm|confi|envoi|envoy|pass|donne|mets|met|alloue|allocat|dispatch|forward|send|give|route|share|relanc|rappel|remind|chase|press|redig|redact|prepar|draft|repond|reply|respond|answer|ecri|write|fais|faites|faire)/;
+
+function startsOrderAfterAnd(words: readonly string[], i: number): boolean {
+  const w = words[i];
+  if (w !== 'et' && w !== 'and') return false;
+  for (let k = i + 1; k <= i + 3 && k < words.length; k++) {
+    if (ORDER_VERB_WORD.test(words[k] ?? '')) return true;
+  }
+  return false;
+}
+
 function tokenize(folded: string): Token[] {
   const out: Token[] = [];
   for (const m of folded.matchAll(/[a-z0-9]+/g)) {
@@ -196,7 +268,7 @@ function clausesOfFolded(folded: string): Clause[] {
       if (c) out.push(c);
     };
     for (let i = 1; i < words.length; i++) {
-      if (BOUNDARY_SEQUENCES.some((seq) => startsSequence(words, i, seq))) {
+      if (BOUNDARY_SEQUENCES.some((seq) => startsSequence(words, i, seq)) || startsOrderAfterAnd(words, i)) {
         flush(i);
         from = i;
       }
@@ -212,10 +284,30 @@ function clausesOfFolded(folded: string): Clause[] {
 const NEG_WORDS: ReadonlySet<string> = new Set([
   'pas', 'jamais', 'aucun', 'aucune', 'aucuns', 'aucunes', 'sans', 'ni', 'rien', 'inutile', 'inutiles', 'sauf', 'excepte',
   'exceptee', 'hormis', 'stop', 'not', 'never', 'no', 'without', 'nor', 'neither', 'none', 'nothing', 'cannot', 'except',
-  'excluding', 'refrain',
+  'excluding', 'refrain', 'non', 'nul', 'nulle', 'contre', 'nobody',
 ]);
-/** Familles de verbes de refus (« évite d'imputer », « annule la relance », « avoid », « cancel »). */
-const NEG_STEMS = /^(?:evit|annul|supprim|cancel|avoid)[a-z]*$/;
+/**
+ * Familles de verbes de refus ou d'opposition (« évite d'imputer », « annule la relance », « je refuse d'imputer »,
+ * « il est interdit de », « impossible de », « je m'oppose à », « désactive l'imputation »).
+ */
+const NEG_STEMS = /^(?:evit|annul|supprim|cancel|avoid|refus|interdi|impossib|oppos|desactiv)[a-z]*$/;
+/** Substitution (« plutôt que d'imputer », « au lieu de relancer », « instead of »), hors de question : refus. */
+const NEG_SEQUENCES: readonly (readonly string[])[] = [
+  ['plutot', 'que'], ['plutot', 'qu'], ['au', 'lieu'], ['instead', 'of'], ['rather', 'than'], ['a', 'la', 'place', 'de'],
+  ['a', 'la', 'place', 'd'], ['hors', 'de', 'question'],
+];
+/**
+ * Demande d'information et report AVANT le verbe (« dis-moi comment imputer », « montre-moi l'imputation »,
+ * « attends avant d'imputer ») : pas un ordre (classés « hypothèse » : ils retirent, sans exclure).
+ */
+const INFO_OR_DEFER_WORDS: ReadonlySet<string> = new Set([
+  'comment', 'pourquoi', 'how', 'why', 'statut', 'status', 'hold', 'later', 'wait', 'waiting',
+]);
+const INFO_OR_DEFER_STEMS = /^(?:expliqu|explain|montr|affich|display|attend|patient)[a-z]*$|^list(?:e|es|ez|er|ing)?$/;
+const INFO_OR_DEFER_SEQUENCES: readonly (readonly string[])[] = [
+  ['dis', 'moi'], ['dites', 'moi'], ['tell', 'me'], ['c', 'est', 'quoi'], ['qu', 'est', 'ce'], ['plus', 'tard'], ['avant', 'de'],
+  ['avant', 'd'],
+];
 /** « arrête de / cesse de » : refus (« arrêté » seul peut être un acte administratif). */
 const NEG_BEFORE_DE = /^(?:arret|cess)(?:e|es|ez|er|ons)$/;
 /** Second terme d'une négation « ne … pas / jamais / plus / rien / aucun… ». */
@@ -281,6 +373,13 @@ function markerAt(words: readonly string[], ignored: readonly boolean[], k: numb
   const next = words[k + 1] ?? '';
   if (w === 'no' && /^\d/.test(next)) return null; // « mail no 12 »
   if (NEG_WORDS.has(w) || NEG_STEMS.test(w)) return 'neg';
+  for (const seq of NEG_SEQUENCES) {
+    if (startsSequence(words, k, seq) && seq.every((_, j) => !ignored[k + j])) return 'neg';
+  }
+  if (INFO_OR_DEFER_WORDS.has(w) || INFO_OR_DEFER_STEMS.test(w)) return 'hyp';
+  for (const seq of INFO_OR_DEFER_SEQUENCES) {
+    if (startsSequence(words, k, seq) && seq.every((_, j) => !ignored[k + j])) return 'hyp';
+  }
   if (NEG_BEFORE_DE.test(w) && (next === 'de' || next === 'd')) return 'neg';
   if (EN_T_AUX.has(w) && next === 't' && !ignored[k + 1]) return 'neg';
   if (w === 'dont' && EN_DONT_NEXT.has(next)) return 'neg';
@@ -291,6 +390,27 @@ function markerAt(words: readonly string[], ignored: readonly boolean[], k: numb
     if (startsSequence(words, k, seq) && seq.every((_, j) => !ignored[k + j])) return 'hyp';
   }
   return null;
+}
+
+/** Noms d'action toujours nominaux. */
+const NOMINAL_ALWAYS =
+  /^(?:imputations?|affectations?|attributions?|assignments?|assignations?|transmissions?|brouillons?|reponses?|responses?|reminders?|rappels?|redactions?)$/;
+/** Formes nominales seulement après un déterminant (« la relance », « a draft », « the reply »). */
+const NOMINAL_AFTER_DETERMINER = /^(?:relances?|drafts?|repl(?:y|ies)|answers?|envois?|forwards?)$/;
+const DETERMINERS_BEFORE: ReadonlySet<string> = new Set([
+  'la', 'le', 'les', 'l', 'une', 'un', 'des', 'du', 'de', 'd', 'cette', 'ce', 'ces', 'ma', 'mon', 'mes', 'sa', 'son', 'ses',
+  'ta', 'ton', 'tes', 'votre', 'vos', 'notre', 'nos', 'leur', 'leurs', 'aucune', 'aucun', 'the', 'a', 'an', 'any', 'no', 'this',
+  'that', 'my', 'your',
+]);
+/** Infinitifs des verbes d'ordre. */
+const ORDER_INFINITIVE =
+  /^(?:imputer|affecter|attribuer|assigner|transmettre|confier|envoyer|relancer|rappeler|presser|rediger|repondre|preparer|ecrire|donner|mettre|passer|allouer|dispatcher)$/;
+
+function isWideScope(words: readonly string[], p: number): boolean {
+  const w = words[p] ?? '';
+  const prev = words[p - 1] ?? '';
+  if (NOMINAL_ALWAYS.test(w) || ORDER_INFINITIVE.test(w) || /ing$/.test(w) || prev === 'to') return true;
+  return NOMINAL_AFTER_DETERMINER.test(w) && DETERMINERS_BEFORE.has(prev);
 }
 
 function partnerBetween(words: readonly string[], ignored: readonly boolean[], from: number, to: number): boolean {
@@ -307,10 +427,14 @@ function partnerBetween(words: readonly string[], ignored: readonly boolean[], f
  * (« impute pas »).
  */
 function isRefusedAt(words: readonly string[], ignored: readonly boolean[], p: number, m: number): boolean {
-  for (let k = 0; k < p; k++) {
+  // Nom d'action, infinitif ou gérondif (« l'imputation à la DAF est inutile », « relancer Awa serait inutile ») :
+  // la marque peut SUIVRE le mot ; elle compte alors n'importe où dans la proposition.
+  const wide = isWideScope(words, p);
+  for (let k = 0; k < (wide ? words.length : p); k++) {
+    if (wide && k >= p && k < p + m) continue;
     const kind = markerAt(words, ignored, k);
     if (kind === 'neg' || kind === 'hyp') return true;
-    if (kind === 'ne' && partnerBetween(words, ignored, k + 1, p + m + 3)) return true;
+    if (kind === 'ne' && partnerBetween(words, ignored, k + 1, wide ? words.length : p + m + 3)) return true;
   }
   if (COND_OR_IMPERFECT.test(words[p] ?? '')) return true;
   let q = p + m;
@@ -375,6 +499,30 @@ const PRESS_REFLEXIVE_AFTER = new Set(['toi', 'vous', 'nous', 'te', 'moi']);
  */
 const SELF_RECIPIENT_AFTER = new Set(['moi', 'me', 'nous', 'us', 'm']);
 
+/** Noms anglais après l'article « a » / « an » (« send a reminder », « write a reply », « create a draft »). */
+const EN_NOUN_AFTER_ARTICLE: ReadonlySet<string> = new Set([
+  'reminder', 'reminders', 'draft', 'drafts', 'reply', 'replies', 'response', 'responses', 'answer', 'answers', 'follow', 'nudge',
+  'forward',
+]);
+/** « est à imputer », « reste à relancer » : constat d'un état, pas un ordre. */
+const STATE_BEFORE_A: ReadonlySet<string> = new Set(['est', 'sont', 'reste', 'restent', 'etait', 'etaient', 'is', 'are']);
+
+/**
+ * Le mot qui précède n'est PAS un auxiliaire malgré les apparences (lecture d'AVANT le repli « à » -> « a ») :
+ *  - « a » devant un INFINITIF est la préposition « à » (« pense à relancer », « n'hésite pas à imputer », « aide-moi
+ *    à imputer ») ; l'auxiliaire « a » précède un participe (« Awa a relancé »), jamais un infinitif ;
+ *  - « a » devant un nom anglais est l'article (« send a reminder », « write a reply ») ;
+ *  - « doit être imputé » exprime un ordre (passif d'obligation), pas un constat.
+ */
+function auxiliaryExempt(prev1: string, prev2: string, word: string): boolean {
+  if (prev1 === 'a') {
+    if (STATE_BEFORE_A.has(prev2)) return false;
+    return ORDER_INFINITIVE.test(word) || EN_NOUN_AFTER_ARTICLE.has(word);
+  }
+  if (prev1 === 'etre') return prev2 === 'doit' || prev2 === 'doivent';
+  return false;
+}
+
 function wordsAround(text: string, index: number, length: number): { before: string[]; word: string; next: string; after: string[] } {
   const before = text.slice(0, index).trim().split(' ').filter(Boolean);
   const rest = text.slice(index).trim().split(' ').filter(Boolean);
@@ -386,7 +534,7 @@ function wordsAround(text: string, index: number, length: number): { before: str
 function isNonOrderUse(tool: string, text: string, index: number, length: number): boolean {
   const { before, word, next: nextWord, after } = wordsAround(text, index, length);
   const prev1 = before[before.length - 1] ?? '';
-  if (AUX_IMMEDIATE.has(prev1)) return true;
+  if (AUX_IMMEDIATE.has(prev1) && !auxiliaryExempt(prev1, before[before.length - 2] ?? '', word)) return true;
   // « merci pour la réponse », « thanks for the draft » : un remerciement n'est pas une demande.
   const window = before.slice(-4).join(' ');
   if (/\b(?:merci(?: beaucoup| bien)? pour|thanks? (?:you )?for)\b/.test(window)) return true;
@@ -490,6 +638,127 @@ export function intentAllows(tool: string, userTexts: readonly string[]): boolea
 }
 
 // ---------------------------------------------------------------------------
+// Marques de réserve sur le message ENTIER (niveau 2 du principe, voir l'en-tête)
+// ---------------------------------------------------------------------------
+
+export type IntentMarkKind = 'negation' | 'report' | 'substitution' | 'hypothese' | 'information' | 'question';
+
+/** Idiomes neutres pour les MARQUES (liste courte : tout le reste compte). */
+const MARK_NEUTRAL_IDIOMS: readonly (readonly string[])[] = [
+  ['s', 'il', 'te', 'plait'], ['s', 'il', 'vous', 'plait'], ['n', 'hesite', 'pas'], ['n', 'hesitez', 'pas'],
+  ['n', 'hesitons', 'pas'], ['ne', 'pas', 'hesiter'], ['n', 'oublie', 'pas'], ['n', 'oubliez', 'pas'], ['n', 'oublions', 'pas'],
+  ['ne', 'pas', 'oublier'], ['don', 't', 'forget'], ['do', 'not', 'forget'], ['don', 't', 'hesitate'], ['do', 'not', 'hesitate'],
+  ['sans', 'tarder'], ['pas', 'de', 'souci'], ['pas', 'de', 'soucis'],
+];
+/** Formules polies de DEMANDE d'ordre : ni conditionnel (« pourrais »), ni question (« ? »). */
+const POLITE_REQUESTS: readonly (readonly string[])[] = [
+  ['peux', 'tu'], ['pouvez', 'vous'], ['pourrais', 'tu'], ['pourriez', 'vous'], ['can', 'you'], ['could', 'you'],
+];
+const POLITE_REQUEST_RE = /\b(?:peux tu|pouvez vous|pourrais tu|pourriez vous|can you|could you)\b/;
+
+const MARK_WORDS: ReadonlyMap<string, IntentMarkKind> = new Map<string, IntentMarkKind>([
+  ...[
+    'ne', 'pas', 'jamais', 'aucun', 'aucune', 'aucuns', 'aucunes', 'sans', 'rien', 'ni', 'non', 'nul', 'nulle', 'inutile',
+    'inutiles', 'contre', 'stop', 'bad', 'mauvais', 'mauvaise', 'idee', 'idea', 'not', 'never', 'without', 'nothing', 'none',
+    'nobody', 'nor', 'neither', 'cannot', 'refrain',
+  ].map((w) => [w, 'negation'] as const),
+  ...['hold', 'tard', 'later', 'avant', 'patience'].map((w) => [w, 'report'] as const),
+  ...[
+    'plutot', 'lieu', 'place', 'instead', 'rather', 'sauf', 'excepte', 'exceptee', 'exceptes', 'hormis', 'excluding', 'autre',
+    'autres', 'ou', 'or', 'otherwise', 'sinon',
+  ].map((w) => [w, 'substitution'] as const),
+  ...[
+    'si', 'if', 'whether', 'faudrait', 'faudra', 'supposons', 'imaginons', 'admettons', 'suppose', 'imagine', 'hypothese',
+    'hypotheses', 'hypothetiquement', 'hypothetically', 'maybe', 'perhaps', 'probablement', 'probably', 'possibly',
+    'should', 'would', 'might', 'could', 'shall', 'think', 'believe', 'guess', 'doubt', 'hesitate', 'reflexion', 'tant',
+    'quand', 'lorsque', 'demandais', 'demandait',
+  ].map((w) => [w, 'hypothese'] as const),
+  ...[
+    'comment', 'pourquoi', 'quoi', 'quel', 'quelle', 'quels', 'quelles', 'lequel', 'laquelle', 'lesquels', 'lesquelles',
+    'combien', 'statut', 'statuts', 'status', 'how', 'why', 'what', 'which', 'who', 'whom', 'whose', 'when', 'where', 'show',
+  ].map((w) => [w, 'information'] as const),
+]);
+const MARK_STEMS: ReadonlyArray<[RegExp, IntentMarkKind]> = [
+  [/^(?:evit|annul|supprim|desactiv|arret|cess|refus|interdi|impossib|oppos|cancel|avoid)[a-z]*$/, 'negation'],
+  [/^(?:attend|patient|wait|report(?:e|es|ez|er|ons)$|differ|postpon|defer|suspend)[a-z]*$/, 'report'],
+  [/^(?:except)[a-z]*$/, 'substitution'],
+  [/^(?:eventuel|croi|croy|doute|hesit|reflechi|wonder)[a-z]*$/, 'hypothese'],
+  [/^(?:expliqu|explain|montr|affich|display|verifi|check|consult|resum|summar|list)[a-z]*$/, 'information'],
+  // Conditionnel (« j'imputerais », « que se passerait-il », « ça donnerait », « devrait », « serait »).
+  [/^[a-z]{2,}(?:rais|rait|rions|riez|raient)$/, 'hypothese'],
+  [COND_OR_IMPERFECT, 'hypothese'],
+];
+const MARK_SEQUENCES: ReadonlyArray<[readonly string[], IntentMarkKind]> = [
+  [['peut', 'etre'], 'hypothese'], [['faut', 'il'], 'hypothese'], [['dois', 'je'], 'hypothese'], [['doit', 'on'], 'hypothese'],
+  [['me', 'demande'], 'hypothese'], [['se', 'demande'], 'hypothese'], [['m', 'demande'], 'hypothese'],
+  [['dis', 'moi'], 'information'], [['dites', 'moi'], 'information'], [['dis', 'nous'], 'information'],
+  [['tell', 'me'], 'information'], [['tell', 'us'], 'information'], [['qu', 'est', 'ce'], 'information'],
+  [['est', 'ce', 'que'], 'information'], [['est', 'ce', 'qu'], 'information'],
+];
+
+function markMask(words: readonly string[]): boolean[] {
+  const mask = words.map(() => false);
+  for (let i = 0; i < words.length; i++) {
+    for (const seq of [...MARK_NEUTRAL_IDIOMS, ...POLITE_REQUESTS]) {
+      if (startsSequence(words, i, seq)) for (let k = 0; k < seq.length; k++) mask[i + k] = true;
+    }
+  }
+  return mask;
+}
+
+/** Marque portée par le mot `k` (mots neutralisés ignorés), ou `null`. */
+function markAt(words: readonly string[], ignored: readonly boolean[], k: number): IntentMarkKind | null {
+  if (ignored[k]) return null;
+  const w = words[k] ?? '';
+  const next = words[k + 1] ?? '';
+  if ((w === 'no' || w === 'n') && /^\d/.test(next)) return null; // « mail no 12 », « n°12 »
+  if (w === 'no' || w === 'n') return next === '' && w === 'n' ? null : 'negation';
+  if (w === 't' && EN_T_AUX.has(words[k - 1] ?? '')) return 'negation'; // don't, won't, can't…
+  if (w === 'dont' && EN_DONT_NEXT.has(next)) return 'negation';
+  if (w === 's' && (next === 'il' || next === 'ils')) return 'hypothese';
+  if (w === 'plus' && ['tard', 'besoin', 'la', 'jamais'].includes(next)) return next === 'tard' ? 'report' : 'negation';
+  // « pense à relancer » est un ordre ; « je pense que », « penses-tu » sont des doutes.
+  if (/^pens(?:e|es|ez|ons|er|ait|ais)$/.test(w)) {
+    const after = next === 'bien' ? (words[k + 2] ?? '') : next;
+    return after === 'a' || after === 'au' || after === 'aux' ? null : 'hypothese';
+  }
+  if (w === 'qui' && k === 0) return 'information';
+  const direct = MARK_WORDS.get(w);
+  if (direct) return direct;
+  for (const [seq, kind] of MARK_SEQUENCES) {
+    if (startsSequence(words, k, seq) && seq.every((_, j) => !ignored[k + j])) return kind;
+  }
+  for (const [re, kind] of MARK_STEMS) if (re.test(w)) return kind;
+  return null;
+}
+
+/**
+ * Marques de réserve d'UN texte de l'utilisateur, sur le message ENTIER (types distincts, dans l'ordre). Vide = le
+ * message est un ordre « net ». Voir l'en-tête du fichier pour la liste complète et les idiomes neutres.
+ */
+export function intentMarks(text: string): IntentMarkKind[] {
+  const out: IntentMarkKind[] = [];
+  const add = (k: IntentMarkKind): void => {
+    if (!out.includes(k)) out.push(k);
+  };
+  for (const s of userSentences(typeof text === 'string' ? text : '')) {
+    const words = s.norm.split(' ').filter(Boolean);
+    const ignored = markMask(words);
+    if (s.question && !POLITE_REQUEST_RE.test(s.norm)) add('question');
+    for (let k = 0; k < words.length; k++) {
+      const kind = markAt(words, ignored, k);
+      if (kind) add(kind);
+    }
+  }
+  return out;
+}
+
+/** Le texte porte-t-il au moins une marque de réserve ? */
+export function hasIntentMark(text: string): boolean {
+  return intentMarks(text).length > 0;
+}
+
+// ---------------------------------------------------------------------------
 // Polarité : ce que le texte DÉSIGNE positivement, ce qu'il EXCLUT, ce qu'il SUPPOSE
 // ---------------------------------------------------------------------------
 
@@ -581,11 +850,77 @@ export function isCancellation(text: string): boolean {
 export const INTENT_HISTORY_MAX_ROUNDS = 4;
 
 /**
+ * Index du choix que le texte (déjà normalisé) désigne EXACTEMENT, ou `null` : libellé complet (casse, accents et
+ * ponctuation ignorés), numéro de choix (« 1 », « le 2 », « n°1 », « choix 2 »), ou — si `names` — un nom proposé
+ * (segment du libellé « Nom — Groupe » ou mot du nom) porté par UN SEUL choix.
+ */
+export function designatedChoiceIndex(norm: string, choices: readonly string[], opts: { names: boolean }): number | null {
+  if (!norm) return null;
+  const labels = choices.map((c) => normalizeWords(c, 400));
+  const exact = labels.flatMap((l, i) => (l === norm ? [i] : []));
+  if (exact.length === 1) return exact[0] ?? null;
+  if (exact.length > 1) return null;
+  const num = /^(?:(?:le|la|l|choix|option|numero|num|n|no|number)\s+)?(\d{1,2})$/.exec(norm);
+  if (num) {
+    const n = Number(num[1]);
+    return n >= 1 && n <= choices.length ? n - 1 : null;
+  }
+  if (!opts.names) return null;
+  const hits = choices.flatMap((c, i) => (labelDesignators(c).includes(norm) ? [i] : []));
+  return hits.length === 1 ? (hits[0] ?? null) : null;
+}
+
+/**
+ * Réponse à une question SANS choix : seulement une VALEUR (délai « 3 jours », numéro de courrier « courrier 4321 »,
+ * nombre seul, type « pour suivi »), rien d'autre dans le message.
+ */
+function isAnswerValue(norm: string): boolean {
+  if (!norm) return false;
+  if (/^(?:(?:le|du|au)\s+)?(?:courrier|mail|lettre|letter)?\s*(?:n|no|numero|num|number)?\s*\d{1,10}$/.test(norm)) return true;
+  const delay = new RegExp(
+    `^(?:(?:sous|dans|en|d ici|within|in|under|delai de|delai|de)\\s+)?(?:${NUM}\\s*(?:${DAY_UNIT}|${WEEK_UNIT}|${MONTH_UNIT})|demain|apres demain|tomorrow)$`,
+  );
+  if (delay.test(norm)) return true;
+  return TYPE_ALIASES.some((a) => a.strong && a.phrase === norm);
+}
+
+/**
+ * Le message courant RÉPOND-il à la question marquée `assistantContent` ? Il ne doit porter AUCUNE marque de réserve
+ * (`intentMarks`) ni annuler, et : question AVEC choix -> désigner exactement un choix (libellé, numéro ou nom proposé ;
+ * libellé ou numéro seulement pour la question de confirmation d'intention) ; question SANS choix -> n'être qu'une
+ * valeur (`isAnswerValue`). « non », « plus tard », « attends », « je réfléchis », « tant pis »… ne répondent pas.
+ */
+export function answersClarification(current: string, assistantContent: string): boolean {
+  if (typeof current !== 'string' || typeof assistantContent !== 'string') return false;
+  if (hasIntentMark(current) || isCancellation(current)) return false;
+  const norm = normalizeWords(current);
+  const parsed = parseClarificationContent(assistantContent);
+  if (parsed) {
+    return designatedChoiceIndex(norm, parsed.choices, { names: !isIntentConfirmationChoices(parsed.choices) }) !== null;
+  }
+  return isClarificationContent(assistantContent) && isAnswerValue(norm);
+}
+
+/**
+ * Réponse à la question de CONFIRMATION D'INTENTION : `yes` = libellé exact « Oui, prépare cette action » ou « 1 »,
+ * sans aucune marque ; `no` = libellé « Non, ne fais rien », « 2 », ou toute annulation ; `null` sinon (autre demande).
+ */
+export function confirmationAnswer(current: string): 'yes' | 'no' | null {
+  if (typeof current !== 'string') return null;
+  const choices = [INTENT_CONFIRM_YES, INTENT_CONFIRM_NO];
+  const idx = designatedChoiceIndex(normalizeWords(current), choices, { names: false });
+  if (idx === 0) return hasIntentMark(current) ? null : 'yes';
+  if (idx === 1 || isCancellation(current)) return 'no';
+  return null;
+}
+
+/**
  * Messages PRÉCÉDENTS de l'utilisateur qui portent encore l'intention (ordre chronologique). Règle : seul le message
- * COURANT établit l'intention, SAUF s'il répond à une question de précision : le dernier message de l'historique est
- * alors un message assistant portant le marqueur de question (`isClarificationContent`), et le message utilisateur
- * qui le précède compte (et ainsi de suite pour une chaîne de questions, bornée). Une annulation (message courant ou
- * message de la chaîne) rend caducs les ordres antérieurs ; dans tous les autres cas, rien n'est repris.
+ * COURANT établit l'intention, SAUF s'il RÉPOND à la question de précision marquée qui le précède
+ * (`answersClarification` : choix désigné exactement, ou valeur pour une question sans choix, et AUCUNE marque) ; le
+ * message utilisateur qui a provoqué la question compte alors (et ainsi de suite pour une chaîne de questions, bornée,
+ * chaque maillon devant lui-même répondre à la question qui le précède). Dans tous les autres cas (annulation,
+ * réponse dilatoire, autre demande), rien n'est repris.
  */
 export function intentHistory(
   history: ReadonlyArray<{ role: AsstMessageRole; content: string }>,
@@ -594,13 +929,15 @@ export function intentHistory(
   if (isCancellation(current)) return [];
   const chain: string[] = [];
   let i = history.length - 1;
+  let answer = current;
   for (let round = 0; round < INTENT_HISTORY_MAX_ROUNDS; round++) {
     const asked = history[i];
     const said = history[i - 1];
-    if (!asked || asked.role !== AsstMessageRole.Assistant || !isClarificationContent(asked.content)) break;
+    if (!asked || asked.role !== AsstMessageRole.Assistant || typeof asked.content !== 'string') break;
+    if (!isClarificationContent(asked.content) || !answersClarification(answer, asked.content)) break;
     if (!said || said.role !== AsstMessageRole.User || typeof said.content !== 'string') break;
     chain.unshift(said.content);
-    if (isCancellation(said.content)) break;
+    answer = said.content;
     i -= 2;
   }
   return chain;

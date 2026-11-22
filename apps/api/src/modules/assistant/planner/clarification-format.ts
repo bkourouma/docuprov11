@@ -79,3 +79,55 @@ export function parseClarificationContent(content: string): AsstClarificationDto
   const parsed = asstClarificationSchema.safeParse(question ? { question, choices } : { choices });
   return parsed.success ? parsed.data : null;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Question de CONFIRMATION D'INTENTION (principe « échec fermé par question », `intent-guards.ts`)
+// ---------------------------------------------------------------------------------------------
+//
+// Quand le message de l'utilisateur contient un ordre MAIS aussi une marque de refus, de report, de doute,
+// d'hypothèse, de demande d'information ou de substitution, le validateur ne propose rien directement : il pose
+// cette question, construite par le CODE (résumé de l'action recalculé depuis les arguments validés, jamais un texte
+// du modèle), avec EXACTEMENT deux choix. Le résumé contenu dans la question est relu tel quel au tour suivant
+// (`parseIntentConfirmation`) : il LIE la confirmation à ce qui a été montré (le validateur refuse si le résumé
+// recalculé diffère).
+
+/** Choix « oui » de la question de confirmation d'intention (libellé exact renvoyé par le bouton). */
+export const INTENT_CONFIRM_YES = 'Oui, prépare cette action';
+/** Choix « non » de la question de confirmation d'intention. */
+export const INTENT_CONFIRM_NO = 'Non, ne fais rien';
+/** Début fixe de la question de confirmation. */
+export const INTENT_CONFIRM_PREFIX = 'Voulez-vous que je prépare :';
+const INTENT_CONFIRM_SUFFIX = ' ?';
+/** Longueur maximale du résumé inclus dans la question (la question entière tient dans 500 caractères). */
+export const INTENT_CONFIRM_SUMMARY_MAX = 500 - INTENT_CONFIRM_PREFIX.length - 1 - INTENT_CONFIRM_SUFFIX.length;
+
+/** Les choix sont-ils exactement ceux d'une question de confirmation d'intention ? */
+export function isIntentConfirmationChoices(choices: readonly string[]): boolean {
+  return choices.length === 2 && choices[0] === INTENT_CONFIRM_YES && choices[1] === INTENT_CONFIRM_NO;
+}
+
+/**
+ * Contenu marqué de la question de confirmation pour un résumé construit par le code ; `null` si le résumé est vide,
+ * trop long, ou si la relecture ne redonne pas exactement ce résumé (échec fermé).
+ */
+export function formatIntentConfirmation(summary: string): string | null {
+  const s = stripClarificationMarker(summary).trim();
+  if (s.length === 0 || Array.from(s).length > INTENT_CONFIRM_SUMMARY_MAX) return null;
+  const question = `${INTENT_CONFIRM_PREFIX}${s.includes('\n') ? '\n' : ' '}${s}${INTENT_CONFIRM_SUFFIX}`;
+  const content = formatClarificationContent(question, [INTENT_CONFIRM_YES, INTENT_CONFIRM_NO]);
+  const reread = parseIntentConfirmation(content);
+  return reread !== null && reread.summary === s ? content : null;
+}
+
+/** Relit une question de confirmation d'intention MARQUÉE : le résumé qu'elle montrait, ou `null`. */
+export function parseIntentConfirmation(content: string): { summary: string } | null {
+  const parsed = parseClarificationContent(content);
+  if (!parsed || !isIntentConfirmationChoices(parsed.choices)) return null;
+  const q = parsed.question ?? '';
+  if (!q.startsWith(INTENT_CONFIRM_PREFIX) || !q.endsWith(INTENT_CONFIRM_SUFFIX)) return null;
+  const sep = q.charAt(INTENT_CONFIRM_PREFIX.length);
+  if (sep !== ' ' && sep !== '\n') return null;
+  const summary = q.slice(INTENT_CONFIRM_PREFIX.length + 1, q.length - INTENT_CONFIRM_SUFFIX.length);
+  if (summary.trim() !== summary || summary.length === 0) return null;
+  return { summary };
+}

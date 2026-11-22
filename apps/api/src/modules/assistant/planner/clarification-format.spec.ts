@@ -1,9 +1,15 @@
 import { sanitizeText } from '../../workflow-agents/injection/untrusted';
 import {
+  INTENT_CONFIRM_NO,
+  INTENT_CONFIRM_SUMMARY_MAX,
+  INTENT_CONFIRM_YES,
   formatClarificationContent,
   formatClarificationQuestion,
+  formatIntentConfirmation,
   isClarificationContent,
+  isIntentConfirmationChoices,
   parseClarificationContent,
+  parseIntentConfirmation,
   stripClarificationMarker,
 } from './clarification-format';
 
@@ -58,5 +64,52 @@ describe('clarification-format : marqueur vérifiable', () => {
     expect(isClarificationContent(formatClarificationQuestion('Sur quel courrier ?'))).toBe(true);
     expect(isClarificationContent(formatClarificationQuestion('   '))).toBe(false);
     expect(isClarificationContent('Sur quel courrier ?')).toBe(false);
+  });
+});
+
+describe('question de confirmation d’intention', () => {
+  const ONE = 'Imputer le courrier n°4321 à « Awa Diallo — DAF » : type « Pour suivi » (type par défaut), délai de 3 jours';
+  const MULTI = '- Imputer le courrier n°4321 à « Awa Diallo — DAF ».\n- Relancer « Fatou Ndiaye — DRH » sur le courrier n°4321.';
+
+  it('un effet : question sur une ligne, deux choix exacts, relue à l’identique', () => {
+    const content = formatIntentConfirmation(ONE) ?? '';
+    expect(stripClarificationMarker(content)).toBe(
+      `Voulez-vous que je prépare : ${ONE} ?\n\n1. ${INTENT_CONFIRM_YES}\n2. ${INTENT_CONFIRM_NO}`,
+    );
+    expect(parseClarificationContent(content)?.choices).toEqual([INTENT_CONFIRM_YES, INTENT_CONFIRM_NO]);
+    expect(parseIntentConfirmation(content)).toEqual({ summary: ONE });
+  });
+
+  it('plusieurs effets : une ligne par effet après le préfixe', () => {
+    const content = formatIntentConfirmation(MULTI) ?? '';
+    expect(stripClarificationMarker(content).startsWith(`Voulez-vous que je prépare :\n${MULTI} ?`)).toBe(true);
+    expect(parseIntentConfirmation(content)).toEqual({ summary: MULTI });
+  });
+
+  it('résumé vide ou trop long : aucune question (jamais un résumé tronqué)', () => {
+    expect(formatIntentConfirmation('   ')).toBeNull();
+    expect(formatIntentConfirmation('x'.repeat(INTENT_CONFIRM_SUMMARY_MAX + 1))).toBeNull();
+    expect(formatIntentConfirmation('x'.repeat(INTENT_CONFIRM_SUMMARY_MAX))).not.toBeNull();
+  });
+
+  it('relecture refusée : texte sans marqueur, autres choix, autre préfixe, résumé altéré dans le contenu', () => {
+    const content = formatIntentConfirmation(ONE) ?? '';
+    expect(parseIntentConfirmation(stripClarificationMarker(content))).toBeNull();
+    expect(parseIntentConfirmation(formatClarificationContent(`Voulez-vous que je prépare : ${ONE} ?`, ['Oui', 'Non']))).toBeNull();
+    expect(
+      parseIntentConfirmation(formatClarificationContent(`Dois-je préparer : ${ONE} ?`, [INTENT_CONFIRM_YES, INTENT_CONFIRM_NO])),
+    ).toBeNull();
+    expect(parseIntentConfirmation(content.replace('3 jours', '30 jours'))).toEqual({ summary: ONE.replace('3 jours', '30 jours') });
+    // Le contenu altéré reste une question marquée, mais son résumé n'est plus celui du code : la validation le
+    // compare au résumé RECALCULÉ (refus `intent_confirmation_mismatch`).
+    expect(parseIntentConfirmation(content.replace('3 jours', '30 jours'))?.summary).not.toBe(ONE);
+    expect(parseIntentConfirmation(formatClarificationQuestion(`Voulez-vous que je prépare : ${ONE} ?`))).toBeNull();
+  });
+
+  it('choix de confirmation : exactement les deux libellés, dans cet ordre', () => {
+    expect(isIntentConfirmationChoices([INTENT_CONFIRM_YES, INTENT_CONFIRM_NO])).toBe(true);
+    expect(isIntentConfirmationChoices([INTENT_CONFIRM_NO, INTENT_CONFIRM_YES])).toBe(false);
+    expect(isIntentConfirmationChoices([INTENT_CONFIRM_YES])).toBe(false);
+    expect(isIntentConfirmationChoices([INTENT_CONFIRM_YES, INTENT_CONFIRM_NO, 'Autre'])).toBe(false);
   });
 });

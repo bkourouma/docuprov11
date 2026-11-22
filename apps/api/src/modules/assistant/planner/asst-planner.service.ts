@@ -24,15 +24,17 @@ import {
   type AsstPlanResult,
   type AsstReservation,
 } from '../assistant.contracts';
-import { PLANNER_MSG_ACTION_CLAIM, claimsActionDone } from './action-claims';
+import { PLANNER_MSG_ACTION_CLAIM, PLANNER_MSG_INFO_ONLY, claimsActionDone } from './action-claims';
+import type { ActionValidationRequest, IntentConfirmationContext } from './action-validator';
 import {
   formatClarificationContent,
   formatClarificationQuestion,
   isClarificationContent,
   parseClarificationContent,
+  parseIntentConfirmation,
   stripClarificationMarker,
 } from './clarification-format';
-import { intentHistory } from './intent-guards';
+import { confirmationAnswer, intentHistory } from './intent-guards';
 import { buildPlannerPrompt, type PlannerPromptRequest, type PlannerPromptToolEntry } from './planner-prompt';
 import { createPlannerToolbox } from './planner-toolbox';
 import { AsstTurnError, parseAsstTurn, type AsstTurn } from './planner-turn';
@@ -66,10 +68,13 @@ import {
 //     la requête, puis validateur d'actions qui recalcule tout depuis le message de l'utilisateur) ;
 //  5. la réponse qui accompagne une proposition est CONSTRUITE PAR LE CODE : le texte du modèle n'y figure jamais ;
 //  6. un texte libre du modèle qui REVENDIQUE une action (« j'ai imputé », « c'est fait ») est remplacé par une phrase
-//     fixe ; seule une question construite ici porte le marqueur de question de précision (`clarification-format.ts`),
-//     retiré de toute autre réponse ;
-//  7. historique : seul le message courant établit l'intention, sauf réponse à une question de précision marquée
-//     (`intentHistory`), et jamais un ordre annulé.
+//     fixe ; toute autre réponse libre (`answer`) se termine par la ligne fixe `PLANNER_MSG_INFO_ONLY` ; seule une
+//     question construite ici porte le marqueur de question de précision (`clarification-format.ts`), retiré de toute
+//     autre réponse ;
+//  7. historique : seul le message courant établit l'intention, sauf RÉPONSE EXACTE (choix désigné, sans aucune marque
+//     de réserve) à une question de précision marquée (`intentHistory`) ;
+//  8. principe « échec fermé par question » : un ordre accompagné d'une marque de réserve donne la question de
+//     confirmation du validateur ; « oui » exact rejoue la validation liée au résumé montré, « non » clôt sans modèle.
 // Aucune écriture métier ; ne crée ni message ni proposition. Aucun contenu dans les journaux (types d'erreur seuls).
 
 const MSG_UNAVAILABLE = 'L’assistant est momentanément indisponible.';
@@ -88,6 +93,8 @@ export const PLANNER_MSG_SUSPICION_WARNING =
 export const PLANNER_MSG_LEAK = 'Je ne peux pas afficher cette réponse. Pouvez-vous reformuler votre demande ?';
 export const PLANNER_MSG_PROPOSAL_INVALID =
   'Je ne peux pas préparer cette action (contrôle final en échec). Aucune action n’a été proposée.';
+/** Réponse fixe quand l'utilisateur répond « non » (ou annule) à la question de confirmation d'intention. */
+export const PLANNER_MSG_CONFIRMATION_DECLINED = 'Entendu : je ne prépare rien.';
 export const PLANNER_PROPOSAL_INTRO = 'Je propose :';
 export const PLANNER_PROPOSAL_OUTRO = `Confirmez pour appliquer (valable ${ASST_PROPOSAL_TTL_MINUTES} minutes).`;
 const MSG_TOOL_CAP = 'Plafond d’appels d’outils atteint : aucun outil n’a été exécuté. Réponds maintenant sans outil.';
@@ -209,6 +216,13 @@ export class AsstPlannerService implements AsstPlannerPort {
     // marqué) ; une annulation rend caducs les ordres antérieurs (`intentHistory`). Le modèle voit tout l'historique,
     // mais un ordre ancien n'est jamais repris par le validateur hors de ce cas.
     const previousUserMessages = intentHistory(history, message);
+    // Réponse à la question de CONFIRMATION D'INTENTION (dernier message assistant) : « oui » exact => la validation
+    // rejouera l'ordre et exigera le même résumé ; « non » ou annulation => rien, sans appeler le modèle.
+    const lastMessage = history[history.length - 1];
+    const pendingConfirmation =
+      lastMessage && lastMessage.role === AsstMessageRole.Assistant ? parseIntentConfirmation(lastMessage.content) : null;
+    const answer = pendingConfirmation ? confirmationAnswer(message) : null;
+    const intentConfirmation = answer === 'yes' && pendingConfirmation ? { summary: pendingConfirmation.summary } : null;
     const maxActions = plannerMaxActions();
     const toolbox = createPlannerToolbox(this.data, { user: identity.user, pageContext, now });
     const st: LoopState = {
@@ -219,6 +233,7 @@ export class AsstPlannerService implements AsstPlannerPort {
       toolCalls: 0,
       nonces: [],
     };
+    if (answer === 'no') return this.textResult(st, PLANNER_MSG_CONFIRMATION_DECLINED);
 
     // Messages précédents de l'ASSISTANT : ils ont pu reprendre un texte de tiers (réponse libre du modèle, libellés).
     // Une consigne détournée qui s'y trouve vaut drapeau pour la requête (échec fermé ; les messages de
@@ -251,7 +266,7 @@ export class AsstPlannerService implements AsstPlannerPort {
           await this.runTool(toolbox, turn.tool, turn.arguments, st);
           continue;
         case 'answer':
-          return this.textResult(st, this.modelText(st, turn.text));
+          return this.textResult(st, this.answerText(st, turn.text));
         case 'clarify':
           return this.clarifyResult(st, turn.question, turn.choices);
         case 'propose':
@@ -259,6 +274,7 @@ export class AsstPlannerService implements AsstPlannerPort {
             identity,
             userMessage: message,
             previousUserMessages,
+            intentConfirmation,
             pageContext,
             toolbox,
             now,
@@ -465,6 +481,19 @@ export class AsstPlannerService implements AsstPlannerPort {
     return st.dataSuspicion ? `${PLANNER_MSG_SUSPICION_WARNING}\n\n${shown}` : shown;
   }
 
+  /**
+   * Réponse LIBRE du modèle (`answer`) : `modelText`, puis la ligne fixe du code `PLANNER_MSG_INFO_ONLY` en fin de
+   * texte (rien n'est appliqué pendant la planification, quoi que dise le texte). Pas de ligne quand le texte a été
+   * remplacé par une phrase fixe du code (fuite de jeton, revendication d'action : elles disent déjà la vérité).
+   */
+  private answerText(st: LoopState, text: string): string {
+    const shown = this.modelText(st, text);
+    if (shown === PLANNER_MSG_LEAK || shown.endsWith(PLANNER_MSG_ACTION_CLAIM)) return shown;
+    const suffix = `\n\n${PLANNER_MSG_INFO_ONLY}`;
+    const room = ASST_ASSISTANT_MESSAGE_MAX_CHARS - Array.from(suffix).length;
+    return `${truncateSafe(shown, room)}${suffix}`;
+  }
+
   private clarifyResult(st: LoopState, question: string, rawChoices: readonly string[]): AsstPlanResult {
     if (rawChoices.some((c) => st.nonces.some((n) => containsNonce(c, n)))) return this.textResult(st, PLANNER_MSG_LEAK);
     if (claimsActionDone(question) || rawChoices.some((c) => claimsActionDone(c))) {
@@ -502,6 +531,7 @@ export class AsstPlannerService implements AsstPlannerPort {
       identity: AsstIdentity;
       userMessage: string;
       previousUserMessages: string[];
+      intentConfirmation: IntentConfirmationContext | null;
       pageContext: AsstPlanInput['pageContext'];
       toolbox: PlannerToolbox;
       now: Date;
@@ -517,17 +547,19 @@ export class AsstPlannerService implements AsstPlannerPort {
     if (st.dataSuspicion) return this.textResult(st, PLANNER_MSG_DATA_SUSPICION);
 
     // (4) validateur : recalcule tout depuis le message de l'utilisateur et ce que les outils ont réellement renvoyé.
-    const outcome: ActionValidationOutcome = await this.validator.validate({
+    const request: ActionValidationRequest = {
       identity: ctx.identity,
       userMessage: ctx.userMessage,
       previousUserMessages: ctx.previousUserMessages,
+      intentConfirmation: ctx.intentConfirmation,
       pageContext: ctx.pageContext ?? null,
       evidence: ctx.toolbox.evidence,
       rawActions: turn.actions,
-      draftGenerator: (request) => this.generateDraft(ctx.identity, request, st),
+      draftGenerator: (r) => this.generateDraft(ctx.identity, r, st),
       now: ctx.now,
       maxActions: ctx.maxActions,
-    });
+    };
+    const outcome: ActionValidationOutcome = await this.validator.validate(request);
 
     if (!outcome.ok) {
       if (outcome.kind !== 'clarify') return this.textResult(st, outcome.message);

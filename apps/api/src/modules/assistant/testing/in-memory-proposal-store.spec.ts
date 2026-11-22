@@ -319,6 +319,45 @@ describe('InMemoryProposalStore : propositions', () => {
     expect((await store.getProposal(1, proposal.proposalId))?.rowVersion).toBe(0);
   });
 
+  it('course avec la suppression : échange masqué entre la lecture et la confirmation -> CAS perdu (null), statut inchangé', async () => {
+    const store = new InMemoryProposalStore();
+    const { conv, proposal } = await seed(store);
+    expect(await store.getProposal(1, proposal.proposalId)).not.toBeNull();
+    expect(await store.deleteConversation(1, conv.conversationId, at(1))).toBe(true);
+    expect(await store.transitionProposal(transition(proposal, AsstProposalStatus.Confirmed, at(2)))).toBeNull();
+    // Même sur une proposition échue : CAS perdu, pas d'erreur de garde.
+    expect(await store.transitionProposal(transition(proposal, AsstProposalStatus.Confirmed, at(60)))).toBeNull();
+    // Statut et version intacts : la même version de départ reste utilisable pour une autre transition.
+    expect(await store.transitionProposal(transition(proposal, AsstProposalStatus.Refused, at(3)))).toMatchObject({
+      status: AsstProposalStatus.Refused,
+      rowVersion: 1,
+    });
+  });
+
+  it('échange masqué : 1 -> 2, 1 -> 5, 0 -> 3 et 0 -> 4 restent possibles (seule la confirmation en dépend)', async () => {
+    const store = new InMemoryProposalStore();
+    const running = await seed(store, 1);
+    const confirmed = (await store.transitionProposal(transition(running.proposal, AsstProposalStatus.Confirmed, at(1)))) as AsstProposalDto;
+    await store.deleteConversation(1, running.conv.conversationId, at(2));
+    expect(store.peekPurgeAt(running.conv.conversationId)?.getTime()).toBe(T0.getTime() + 90 * 86_400_000);
+    expect(await store.transitionProposal(transition(confirmed, AsstProposalStatus.Applied, at(3), { result: { effects: [] } }))).toMatchObject({
+      status: AsstProposalStatus.Applied,
+    });
+
+    const failing = await seed(store, 2);
+    const c2 = (await store.transitionProposal(transition(failing.proposal, AsstProposalStatus.Confirmed, at(1)))) as AsstProposalDto;
+    await store.deleteConversation(2, failing.conv.conversationId, at(2));
+    expect(await store.transitionProposal(transition(c2, AsstProposalStatus.Failed, at(3), { errorCode: 'effect_failed' }))).toMatchObject({
+      status: AsstProposalStatus.Failed,
+    });
+
+    const expiring = await seed(store, 3);
+    await store.deleteConversation(3, expiring.conv.conversationId, at(2));
+    expect(await store.transitionProposal(transition(expiring.proposal, AsstProposalStatus.Expired, at(20)))).toMatchObject({
+      status: AsstProposalStatus.Expired,
+    });
+  });
+
   it('CAS concurrent : deux transitions avec la même version, une seule gagne', async () => {
     const store = new InMemoryProposalStore();
     const { proposal } = await seed(store);

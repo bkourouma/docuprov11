@@ -42,6 +42,7 @@ const proposalRow = (over: Record<string, unknown> = {}) => ({
 function makePrisma() {
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ id: 1n }]),
+    $executeRaw: jest.fn().mockResolvedValue(1),
     asstMessage: {
       aggregate: jest.fn().mockResolvedValue({ _max: { position: 2 } }),
       create: jest.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) =>
@@ -130,17 +131,29 @@ describe('AsstProposalStoreService — identifiants et visibilité', () => {
     });
   });
 
-  it('deleteConversation : un seul UPDATE conditionnel (purge_at conservée si trace d’exécution) ; false si aucune ligne', async () => {
-    const { store, prisma } = makePrisma();
+  it('deleteConversation : verrou de ligne puis UPDATE conditionnel dans une transaction (purge_at conservée si trace) ; false si aucune ligne', async () => {
+    const { store, prisma, tx } = makePrisma();
     await expect(store.deleteConversation(10, '7', NOW)).resolves.toBe(true);
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
-    const [strings, ...values] = prisma.$executeRaw.mock.calls[0] as [string[], ...unknown[]];
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    const [lockStrings, ...lockValues] = tx.$queryRaw.mock.calls[0] as [string[], ...unknown[]];
+    const lockSql = lockStrings.join('?');
+    expect(lockSql).toMatch(/FOR UPDATE/);
+    expect(lockSql).toMatch(/"deleted_at" IS NULL/);
+    expect(lockValues).toEqual([7n, 10]);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    const [strings, ...values] = tx.$executeRaw.mock.calls[0] as [string[], ...unknown[]];
     const sql = strings.join('?');
     expect(sql).toMatch(/UPDATE "asst_conversation"/);
     expect(sql).toMatch(/"status" IN \(1, 2, 5\)/);
     expect(sql).toMatch(/"deleted_at" IS NULL/);
     expect(values).toEqual([NOW, NOW, NOW, 7n, 10]);
-    prisma.$executeRaw.mockResolvedValue(0);
+    // Échange introuvable, masqué ou d'un autre : le verrou ne renvoie rien, aucune mise à jour.
+    tx.$queryRaw.mockResolvedValueOnce([]);
+    await expect(store.deleteConversation(10, '7', NOW)).resolves.toBe(false);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    // Mise à jour sans ligne (masqué entre-temps) : false.
+    tx.$executeRaw.mockResolvedValueOnce(0);
     await expect(store.deleteConversation(10, '7', NOW)).resolves.toBe(false);
   });
 
@@ -279,14 +292,54 @@ describe('AsstProposalStoreService — transitionProposal', () => {
     now: NOW,
   } as const;
 
-  it('0->1 : compare-and-set, confirmedAt renseigné, version incrémentée', async () => {
+  it('0->1 : un seul UPDATE conditionnel (statut, version ET échange non masqué, verrou partagé), confirmedAt renseigné', async () => {
     const { store, prisma } = makePrisma();
     const dto = await store.transitionProposal(base);
-    expect(prisma.asstProposal.updateMany).toHaveBeenCalledWith({
-      where: { asstProposalId: 5n, status: 0, rowVersion: 0 },
-      data: { status: 1, rowVersion: { increment: 1 }, updatedAt: NOW, confirmedAt: NOW },
-    });
+    expect(prisma.asstProposal.updateMany).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    const [strings, ...values] = prisma.$executeRaw.mock.calls[0] as [string[], ...unknown[]];
+    const sql = strings.join('?');
+    expect(sql).toMatch(/c\."deleted_at" IS NULL/);
+    expect(sql).toMatch(/FOR SHARE OF c/);
+    expect(sql).toMatch(/"row_version" = "row_version" \+ 1/);
+    expect(sql).toMatch(/"conversation_id" IN \(SELECT id FROM conv\)/);
+    expect(values).toEqual([5n, 1, NOW, NOW, 5n, 0, 0]);
     expect(dto?.status).toBe(AsstProposalStatus.Confirmed);
+  });
+
+  it('0->1 : échange masqué (aucune ligne touchée) -> null, comme un CAS perdu, sans relecture', async () => {
+    const { store, prisma } = makePrisma();
+    prisma.$executeRaw.mockResolvedValue(0);
+    await expect(store.transitionProposal(base)).resolves.toBeNull();
+    expect(prisma.asstProposal.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('0->1 dans la transaction fournie (t.db) : écrit dans t.db, jamais dans le client', async () => {
+    const { store, prisma } = makePrisma();
+    const db = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
+      asstProposal: { findUnique: jest.fn().mockResolvedValue(proposalRow({ status: 1, rowVersion: 1 })) },
+    };
+    const dto = await store.transitionProposal({ ...base, db });
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(dto?.rowVersion).toBe(1);
+  });
+
+  it('les autres transitions ne dépendent pas du masquage (updateMany sans filtre sur l’échange)', async () => {
+    const { store, prisma } = makePrisma();
+    for (const [from, to] of [
+      [1, AsstProposalStatus.Applied],
+      [1, AsstProposalStatus.Failed],
+      [0, AsstProposalStatus.Refused],
+      [0, AsstProposalStatus.Expired],
+    ] as const) {
+      await store.transitionProposal({ ...base, expectedStatus: from, to, ...(to === AsstProposalStatus.Failed ? { errorCode: 'x' } : {}) });
+    }
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    for (const call of prisma.asstProposal.updateMany.mock.calls) {
+      expect(Object.keys(call[0].where).sort()).toEqual(['asstProposalId', 'rowVersion', 'status']);
+    }
   });
 
   it('1->2 : finishedAt et résultat ; 1->5 : code et message d’erreur ; 0->3 : finishedAt seul', async () => {
@@ -336,7 +389,7 @@ describe('AsstProposalStoreService — transitionProposal', () => {
   it('count 0 -> null (verrou optimiste perdu)', async () => {
     const { store, prisma } = makePrisma();
     prisma.asstProposal.updateMany.mockResolvedValue({ count: 0 });
-    await expect(store.transitionProposal(base)).resolves.toBeNull();
+    await expect(store.transitionProposal({ ...base, expectedStatus: 1, to: AsstProposalStatus.Applied })).resolves.toBeNull();
     expect(prisma.asstProposal.findUnique).not.toHaveBeenCalled();
   });
 
@@ -348,7 +401,7 @@ describe('AsstProposalStoreService — transitionProposal', () => {
         findUnique: jest.fn().mockResolvedValue(proposalRow({ status: 1, rowVersion: 1 })),
       },
     };
-    const dto = await store.transitionProposal({ ...base, db });
+    const dto = await store.transitionProposal({ ...base, expectedStatus: 1, to: AsstProposalStatus.Applied, db });
     expect(db.asstProposal.updateMany).toHaveBeenCalledTimes(1);
     expect(db.asstProposal.findUnique).toHaveBeenCalledTimes(1);
     expect(prisma.asstProposal.updateMany).not.toHaveBeenCalled();
@@ -359,6 +412,8 @@ describe('AsstProposalStoreService — transitionProposal', () => {
     const { store, prisma } = makePrisma();
     const err = new Error('proposition expirée, confirmation refusée');
     prisma.asstProposal.updateMany.mockRejectedValue(err);
+    await expect(store.transitionProposal({ ...base, to: AsstProposalStatus.Refused })).rejects.toBe(err);
+    prisma.$executeRaw.mockRejectedValue(err);
     await expect(store.transitionProposal(base)).rejects.toBe(err);
   });
 });

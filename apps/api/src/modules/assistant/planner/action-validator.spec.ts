@@ -18,8 +18,15 @@ import {
   type ActionApplier,
 } from '../../workflow-agent-catalog/catalog.contracts';
 import { makeAsstIdentity } from '../testing/fake-identity';
-import { AsstActionValidatorService } from './action-validator';
-import { parseClarificationContent, stripClarificationMarker } from './clarification-format';
+import { AsstActionValidatorService, INTENT_CONFIRMATION_REASON, type ActionValidationRequest } from './action-validator';
+import {
+  INTENT_CONFIRM_NO,
+  INTENT_CONFIRM_YES,
+  formatIntentConfirmation,
+  parseClarificationContent,
+  parseIntentConfirmation,
+  stripClarificationMarker,
+} from './clarification-format';
 import { REFUSED_PHRASES } from './planner.injection-corpus';
 import {
   emptyEvidence,
@@ -209,7 +216,7 @@ function evidence(over: Partial<PlannerEvidence> = {}): PlannerEvidence {
 let data: FakePlannerData;
 let draftGenerator: jest.Mock<Promise<PlannerDraftResult>, [{ templateId: string; instruction: string; mailId?: number }]>;
 
-function input(over: Partial<ActionValidationInput>): ActionValidationInput {
+function input(over: Partial<ActionValidationRequest>): ActionValidationRequest {
   return {
     identity: makeAsstIdentity(1), // userGroupId 10
     userMessage: 'impute ce courrier à la DAF sous 3 jours',
@@ -224,7 +231,7 @@ function input(over: Partial<ActionValidationInput>): ActionValidationInput {
   };
 }
 
-async function validate(over: Partial<ActionValidationInput> = {}, registry = makeRegistry()): Promise<ActionValidationOutcome> {
+async function validate(over: Partial<ActionValidationRequest> = {}, registry = makeRegistry()): Promise<ActionValidationOutcome> {
   return new AsstActionValidatorService(data, registry).validate(input(over));
 }
 
@@ -999,22 +1006,40 @@ describe('tour de correction — la phrase refuse ou suppose l’action', () => 
     );
   });
 
-  it('« impute à la DAF mais pas à la DRH » : DAF seule acceptée, jamais la DRH', async () => {
+  it('« impute à la DAF mais pas à la DRH » : DAF seule, après confirmation ; jamais la DRH', async () => {
     const userMessage = 'impute ce courrier à la DAF mais pas à la DRH';
     const searches = { actorSearches: [{ search: 'DAF', actors: [AWA] }, { search: 'DRH', actors: [FATOU] }] };
-    const o = ok(await validate({ userMessage, evidence: evidence(searches) }));
+    // Message marqué (« pas ») : question de confirmation construite par le code (DAF seule dans le résumé).
+    const asked = expectFailure(await validate({ userMessage, evidence: evidence(searches) }), 'clarify', INTENT_CONFIRMATION_REASON);
+    const summary = parseIntentConfirmation(asked)?.summary ?? '';
+    expect(summary).toContain('« Awa Diallo — DAF »');
+    expect(summary).not.toContain('DRH');
+    // « Oui » : l'ordre est rejoué, le même résumé recalculé, la DAF seule acceptée.
+    const o = ok(
+      await validate({
+        userMessage: INTENT_CONFIRM_YES,
+        previousUserMessages: [userMessage],
+        intentConfirmation: { summary },
+        evidence: evidence(searches),
+      }),
+    );
     expect(o.actions[0]).toMatchObject({ args: { recipients: [{ userGroupId: 31 }] } });
-    // DRH proposée (seule ou avec la DAF) : refus.
-    expectFailure(
-      await validate({ userMessage, evidence: evidence(searches), rawActions: [{ tool: IMP, args: { mailId: 4321, recipients: [{ userGroupId: 31 }, { userGroupId: 33 }] } }] }),
-      'refuse',
-      'actor_excluded',
-    );
-    expectFailure(
-      await validate({ userMessage, evidence: evidence(searches), rawActions: [{ tool: IMP, args: { mailId: 4321, recipients: [{ userGroupId: 33 }] } }] }),
-      'refuse',
-      'actor_excluded',
-    );
+    // DRH proposée (seule ou avec la DAF), avec ou sans confirmation : refus (la négation reste exclusive).
+    for (const recipients of [[{ userGroupId: 31 }, { userGroupId: 33 }], [{ userGroupId: 33 }]]) {
+      const rawActions = [{ tool: IMP, args: { mailId: 4321, recipients } }];
+      expectFailure(await validate({ userMessage, evidence: evidence(searches), rawActions }), 'refuse', 'actor_excluded');
+      expectFailure(
+        await validate({
+          userMessage: INTENT_CONFIRM_YES,
+          previousUserMessages: [userMessage],
+          intentConfirmation: { summary },
+          evidence: evidence(searches),
+          rawActions,
+        }),
+        'refuse',
+        'actor_excluded',
+      );
+    }
   });
 
   it('acteur, cible de relance, espace et courrier écartés par une négation : jamais retenus', async () => {
@@ -1050,5 +1075,152 @@ describe('tour de correction — la phrase refuse ou suppose l’action', () => 
     expectFailure(await validate({ userMessage: 'merci', previousUserMessages: [DAF] }), 'refuse', 'intent_not_established');
     // Témoin : réponse à une question (l'appelant transmet l'ordre précédent).
     ok(await validate({ userMessage: 'Awa Diallo', previousUserMessages: [DAF] }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Principe « échec fermé par question » : marque de réserve => confirmation d'intention
+// ---------------------------------------------------------------------------
+
+describe('confirmation d’intention (message marqué)', () => {
+  const MARKED = 'impute ce courrier à la DAF sous 3 jours, pas à la DRH';
+  const SUMMARY_AWA =
+    'Imputer le courrier n°4321 (réf. CE/2026/0042) « Demande de subvention » à « Awa Diallo — DAF » : type « Pour Suivi » (type par défaut), délai de 3 jours';
+  const confirmed = (over: Partial<ActionValidationRequest> = {}): Partial<ActionValidationRequest> => ({
+    userMessage: INTENT_CONFIRM_YES,
+    previousUserMessages: [MARKED],
+    intentConfirmation: { summary: SUMMARY_AWA },
+    ...over,
+  });
+
+  it('ordre marqué : question construite par le code, résumé + deux choix exacts, aucune action', async () => {
+    const o = await validate({ userMessage: MARKED });
+    const msg = expectFailure(o, 'clarify', INTENT_CONFIRMATION_REASON);
+    expect(msg).toBe(formatIntentConfirmation(SUMMARY_AWA));
+    expect(stripClarificationMarker(msg)).toBe(
+      `Voulez-vous que je prépare : ${SUMMARY_AWA} ?\n\n1. ${INTENT_CONFIRM_YES}\n2. ${INTENT_CONFIRM_NO}`,
+    );
+    expect(parseClarificationContent(msg)?.choices).toEqual([INTENT_CONFIRM_YES, INTENT_CONFIRM_NO]);
+    expect(parseIntentConfirmation(msg)).toEqual({ summary: SUMMARY_AWA });
+    expect('actions' in o).toBe(false);
+    expect(draftGenerator).not.toHaveBeenCalled();
+  });
+
+  it('ordre sans marque : proposition directe (témoins)', async () => {
+    ok(await validate({ userMessage: 'impute ce courrier à la DAF sous 3 jours' }));
+    ok(await validate({ userMessage: "N'hésite pas à imputer ce courrier à la DAF sous 3 jours" }));
+  });
+
+  it('marque dans un message précédent de la chaîne (réponse à une question) : confirmation aussi', async () => {
+    const o = await validate({
+      userMessage: 'Awa Diallo',
+      previousUserMessages: ['impute ce courrier à la DAF sous 3 jours, sauf si la DG s’y oppose'],
+      evidence: evidence({ actorSearches: [{ search: 'DAF', actors: [AWA, MOUSSA] }] }),
+    });
+    expectFailure(o, 'clarify', INTENT_CONFIRMATION_REASON);
+  });
+
+  it('refus ordinaire avant la question : un acteur exclu ou un ordre absent restent des refus', async () => {
+    expectFailure(
+      await validate({
+        userMessage: MARKED,
+        evidence: evidence({ actorSearches: [{ search: 'DAF', actors: [AWA] }, { search: 'DRH', actors: [FATOU] }] }),
+        rawActions: [{ tool: IMP, args: { mailId: 4321, recipients: [{ userGroupId: 33 }] } }],
+      }),
+      'refuse',
+      'actor_excluded',
+    );
+    expectFailure(
+      await validate({ userMessage: MARKED, rawActions: [{ tool: IMP, args: { mailId: 4321, recipients: [{ userGroupId: 99 }] } }] }),
+      'refuse',
+      'actor_not_established',
+    );
+    expectFailure(await validate({ userMessage: "n'impute pas ce courrier à la DAF" }), 'refuse', 'intent_not_established');
+    expectFailure(await validate({ userMessage: 'faut-il imputer ce courrier à la DAF ?' }), 'refuse', 'intent_not_established');
+  });
+
+  it('question de précision ordinaire avant la confirmation (DAF ambiguë)', async () => {
+    const o = await validate({ userMessage: MARKED, evidence: evidence({ actorSearches: [{ search: 'DAF', actors: [AWA, MOUSSA] }] }) });
+    expectFailure(o, 'clarify', 'actor_ambiguous');
+  });
+
+  it('brouillon marqué : question SANS génération ; « Oui » : génération avec la consigne de l’ordre', async () => {
+    const order = 'rédige une réponse polie à ce courrier, si possible';
+    const rawActions = [{ tool: BRO, args: { templateId: 'accuse-reception', mailId: 4321, spaceId: 7 } }];
+    const asked = expectFailure(await validate({ userMessage: order, evidence: evidence(), rawActions }), 'clarify', INTENT_CONFIRMATION_REASON);
+    expect(draftGenerator).not.toHaveBeenCalled();
+    const summary = parseIntentConfirmation(asked)?.summary ?? '';
+    expect(summary).toBe(
+      "Préparer un brouillon de réponse au courrier n°4321 (réf. CE/2026/0042) « Demande de subvention » (modèle « Accusé de réception ») dans l'espace « Espace Juridique » : document brouillon, rien n'est envoyé",
+    );
+    const o = ok(
+      await validate({
+        userMessage: INTENT_CONFIRM_YES,
+        previousUserMessages: [order],
+        intentConfirmation: { summary },
+        evidence: evidence(),
+        rawActions,
+      }),
+    );
+    expect(draftGenerator).toHaveBeenCalledTimes(1);
+    expect(draftGenerator).toHaveBeenCalledWith({ templateId: 'accuse-reception', instruction: order, mailId: 4321 });
+    expect(o.actions[0]?.tool).toBe(BRO);
+  });
+
+  it('« Oui » : l’ordre est rejoué, mêmes contrôles, même résumé ; motif = l’ordre, jamais « Oui »', async () => {
+    const o = ok(await validate(confirmed()));
+    expect(o.actions).toEqual([
+      {
+        tool: IMP,
+        args: {
+          mailId: 4321,
+          recipients: [{ userGroupId: 31, mailInputationTypeId: MAIL_INPUTATION_TYPE_IDS.pourSuivi, delayDays: 3 }],
+          rationale: `Demande de l'utilisateur (assistant) : « ${MARKED} »`,
+        },
+      },
+    ]);
+    expect(o.summary).toContain('« Awa Diallo — DAF »');
+  });
+
+  it('liaison : résumé recalculé différent de celui montré => refus', async () => {
+    // Résumé altéré (autre délai).
+    expectFailure(
+      await validate(confirmed({ intentConfirmation: { summary: SUMMARY_AWA.replace('3 jours', '5 jours') } })),
+      'refuse',
+      'intent_confirmation_mismatch',
+    );
+    // Action différente proposée après la confirmation (autre destinataire de la DAF).
+    expectFailure(
+      await validate(
+        confirmed({
+          evidence: evidence({ actorSearches: [{ search: 'DAF', actors: [MOUSSA] }] }),
+          rawActions: [{ tool: IMP, args: { mailId: 4321, recipients: [{ userGroupId: 32 }] } }],
+        }),
+      ),
+      'refuse',
+      'intent_confirmation_mismatch',
+    );
+    // Les données ont changé : une précision serait nécessaire => refus (pas de boucle de questions).
+    expectFailure(
+      await validate(confirmed({ evidence: evidence({ actorSearches: [{ search: 'DAF', actors: [AWA, MOUSSA] }] }) })),
+      'refuse',
+      'intent_confirmation_mismatch',
+    );
+  });
+
+  it.each([INTENT_CONFIRM_NO, 'oui', 'ok', 'Oui, prépare cette action, mais pas tout de suite', 'impute à la DAF'])(
+    'confirmation non reconnue « %s » : refus',
+    async (userMessage) => {
+      expectFailure(await validate(confirmed({ userMessage })), 'refuse', 'intent_confirmation_invalid');
+    },
+  );
+
+  it('confirmation sans ordre à rejouer, ou ordre annulé depuis : refus', async () => {
+    expectFailure(await validate(confirmed({ previousUserMessages: [] })), 'refuse', 'intent_confirmation_invalid');
+    expectFailure(await validate(confirmed({ previousUserMessages: [MARKED, 'laisse tomber'] })), 'refuse', 'intent_not_established');
+  });
+
+  it('« Oui, prépare cette action » hors confirmation : aucun ordre', async () => {
+    expectFailure(await validate({ userMessage: INTENT_CONFIRM_YES }), 'refuse', 'intent_not_established');
   });
 });
