@@ -550,6 +550,15 @@ Une proposition déjà en attente n'en crée pas une seconde. La proposition est
 clôture (`resolution.outcome`). La taille est bornée à 64 Kio. L'autonomie (`agent.autonomy`) n'est **pas** appliquée par le
 moteur : W2 ne doit renvoyer `complete` que si le niveau configuré le permet.
 
+**Applicateur d'effets (W6).** Les actions préparées par un agent ne sont appliquées qu'à la validation humaine, par un port
+du moteur : interface `WfEffectApplierPort` (`apply(input)`, dans `engine/engine.types.ts`), conteneur mutable
+`WfEffectApplierHolder` (`engine/effect-applier.ts`, fourni sous le jeton `WF_EFFECT_APPLIER` de `workflows.tokens.ts`),
+branché par le module du catalogue d'agents (`EffectDispatcher`). Point d'appel : `closeTaskAndAdvance` (`engine/engine.ts`)
+appelle `applyValidatedEffects` avant la clôture, dans la même transaction, seulement quand un humain valide (pas pour un
+rejet, pas pour la clôture par l'agent). Sans applicateur branché, la validation d'une proposition portant une action
+est refusée (`INVALID_INPUT`, HTTP 422, code `no_applier`) et rien n'est enregistré. Détail : `docs/workflow-agents-catalogue.md`
+(chapitre 3) et `docs/workflow-agents.md` (section 12).
+
 ### 7.2 Démarrage par déclencheur (W3)
 
 Jeton `WF_TRIGGER_STARTER`, interface `WfTriggerStarter`. L'implémentation `WorkflowTriggerStarterService` existe déjà en W1 :

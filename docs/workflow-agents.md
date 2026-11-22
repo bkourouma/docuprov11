@@ -92,11 +92,16 @@ Interface `WfTool` (`agent.contracts.ts`) : clé, schéma d'entrée zod strict, 
 | `proposer_imputation` | 1, validation | Prépare une imputation ; **n'écrit rien**. |
 | `proposer_reponse` | 1, validation | Prépare une réponse ; **n'écrit rien**. |
 
-- Aucun outil de base n'écrit hors proposition. `WfPreparedAction` voyage dans la proposition (kind 1).
+- Ce tableau ne liste que les cinq outils de base (W2). Les huit outils du catalogue W6 (`lister_courriers_similaires`, `lire_organigramme_imputable`,
+  `lister_pieces`, `comparer_champs`, `proposer_imputation_courrier`, `preparer_brouillon_reponse`, `proposer_relance`, `proposer_delegation`)
+  sont décrits dans `docs/workflow-agents-catalogue.md` (chapitre 6).
+- Aucun outil, de base ou de catalogue, n'écrit lui-même : il prépare une action. `WfPreparedAction` voyage dans la proposition (kind 1) et n'est appliquée
+  qu'à la validation humaine, par un applicateur (voir section 12 et `docs/workflow-agents-catalogue.md`, chapitre 3).
 - Règle d'accès courrier (prudente, réversible, `tools/agent-data.adapter.ts`) : périmètre `none` refus ; `all` lisible ; `imputed` seulement
   si imputation au lanceur ou destinataire ; rang de confidentialité du lanceur >= rang requis (rapprochement par libellé avec les niveaux documentaires, refus si sans équivalent) ; administrateur exempté du seul contrôle de confidentialité.
 - Autorisations : `wf_tool` est alimenté au démarrage (`WfToolSyncService`, jamais `is_enabled`). Routes admin :
   `GET /workflows/agents/tools`, `GET|PUT /workflows/agents/definitions/:id/tool-grants` (`maxCallsPerInstance`, comptés sur `agent.tool_called`).
+  L'autorisation des outils par workflow s'administre à l'écran `/workflows/conception/<id>/outils` (voir `docs/workflow-interface.md`).
 - Ajouter un outil : implémenter `WfTool`, l'enregistrer dans `toolRegistryProvider`, lancer l'application (synchronisation), l'autoriser par workflow.
 
 ## 5. Identité et droits
@@ -150,7 +155,8 @@ Tout passe par `AiService.run` : en mode cloud, masquage obligatoire (échec fer
 ## 10. Évaluation
 
 Routes (menu Conception) sous `/workflows/agents` : `eval-sets` (liste, création, lecture, modification), `eval-sets/:id/cases` (ajout, modification, désactivation),
-`eval-sets/:id/runs` (liste, lancement : 202, exécution en arrière-plan), `eval-runs/:runId`.
+`eval-sets/:id/runs` (liste, lancement : 202, exécution en arrière-plan), `eval-runs/:runId`,
+`GET eval-status?definitionId=` (lecture seule : éligibilité à l'autonomie de chaque étape agent de la dernière version, `{ definitionId, definitionVersionId, versionNumber, steps: [{ stepKey, evalSetId, eligible, reason }] }` ; 404 workflow inconnu, 422 sans version).
 
 - Cas : `input` (blocs de données, objet lié, contexte) et `expected` (`result` par sous-ensemble, `returnsToHuman`, `suspicionInjection`, `minConfidence`). Maximum 500 cas actifs.
 - Run : exécute l'agent en `dry_run` (aucun événement d'instance, aucune écriture), avec l'identité de l'évaluateur ; précision = cas réussis / total (le poids n'entre pas : le SQL impose `accuracy = passed/total`) ;
@@ -174,7 +180,7 @@ pnpm --filter @archivage/api exec jest -i engine.integration budget.integration 
 
 ## 12. Limites connues
 
-- **Les outils d'écriture ne font que préparer.** Les effets sont appliqués après validation humaine par les applicateurs du lot W6, dans la transaction de validation (voir `docs/workflow-agents-catalogue.md`). Sans module catalogue, le comportement W2 est conservé : rien n'est appliqué.
+- **Les outils d'écriture ne font que préparer.** Les effets sont appliqués après validation humaine par les applicateurs du lot W6, dans la transaction de validation (voir `docs/workflow-agents-catalogue.md`). Port du moteur : `WfEffectApplierPort`, conteneur `WfEffectApplierHolder`, appel dans `closeTaskAndAdvance`. **Sans applicateur branché (module catalogue absent), la validation d'une proposition portant des actions est REFUSÉE** : `INVALID_INPUT`, HTTP 422, code `no_applier`, rien n'est enregistré (la tâche reste ouverte) ; ce n'est pas un « rien n'est appliqué » silencieux. Sont sans effet de ce refus : le rejet de la proposition ; l'acceptation d'une proposition sans action préparée ; une proposition de niveau 0 (`suggestedActions`, jamais appliquées) ; une proposition signalée `suspicion_injection`. Une action sans applicateur enregistré pour son outil, ou rendue en effet ignoré (`skipped`) par l'applicateur, provoque le même refus, même mêlée à des actions valides (rollback complet). Un utilisateur peut donc refuser la proposition ou la modifier en retirant l'action.
 - **Schéma JSON non strict côté fournisseur** : le tour d'agent contient des objets libres (`arguments`, `result`) ; le runner envoie `strictSchema: false` (option additive de `AiCompletionRequest`, honorée par les deux fournisseurs ; strict par défaut pour tous les autres appelants). La validation zod stricte côté serveur reste la référence.
 - `AiService.run` ne prend pas de modèle : `spec.model` est ignoré (`audit.model` reçoit le modèle renvoyé par le fournisseur).
 - La détection d'injection est heuristique (faux positifs et négatifs possibles) ; elle ne remplace pas la validation humaine.

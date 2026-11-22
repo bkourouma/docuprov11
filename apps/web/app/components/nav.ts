@@ -153,6 +153,15 @@ export const NAV: NavSection[] = [
         icon: 'admin',
         keywords: ['workflow', 'toutes les instances', 'annuler', 'suspendre', 'docu-flow'],
       },
+      // Sans menu propre dans le catalogue des rôles : visible exactement quand l'utilisateur détient le menu
+      // « administration » (le filtre accepte altKeys), qui est celui qu'exigent les routes de budget de l'API.
+      {
+        key: '/workflows/administration/plafonds',
+        label: 'Plafonds et arrêt d’urgence',
+        icon: 'alert',
+        keywords: ['workflow', 'agent', 'plafond', 'budget', 'coût', 'arrêt d’urgence', 'stop', 'docu-flow'],
+        altKeys: ['/workflows/administration'],
+      },
     ],
   },
   {

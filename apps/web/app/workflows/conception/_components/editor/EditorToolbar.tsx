@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { Button, Dropdown, Segmented } from 'antd';
 import type { MenuProps } from 'antd';
 import { icons, iconDefaults } from '../../../../theme/icons';
@@ -20,6 +21,8 @@ export interface EditorToolbarProps {
   canPublish: boolean;
   /** Pourquoi « Publier » est inactif (affiché près des boutons et relié par aria-describedby). */
   publishBlockedReason: string | null;
+  /** Lien « Outils autorisés » : fourni UNIQUEMENT aux administrateurs (menu d'administration exigé par l'API). */
+  toolGrantsLink?: string | null;
   view: EditorViewMode;
   onView(view: EditorViewMode): void;
   onSave(): void;
@@ -50,6 +53,12 @@ export function EditorToolbar(p: EditorToolbarProps) {
       { key: 'publish', icon: ico('send'), label: 'Publier…', disabled: publishDisabled },
       { type: 'divider' },
     );
+  }
+  if (p.compact && p.toolGrantsLink) {
+    moreItems.push({
+      key: 'grants',
+      label: <Link href={p.toolGrantsLink}>Outils autorisés</Link>,
+    });
   }
   moreItems.push(
     {
@@ -111,6 +120,11 @@ export function EditorToolbar(p: EditorToolbarProps) {
             </Button>
           </>
         )}
+        {!p.compact && p.toolGrantsLink ? (
+          <Link href={p.toolGrantsLink} className="wfe-link-btn">
+            Outils autorisés
+          </Link>
+        ) : null}
         <Dropdown menu={{ items: moreItems, onClick: onMore }} trigger={['click']} placement="bottomLeft">
           <Button icon={ico('menu')} aria-haspopup="menu">
             Plus

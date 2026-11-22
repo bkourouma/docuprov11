@@ -23,22 +23,40 @@ function setup(opts: {
   canImpute?: (u: AuthUser) => boolean;
   isImputable?: (u: AuthUser, id: number) => boolean;
   rights?: Partial<ApplierContext['rights']>;
+  title?: string | null;
 } = {}) {
+  /** Journal ordonné des accès : verrous de ligne, recherche de doublon, création. */
+  const order: string[] = [];
   const source: Source | null =
     opts.source === undefined
       ? { mailId: 3, userId: 30, dateTreated: null, deadline: DEADLINE, instructions: 'Voir pièce jointe', mailInputationTypeId: 10 }
       : opts.source;
   const tx = {
+    $queryRaw: jest.fn(async (query: { sql: string; values: unknown[] }) => {
+      if (/FROM mail WHERE mail_id = \? FOR UPDATE/.test(query.sql)) order.push(`lock:mail:${String(query.values[0])}`);
+      else if (/FROM mail_inputation WHERE mail_inputation_id = \? FOR UPDATE/.test(query.sql)) order.push(`lock:inputation:${String(query.values[0])}`);
+      else order.push('lock:unexpected');
+      return [{}];
+    }),
     mailInputation: {
-      findUnique: jest.fn(async () => source),
-      findFirst: jest.fn(async () => opts.existing ?? null),
-      create: jest.fn(async () => ({ mailInputationId: 900 })),
+      findUnique: jest.fn(async () => {
+        order.push('read:source');
+        return source;
+      }),
+      findFirst: jest.fn(async () => {
+        order.push('find-duplicate');
+        return opts.existing ?? null;
+      }),
+      create: jest.fn(async () => {
+        order.push('create');
+        return { mailInputationId: 900 };
+      }),
       update: jest.fn(async () => ({})),
       delete: jest.fn(async () => ({})),
       deleteMany: jest.fn(async () => ({})),
       updateMany: jest.fn(async () => ({})),
     },
-    mail: { findUnique: jest.fn(async () => ({ title: 'Objet du courrier' })) },
+    mail: { findUnique: jest.fn(async () => ({ title: opts.title === undefined ? 'Objet du courrier' : opts.title })) },
     notification: { create: jest.fn(async () => ({})) },
   };
   const rights = {
@@ -67,7 +85,7 @@ function setup(opts: {
     isImputable: jest.fn(async (u: AuthUser, id: number) => (opts.isImputable ? opts.isImputable(u, id) : true)),
     list: jest.fn(async () => []),
   };
-  return { tx, ctx, rights, actors, applier: new DelegationApplier(actors) };
+  return { tx, ctx, rights, actors, order, applier: new DelegationApplier(actors) };
 }
 
 const validArgs = { mailId: 3, mailInputationId: 50, delegateUserGroupId: 40, rationale: 'Absence du titulaire' };
@@ -172,6 +190,28 @@ describe('DelegationApplier', () => {
     expect(tx.mailInputation.findFirst).toHaveBeenCalledWith({
       where: { mailId: 3, userId: 40, mailInputationTypeId: 10, dateTreated: null },
       select: { mailInputationId: true },
+    });
+  });
+
+  it('verrous de ligne : courrier PUIS imputation source, avant lecture de la source et recherche de doublon', async () => {
+    const { applier, ctx, order } = setup();
+    await applier.apply(ctx, applier.parse(validArgs));
+    expect(order).toEqual(['lock:mail:3', 'lock:inputation:50', 'read:source', 'find-duplicate', 'create']);
+  });
+
+  it('titre du courrier tronqué à 300 caractères dans la notification (comme l imputation)', async () => {
+    const { applier, ctx, tx } = setup({ title: `  ${'é'.repeat(350)}  ` });
+    await applier.apply(ctx, applier.parse(validArgs));
+    const message = (tx.notification.create.mock.calls[0] as unknown as [{ data: { message: string } }])[0].data.message;
+    expect(message).toBe(`Courrier imputé : ${'é'.repeat(299)}…`);
+    expect(Array.from(message.replace('Courrier imputé : ', ''))).toHaveLength(300);
+  });
+
+  it('titre vide : repli sur le numéro du courrier', async () => {
+    const { applier, ctx, tx } = setup({ title: '   ' });
+    await applier.apply(ctx, applier.parse(validArgs));
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: { recipientUserGroupId: 40, message: 'Courrier imputé : #3', targetType: 'mail', targetId: 3 },
     });
   });
 

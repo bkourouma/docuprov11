@@ -1,0 +1,75 @@
+/* Écran « Outils autorisés » (préfixe wft-). Variables AntD uniquement : clair et sombre. */
+.wft-root { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.wft-root > header { margin-bottom: 0 !important; }
+.wft-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wft-section h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.wft-help p { margin: 0 0 6px; }
+.wft-help p:last-child { margin-bottom: 0; }
+.wft-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.wft-dirty { color: var(--ant-color-warning-text, var(--ant-color-warning)); font-weight: 600; }
+.wft-missing-list { margin: 4px 0 0; padding-left: 20px; }
+.wft-footer { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+
+/* ---- Tableau (grand écran) ---- */
+.wft-table { width: 100%; border-collapse: collapse; table-layout: auto; }
+.wft-table th, .wft-table td {
+  padding: 10px 12px; text-align: left; vertical-align: top;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+}
+.wft-table thead th {
+  font-size: 12px; font-weight: 600; color: var(--ant-color-text-secondary);
+  background: var(--ant-color-fill-quaternary);
+}
+.wft-table tbody th { font-weight: 400; }
+.wft-row--granted { background: var(--ant-color-primary-bg); }
+.wft-cell-check { white-space: nowrap; }
+.wft-checkbox { width: 20px; height: 20px; vertical-align: middle; margin: 0 6px 0 0; cursor: pointer; accent-color: var(--ant-color-primary); }
+.wft-checkbox:disabled { cursor: not-allowed; }
+.wft-check-label { cursor: pointer; vertical-align: middle; }
+.wft-checkbox:focus-visible, .wft-input:focus-visible {
+  outline: 2px solid var(--ant-color-primary); outline-offset: 2px;
+}
+.wft-tool-inner { display: flex; flex-direction: column; gap: 3px; min-width: 200px; }
+.wft-tool-label { font-weight: 600; overflow-wrap: anywhere; }
+.wft-tool-key { font-size: 12px; color: var(--ant-color-text-secondary); overflow-wrap: anywhere; }
+.wft-tool-desc { overflow-wrap: anywhere; }
+.wft-used { font-size: 13px; color: var(--ant-color-primary); font-weight: 600; }
+.wft-note { display: block; font-size: 12px; color: var(--ant-color-text-secondary); overflow-wrap: anywhere; }
+.wft-error { display: block; margin-top: 4px; font-size: 13px; color: var(--ant-color-error-text, var(--ant-color-error)); overflow-wrap: anywhere; }
+.wft-effect { display: inline-block; font-weight: 600; }
+.wft-effect--read { color: var(--ant-color-success-text, var(--ant-color-success)); }
+.wft-effect--write { color: var(--ant-color-warning-text, var(--ant-color-warning)); }
+.wft-effect--danger { color: var(--ant-color-error-text, var(--ant-color-error)); }
+.wft-status--on { color: var(--ant-color-success-text, var(--ant-color-success)); }
+.wft-status--off { color: var(--ant-color-text-secondary); }
+.wft-input {
+  width: 100%; min-width: 110px; max-width: 160px; height: 36px; padding: 4px 10px;
+  color: var(--ant-color-text); background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius);
+}
+.wft-input:disabled { background: var(--ant-color-bg-container-disabled); color: var(--ant-color-text-disabled); }
+.wft-input[aria-invalid='true'] { border-color: var(--ant-color-error); }
+
+/* ---- Cartes (moins de 768 px) ---- */
+@media (max-width: 767px) {
+  .wft-table, .wft-table tbody, .wft-table tr, .wft-table td, .wft-table th { display: block; }
+  .wft-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .wft-table tbody { display: flex; flex-direction: column; gap: 12px; }
+  .wft-row {
+    padding: 8px 4px; border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius-lg);
+    background: var(--ant-color-bg-container);
+  }
+  .wft-row--granted { background: var(--ant-color-primary-bg); }
+  .wft-table th, .wft-table td { border-bottom: 0; padding: 6px 12px; }
+  .wft-table td[data-label]::before {
+    content: attr(data-label); display: block; margin-bottom: 2px;
+    font-size: 12px; font-weight: 600; color: var(--ant-color-text-secondary);
+  }
+  .wft-cell-check::before { display: none !important; }
+  .wft-cell-check { display: flex !important; align-items: center; min-height: 44px; white-space: normal; }
+  .wft-check-label { padding: 10px 0; flex: 1; }
+  .wft-checkbox { width: 24px; height: 24px; margin-right: 10px; }
+  .wft-tool-inner { min-width: 0; }
+  .wft-input { max-width: none; height: 44px; }
+  .wft-actions .ant-btn, .wft-footer .ant-btn { min-height: 44px; }
+}

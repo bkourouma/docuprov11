@@ -1,12 +1,18 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { Button, Collapse } from 'antd';
 import type { WfGraph } from '@archivage/types';
 import type { WfDefinitionIssue } from '../../../../lib/workflows-api';
 import { explainIssue, groupIssuesByStep, summarizeIssues } from '../../../_lib/graph-issues';
+import { issueActionView } from '../panels/editor-guardrails';
 
 export interface IssuesPanelProps {
+  /** Identifiant du workflow : active les liens « Outils autorisés » et « évaluation » des explications. */
+  definitionId?: number;
+  /** Droit d'administration : seul à voir le lien « Outils autorisés » (sinon : « demandez à un administrateur »). */
+  canAdminister?: boolean;
   graph: WfGraph | null;
   /** Problèmes locaux + serveur, déjà fusionnés par la page. */
   issues: WfDefinitionIssue[];
@@ -18,14 +24,19 @@ export interface IssuesPanelProps {
 function IssueItem({
   issue,
   graph,
+  definitionId,
+  canAdminister,
   onFocusStep,
 }: {
   issue: WfDefinitionIssue;
   graph: WfGraph | null;
+  definitionId: number | undefined;
+  canAdminister: boolean;
   onFocusStep(key: string): void;
 }) {
-  const e = explainIssue(issue, graph ?? undefined);
+  const e = explainIssue(issue, graph ?? undefined, definitionId === undefined ? undefined : { definitionId });
   const stepName = e.stepKey !== undefined ? graph?.steps.find((s) => s.key === e.stepKey)?.name : undefined;
+  const action = issueActionView(e.code, e.action, canAdminister);
   return (
     <li className="wfc-issue">
       <h4 className="wfc-issue-title">{e.title}</h4>
@@ -34,6 +45,14 @@ function IssueItem({
         <strong>Comment corriger : </strong>
         {e.fix}
       </p>
+      {action?.kind === 'link' && (
+        <p className="wfc-issue-text">
+          <Link href={action.href} className="wfc-touch">
+            {action.label}
+          </Link>
+        </p>
+      )}
+      {action?.kind === 'text' && <p className="wfc-issue-text">{action.text}</p>}
       {e.stepKey !== undefined && (
         <Button
           size="small"
@@ -55,7 +74,14 @@ function IssueItem({
   );
 }
 
-export function IssuesPanel({ graph, issues, serverChecked, onFocusStep }: IssuesPanelProps) {
+export function IssuesPanel({
+  definitionId,
+  canAdminister = false,
+  graph,
+  issues,
+  serverChecked,
+  onFocusStep,
+}: IssuesPanelProps) {
   const summary = summarizeIssues(issues);
   const empty = issues.length === 0;
   const { global, byStep } = groupIssuesByStep(issues);
@@ -83,7 +109,14 @@ export function IssuesPanel({ graph, issues, serverChecked, onFocusStep }: Issue
           <h3 className="wfc-issues-group">Problèmes généraux</h3>
           <ul className="wfc-issues-list">
             {global.map((issue, i) => (
-              <IssueItem key={`g-${i}`} issue={issue} graph={graph} onFocusStep={onFocusStep} />
+              <IssueItem
+                key={`g-${i}`}
+                issue={issue}
+                graph={graph}
+                definitionId={definitionId}
+                canAdminister={canAdminister}
+                onFocusStep={onFocusStep}
+              />
             ))}
           </ul>
         </section>
@@ -95,7 +128,14 @@ export function IssuesPanel({ graph, issues, serverChecked, onFocusStep }: Issue
             <h3 className="wfc-issues-group">Étape « {name} »</h3>
             <ul className="wfc-issues-list">
               {(byStep[key] ?? []).map((issue, i) => (
-                <IssueItem key={`${key}-${i}`} issue={issue} graph={graph} onFocusStep={onFocusStep} />
+                <IssueItem
+                  key={`${key}-${i}`}
+                  issue={issue}
+                  graph={graph}
+                  definitionId={definitionId}
+                  canAdminister={canAdminister}
+                  onFocusStep={onFocusStep}
+                />
               ))}
             </ul>
           </section>

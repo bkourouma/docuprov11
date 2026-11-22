@@ -396,6 +396,33 @@ describe('AgentRunner — outils', () => {
     expect(h.sink.countToolCalls).not.toHaveBeenCalled();
   });
 
+  it('evalContext : transmis aux outils en dry_run seulement', async () => {
+    const evalContext = { delegates: [{ userGroupId: 8 }] };
+    const h = makeHarness([toolCall('rechercher_documents', { query: 'x' }), final()]);
+    await h.runner.run(
+      makeInput({
+        mode: 'dry_run',
+        scope: { definitionId: 5, stepKey: 'analyse', evalContext },
+        spec: { remainingToolCalls: { rechercher_documents: 3 } },
+      }),
+    );
+    const [ctx] = h.tools.search.execute.mock.calls[0]!;
+    expect(ctx.evalContext).toEqual(evalContext);
+  });
+
+  it('evalContext : JAMAIS transmis en exécution réelle (live), même si le champ est présent', async () => {
+    const h = makeHarness([toolCall('rechercher_documents', { query: 'x' }), final()]);
+    await h.runner.run(
+      makeInput({
+        scope: { definitionId: 5, instanceId: '900', stepKey: 'analyse', evalContext: { delegates: [{ userGroupId: 1 }] } },
+        spec: { remainingToolCalls: { rechercher_documents: 3 } },
+      }),
+    );
+    const [ctx] = h.tools.search.execute.mock.calls[0]!;
+    expect(ctx.dryRun).toBe(false);
+    expect(ctx).not.toHaveProperty('evalContext');
+  });
+
   it('plafond d’appels de l’exécution : le 2e appel est refusé', async () => {
     const h = makeHarness([
       toolCall('rechercher_documents', { query: 'a' }),

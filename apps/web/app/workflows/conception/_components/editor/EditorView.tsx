@@ -22,9 +22,11 @@ import {
   workflowErrorMessage,
   workflowsApi,
   type WfDefinitionVersionSummary,
+  type WfEvalStatus,
   type WfToolCatalogEntry,
 } from '../../../../lib/workflows-api';
 import { canMarkLowRisk } from '../../../_lib/access';
+import { toolGrantsHref } from '../../../_lib/guardrails-links';
 import {
   applyGraph,
   canPublish,
@@ -74,6 +76,12 @@ import { IssuesPanel } from '../canvas/IssuesPanel';
 import { StepOutline } from '../canvas/StepOutline';
 import { StepPalette } from '../canvas/StepPalette';
 import type { EditorSelection } from '../canvas/types';
+import {
+  buildStepEvals,
+  shouldFetchEvalStatus,
+  shouldRefreshNow,
+  type EditorGuardrails,
+} from '../panels/editor-guardrails';
 import { DefinitionStatusTag, VersionStatusTag } from './DefinitionStatusTags';
 import { EditorToolbar, type ToolbarBusy } from './EditorToolbar';
 import { PropertiesPane } from './PropertiesPane';
@@ -146,7 +154,11 @@ export function EditorView() {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [liveFor, setLiveFor] = useState<WfGraph | null>(null);
   const [tools, setTools] = useState<WfToolCatalogEntry[] | null>(null);
-  const [hasPassedEval, setHasPassedEval] = useState<boolean | null>(null);
+  // Statut d'évaluation par étape : `null` = route indisponible (403/404) ou pas encore chargé.
+  const [evalStatus, setEvalStatus] = useState<WfEvalStatus | null>(null);
+  const [evalLoading, setEvalLoading] = useState(false);
+  // Outils autorisés du workflow (administrateurs seulement) : `null` = non chargés ou échec silencieux.
+  const [grantedKeys, setGrantedKeys] = useState<string[] | null>(null);
 
   const [busy, setBusy] = useState<ToolbarBusy>(null);
   const [versionsBusy, setVersionsBusy] = useState(false);
@@ -167,8 +179,14 @@ export function EditorView() {
   const readOnlyRef = useRef(true);
   const auxLoaded = useRef(false);
   const loadSeq = useRef(0);
+  const evalSeq = useRef(0);
+  const grantsSeq = useRef(0);
+  const lastGuardRefresh = useRef<number | null>(null);
 
   const canDesign = access?.canDesign ?? null;
+  const canAdminister = access?.canAdminister ?? false;
+  const canAdministerRef = useRef(false);
+  canAdministerRef.current = canAdminister;
 
   /** Applique une transformation pure à l'état de l'éditeur ; la ref est à jour AVANT le rendu suivant. */
   const update = useCallback((fn: (s: EditorState) => EditorState) => {
@@ -218,17 +236,16 @@ export function EditorView() {
         if (number === null) {
           throw new WorkflowApiError(404, 'Ce workflow ne contient aucune version.');
         }
-        const [ver, toolList, evalStatus] = await Promise.all([
+        const [ver, toolList] = await Promise.all([
           workflowsApi.getVersion(definitionId, number),
-          // Chargés une seule fois ; `null` (API absente ou refusée) est un état normal, jamais une erreur.
+          // Chargé une seule fois ; `null` (API absente ou refusée) est un état normal, jamais une erreur.
+          // Le statut d'évaluation et les autorisations d'outils ont leur propre rafraîchissement (voir plus bas).
           auxLoaded.current ? Promise.resolve(undefined) : workflowsApi.listAgentTools().catch(() => null),
-          auxLoaded.current ? Promise.resolve(undefined) : workflowsApi.getEvaluationStatus(definitionId).catch(() => null),
         ]);
         if (seq !== loadSeq.current) return;
         if (!auxLoaded.current) {
           auxLoaded.current = true;
           setTools(toolList ?? null);
-          setHasPassedEval(evalStatus ? evalStatus.hasPassedEvalRun : null);
         }
         adopt(detail.definition, detail.versions, ver);
         setUrlVersion(number);
@@ -277,6 +294,60 @@ export function EditorView() {
   readOnlyRef.current = readOnly;
   const dirty = editor ? isDirty(editor) : false;
   const isLowRisk = definition?.isLowRisk ?? false;
+
+  // ----- Statut d'évaluation et outils autorisés (jamais bloquants : une erreur réseau garde l'éditeur utilisable) -----
+  const refreshEval = useCallback(async () => {
+    if (!shouldFetchEvalStatus(readOnlyRef.current, definitionId) || definitionId === null) return;
+    const seq = ++evalSeq.current;
+    setEvalLoading(true);
+    try {
+      // `null` (403/404) : l'état devient « indisponible » et « Autonome » reste grisé.
+      const status = await workflowsApi.getEvalStatus(definitionId);
+      if (seq === evalSeq.current) setEvalStatus(status);
+    } catch {
+      /* erreur réseau ou serveur : on garde le dernier état connu */
+    } finally {
+      if (seq === evalSeq.current) setEvalLoading(false);
+    }
+  }, [definitionId]);
+
+  const refreshGrants = useCallback(async () => {
+    if (definitionId === null || readOnlyRef.current || !canAdministerRef.current) return;
+    const seq = ++grantsSeq.current;
+    try {
+      const grants = await workflowsApi.getToolGrants(definitionId);
+      if (seq === grantsSeq.current && Array.isArray(grants)) setGrantedKeys(grants.map((g) => g.toolKey));
+    } catch {
+      /* échec silencieux : pas d'avertissement d'outils non autorisés */
+    }
+  }, [definitionId]);
+
+  const ready = load.kind === 'ready';
+  // Au chargement (et au passage sur un brouillon) : l'évaluation se fait sur une autre page, d'où les rafraîchissements.
+  useEffect(() => {
+    if (!ready || readOnly) return;
+    void refreshEval();
+    void refreshGrants();
+  }, [ready, readOnly, canAdminister, refreshEval, refreshGrants]);
+
+  // Retour sur l'onglet ou la fenêtre : l'état a pu changer sur la page d'évaluation ou des outils autorisés.
+  useEffect(() => {
+    if (!ready) return;
+    const onBack = () => {
+      if (document.visibilityState === 'hidden') return;
+      const now = Date.now();
+      if (!shouldRefreshNow(lastGuardRefresh.current, now)) return;
+      lastGuardRefresh.current = now;
+      void refreshEval();
+      void refreshGrants();
+    };
+    document.addEventListener('visibilitychange', onBack);
+    window.addEventListener('focus', onBack);
+    return () => {
+      document.removeEventListener('visibilitychange', onBack);
+      window.removeEventListener('focus', onBack);
+    };
+  }, [ready, refreshEval, refreshGrants]);
 
   // Vérification en direct (debounce 250 ms) : l'état « problèmes locaux » suit le graphe affiché.
   const graph = editor?.graph;
@@ -492,6 +563,9 @@ export function EditorView() {
       }
       update((cur) => markSaved(cur, snapshot));
       setSaveStatus({ kind: 'saved', text: `Brouillon enregistré à ${hhmm()}.` });
+      // L'évaluation porte sur la version enregistrée : l'éligibilité des étapes a pu changer.
+      void refreshEval();
+      void refreshGrants();
       return true;
     } catch (e) {
       const text = workflowErrorMessage(e);
@@ -502,7 +576,7 @@ export function EditorView() {
     } finally {
       setBusy(null);
     }
-  }, [message, refreshDetail, update]);
+  }, [message, refreshDetail, refreshEval, refreshGrants, update]);
 
   const verify = useCallback(async () => {
     const s = editorRef.current;
@@ -554,6 +628,8 @@ export function EditorView() {
       setPublishOpen(false);
       if (e instanceof WorkflowApiError && e.status === 422 && e.issues) {
         update((cur) => setServerIssues(cur, e.issues ?? [], true));
+        // Les causes sont expliquées en français (avec liens d'action) dans le panneau : on le déplie.
+        setIssuesKey(['issues']);
         message.error('Publication refusée : le workflow comporte des problèmes. Ils sont listés sous l’éditeur.');
       } else {
         message.error(workflowErrorMessage(e));
@@ -814,13 +890,26 @@ export function EditorView() {
     return null;
   })();
 
+  // Évaluation et outils autorisés : l'éligibilité est PAR ÉTAPE (`null` côté étape si la route est indisponible).
+  const guardrails: EditorGuardrails = {
+    definitionId: definition.wfDefinitionId,
+    stepEvals: buildStepEvals(evalStatus),
+    evalLoading,
+    dirty,
+    canAdminister,
+    grantedKeys,
+    onRefreshEval: () => void refreshEval(),
+  };
+  const toolGrantsLink = canAdminister ? toolGrantsHref(definition.wfDefinitionId) : null;
+
   const propsNode = (
     <PropertiesPane
       graph={editor.graph}
       selection={editor.selection}
       readOnly={readOnly}
       isLowRisk={isLowRisk}
-      hasPassedEval={hasPassedEval}
+      hasPassedEval={null}
+      guardrails={guardrails}
       tools={tools}
       issues={allIssues}
       info={{
@@ -943,6 +1032,7 @@ export function EditorView() {
         busy={busy}
         canPublish={publishAllowed}
         publishBlockedReason={blockedReason}
+        toolGrantsLink={toolGrantsLink}
         view={editor.view}
         onView={(v) => update((s) => setView(s, v))}
         onSave={() => void save()}
@@ -1003,6 +1093,8 @@ export function EditorView() {
             label: `Problèmes du workflow (${allIssues.length})`,
             children: (
               <IssuesPanel
+                definitionId={definition.wfDefinitionId}
+                canAdminister={canAdminister}
                 graph={editor.graph}
                 issues={allIssues}
                 serverChecked={editor.serverChecked}

@@ -505,6 +505,8 @@ export class AgentRunner implements WfAgentRunner {
       stepKey: input.scope.stepKey,
       subject: input.scope.subject ?? { type: null, id: null },
       dryRun: input.mode === 'dry_run',
+      // Jamais de confiance hors évaluation : le contexte de cas n'est transmis qu'en `dry_run`.
+      ...(input.mode === 'dry_run' && input.scope.evalContext ? { evalContext: input.scope.evalContext } : {}),
     };
     st.executedByTool.set(key, (st.executedByTool.get(key) ?? 0) + 1);
     const outcome = await this.race(

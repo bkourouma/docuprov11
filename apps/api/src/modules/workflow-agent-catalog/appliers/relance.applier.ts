@@ -15,6 +15,7 @@ import {
 import { RELANCE_MESSAGE_PREFIX, countInstanceRelancesToday, countTargetRelancesToday } from '../shared/relance-cap';
 import { parseStrict } from './extra/extra-applier.utils';
 import { IMPUTATION_MENU_KEYS } from './imputable-actors.service';
+import { lockMailInputationRow, lockMailRow } from './row-locks';
 
 /** Compteur de relances du LOT de validation (clé de `ctx.scratch`). */
 export const RELANCE_BATCH_COUNT_KEY = 'relance:batch-count';
@@ -36,6 +37,12 @@ export class RelanceApplier implements ActionApplier<RelanceArgs> {
 
   async apply(ctx: ApplierContext, args: RelanceArgs): Promise<ApplierResult> {
     await ctx.rights.requireMailReadable(args.mailId);
+
+    // Verrous AVANT toute lecture et tout comptage (ordre fixe : courrier puis imputation). Deux transactions
+    // concurrentes (autres instances, autres valideurs) visant la même imputation se sérialisent ici ; l'imputation
+    // et les compteurs sont lus APRÈS le verrou (READ COMMITTED : on voit ce que la première a validé).
+    await lockMailRow(ctx.tx, args.mailId);
+    await lockMailInputationRow(ctx.tx, args.mailInputationId);
 
     const inputation = await ctx.tx.mailInputation.findUnique({
       where: { mailInputationId: args.mailInputationId },

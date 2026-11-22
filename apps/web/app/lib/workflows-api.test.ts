@@ -68,14 +68,15 @@ test('requestOptional : 404, 403, 405, 501 => null ; autres erreurs relancées ;
   assert.deepEqual(await requestOptional('/workflows/agents/tools'), [{ toolKey: 'lire_document' }]);
 });
 
-test('API de l’éditeur : outils W2 sur /workflows/agents/tools, déclencheurs W3 sur /workflows/triggers, évaluation sans appel réseau', async () => {
+test('API de l’éditeur : outils sur /workflows/agents/tools, déclencheurs sur /workflows/triggers, statut d’évaluation sur eval-status', async () => {
   const calls = mockFetch(404, {});
   assert.equal(await workflowsApi.listAgentTools(), null);
   assert.equal(await workflowsApi.listTriggers(7), null);
   assert.equal(await workflowsApi.getEvaluationStatus(7), null);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.match(calls[0]?.url ?? '', /\/workflows\/agents\/tools$/);
   assert.match(calls[1]?.url ?? '', /\/workflows\/triggers\?definitionId=7&limit=100$/);
+  assert.match(calls[2]?.url ?? '', /\/workflows\/agents\/eval-status\?definitionId=7$/);
 });
 
 test('launch : 201 => created, 200 => rejeu d’une clé d’idempotence', async () => {
@@ -227,4 +228,183 @@ test('W5 429 : Retry-After exposé en secondes entières, ignoré si invalide ou
     assert.equal(e.issues?.length, 1);
     return true;
   });
+});
+
+const methodOf = (c: Call | undefined) => c?.init?.method ?? 'GET';
+const bodyOf = (c: Call | undefined) => JSON.parse(String(c?.init?.body));
+
+test('getAgentToolCatalog : strict (403 et 404 lèvent), contrairement à listAgentTools', async () => {
+  for (const status of [403, 404]) {
+    mockFetch(status, { message: 'Accès refusé.' });
+    assert.equal(await workflowsApi.listAgentTools(), null);
+    await assert.rejects(workflowsApi.getAgentToolCatalog(), (e: unknown) => e instanceof WorkflowApiError && e.status === status);
+  }
+  const calls = mockFetch(200, [{ toolKey: 'lire_document' }]);
+  assert.deepEqual(await workflowsApi.getAgentToolCatalog(), [{ toolKey: 'lire_document' }]);
+  assert.match(calls[0]?.url ?? '', /\/workflows\/agents\/tools$/);
+});
+
+test('autorisations d’outils : GET et PUT sur definitions/:id/tool-grants, identifiant invalide sans appel réseau', async () => {
+  let calls = mockFetch(200, [{ toolKey: 'a', maxCallsPerInstance: null }]);
+  assert.equal((await workflowsApi.getToolGrants(4)).length, 1);
+  assert.match(calls[0]?.url ?? '', /\/workflows\/agents\/definitions\/4\/tool-grants$/);
+  assert.equal(methodOf(calls[0]), 'GET');
+
+  calls = mockFetch(200, { grants: [], warnings: ['encore utilisé'] });
+  const res = await workflowsApi.replaceToolGrants(4, [{ toolKey: 'a', maxCallsPerInstance: 3 }, { toolKey: 'b' }]);
+  assert.deepEqual(res.warnings, ['encore utilisé']);
+  assert.equal(methodOf(calls[0]), 'PUT');
+  assert.deepEqual(bodyOf(calls[0]), { grants: [{ toolKey: 'a', maxCallsPerInstance: 3 }, { toolKey: 'b' }] });
+
+  calls = mockFetch(200, []);
+  assert.throws(() => workflowsApi.getToolGrants(0), (e: unknown) => e instanceof WorkflowApiError && e.status === 404);
+  assert.throws(() => workflowsApi.replaceToolGrants(1.5, []), WorkflowApiError);
+  assert.equal(calls.length, 0);
+});
+
+test('évaluation : chemins, méthodes et corps', async () => {
+  let calls = mockFetch(200, []);
+  await workflowsApi.listEvalSets();
+  await workflowsApi.listEvalSets(9);
+  assert.match(calls[0]?.url ?? '', /\/workflows\/agents\/eval-sets$/);
+  assert.match(calls[1]?.url ?? '', /\/workflows\/agents\/eval-sets\?definitionId=9$/);
+
+  calls = mockFetch(201, { wfEvalSetId: 3 });
+  await workflowsApi.createEvalSet({ definitionId: 9, stepKey: 'tri', name: 'Jeu', minAccuracy: 0.9 });
+  assert.equal(methodOf(calls[0]), 'POST');
+  assert.deepEqual(bodyOf(calls[0]), { definitionId: 9, stepKey: 'tri', name: 'Jeu', minAccuracy: 0.9 });
+
+  calls = mockFetch(200, { wfEvalSetId: 3 });
+  await workflowsApi.updateEvalSet(3, { isActive: false });
+  assert.match(calls[0]?.url ?? '', /\/workflows\/agents\/eval-sets\/3$/);
+  assert.equal(methodOf(calls[0]), 'PATCH');
+  assert.deepEqual(bodyOf(calls[0]), { isActive: false });
+
+  calls = mockFetch(200, []);
+  await workflowsApi.listEvalCases(3);
+  await workflowsApi.listEvalCases(3, true);
+  assert.match(calls[0]?.url ?? '', /\/eval-sets\/3\/cases$/);
+  assert.match(calls[1]?.url ?? '', /\/eval-sets\/3\/cases\?includeInactive=true$/);
+
+  calls = mockFetch(200, { wfEvalCaseId: 8 });
+  await workflowsApi.addEvalCase(3, { label: 'Cas', input: { context: {} }, expected: { returnsToHuman: true } });
+  await workflowsApi.updateEvalCase(3, 8, { weight: 2 });
+  await workflowsApi.removeEvalCase(3, 8);
+  assert.deepEqual(calls.map(methodOf), ['POST', 'PATCH', 'DELETE']);
+  assert.match(calls[0]?.url ?? '', /\/eval-sets\/3\/cases$/);
+  assert.match(calls[1]?.url ?? '', /\/eval-sets\/3\/cases\/8$/);
+  assert.match(calls[2]?.url ?? '', /\/eval-sets\/3\/cases\/8$/);
+
+  calls = mockFetch(202, { wfEvalRunId: '41', status: 0 });
+  const run = await workflowsApi.runEvalSet(3, { definitionVersionId: 6, stepKey: 'tri' });
+  assert.equal(run.wfEvalRunId, '41');
+  assert.match(calls[0]?.url ?? '', /\/eval-sets\/3\/runs$/);
+  assert.equal(methodOf(calls[0]), 'POST');
+  assert.deepEqual(bodyOf(calls[0]), { definitionVersionId: 6, stepKey: 'tri' });
+  await workflowsApi.runEvalSet(3);
+  assert.deepEqual(bodyOf(calls[1]), {});
+
+  calls = mockFetch(200, []);
+  await workflowsApi.listEvalRuns(3);
+  assert.match(calls[0]?.url ?? '', /\/eval-sets\/3\/runs$/);
+  assert.equal(methodOf(calls[0]), 'GET');
+  calls = mockFetch(200, { wfEvalRunId: '41' });
+  await workflowsApi.getEvalRun('41');
+  assert.match(calls[0]?.url ?? '', /\/workflows\/agents\/eval-runs\/41$/);
+});
+
+test('évaluation : identifiants invalides refusés sans appel réseau', () => {
+  const calls = mockFetch(200, {});
+  const notFound = (e: unknown) => e instanceof WorkflowApiError && e.status === 404;
+  assert.throws(() => workflowsApi.getEvalRun('abc'), notFound);
+  assert.throws(() => workflowsApi.getEvalRun('1/../2'), notFound);
+  assert.throws(() => workflowsApi.getEvalRun(''), notFound);
+  assert.throws(() => workflowsApi.listEvalSets(-1), notFound);
+  assert.throws(() => workflowsApi.updateEvalSet(0, {}), notFound);
+  assert.throws(() => workflowsApi.listEvalCases(Number.NaN), notFound);
+  assert.throws(() => workflowsApi.updateEvalCase(1, 1.5, {}), notFound);
+  assert.throws(() => workflowsApi.removeEvalCase(1, 0), notFound);
+  assert.throws(() => workflowsApi.runEvalSet(0), notFound);
+  assert.throws(() => workflowsApi.listEvalRuns(-5), notFound);
+  assert.throws(() => workflowsApi.getEvalStatus(0), notFound);
+  assert.throws(() => workflowsApi.listDraftAgents(0), notFound);
+  assert.throws(() => workflowsApi.updateDraftAgent(0, 'tri', {}), notFound);
+  assert.throws(() => workflowsApi.updateDraftAgent(1, '../x', {}), notFound);
+  assert.throws(() => workflowsApi.updateDraftAgent(1, 'Tri', {}), notFound);
+  assert.equal(calls.length, 0);
+});
+
+test('étapes agent du brouillon : GET draft/agents, PUT draft/agents/:stepKey (lien evalSetId)', async () => {
+  let calls = mockFetch(200, [{ stepKey: 'tri', evalSetId: 3 }]);
+  assert.equal((await workflowsApi.listDraftAgents(7))[0]?.evalSetId, 3);
+  assert.match(calls[0]?.url ?? '', /\/workflows\/definitions\/7\/draft\/agents$/);
+
+  calls = mockFetch(200, { stepKey: 'tri_courrier', evalSetId: null });
+  await workflowsApi.updateDraftAgent(7, 'tri_courrier', { evalSetId: null });
+  assert.match(calls[0]?.url ?? '', /\/workflows\/definitions\/7\/draft\/agents\/tri_courrier$/);
+  assert.equal(methodOf(calls[0]), 'PUT');
+  assert.deepEqual(bodyOf(calls[0]), { evalSetId: null });
+});
+
+test('getEvalStatus : null sur 403, 404, 405, 501 ; 500 relancée ; corps conservé', async () => {
+  for (const status of [403, 404, 405, 501]) {
+    mockFetch(status, { message: 'non' });
+    assert.equal(await workflowsApi.getEvalStatus(7), null, `statut ${status}`);
+  }
+  mockFetch(500, { message: 'panne' });
+  await assert.rejects(workflowsApi.getEvalStatus(7), (e: unknown) => e instanceof WorkflowApiError && e.status === 500);
+  const status = {
+    definitionId: 7,
+    definitionVersionId: 11,
+    versionNumber: 2,
+    steps: [{ stepKey: 'tri', evalSetId: 3, eligible: false, reason: 'Aucune évaluation réussie.' }],
+  };
+  mockFetch(200, status);
+  assert.deepEqual(await workflowsApi.getEvalStatus(7), status);
+});
+
+test('getEvaluationStatus (compatibilité) : au moins une étape éligible, sinon false ; route absente => null', async () => {
+  const step = (eligible: boolean) => ({ stepKey: 'a', evalSetId: 1, eligible, reason: eligible ? null : 'non' });
+  const base = { definitionId: 7, definitionVersionId: 1, versionNumber: 1 };
+  mockFetch(200, { ...base, steps: [step(false), step(true)] });
+  assert.deepEqual(await workflowsApi.getEvaluationStatus(7), { hasPassedEvalRun: true });
+  mockFetch(200, { ...base, steps: [step(false)] });
+  assert.deepEqual(await workflowsApi.getEvaluationStatus(7), { hasPassedEvalRun: false });
+  mockFetch(200, { ...base, steps: [] });
+  assert.deepEqual(await workflowsApi.getEvaluationStatus(7), { hasPassedEvalRun: false });
+  mockFetch(404, {});
+  assert.equal(await workflowsApi.getEvaluationStatus(7), null);
+  mockFetch(403, {});
+  assert.equal(await workflowsApi.getEvaluationStatus(7), null);
+});
+
+test('administration des agents : statut, budget, plafond, arrêt d’urgence', async () => {
+  let calls = mockFetch(200, { aiEnabled: true, aiMode: 1, emergencyStopGlobal: false });
+  assert.equal((await workflowsApi.getAgentStatus()).aiEnabled, true);
+  assert.match(calls[0]?.url ?? '', /\/workflows\/agents\/status$/);
+
+  calls = mockFetch(200, { global: { wfBudgetId: 1 }, workflows: [] });
+  assert.deepEqual((await workflowsApi.getAgentBudget()).workflows, []);
+  assert.match(calls[0]?.url ?? '', /\/workflows\/agents\/budget$/);
+  assert.equal(methodOf(calls[0]), 'GET');
+
+  calls = mockFetch(200, { wfBudgetId: 2 });
+  await workflowsApi.updateAgentBudget({ definitionId: 4, capAmount: null, periodKind: 1, alertThreshold: 0.8, currency: 'XOF' });
+  assert.match(calls[0]?.url ?? '', /\/workflows\/agents\/budget$/);
+  assert.equal(methodOf(calls[0]), 'PUT');
+  assert.deepEqual(bodyOf(calls[0]), { definitionId: 4, capAmount: null, periodKind: 1, alertThreshold: 0.8, currency: 'XOF' });
+
+  calls = mockFetch(200, { wfBudgetId: 1, emergencyStop: true });
+  const dto = await workflowsApi.setEmergencyStop({ active: true, reason: 'Incident' });
+  assert.equal(dto.emergencyStop, true);
+  assert.match(calls[0]?.url ?? '', /\/workflows\/agents\/emergency-stop$/);
+  assert.equal(methodOf(calls[0]), 'POST');
+  assert.deepEqual(bodyOf(calls[0]), { active: true, reason: 'Incident' });
+});
+
+test('workflowErrorMessage : 429, 403, 404, 409, 422 gardent le message français de l’API', () => {
+  for (const status of [429, 403, 404, 409, 422]) {
+    assert.equal(workflowErrorMessage(new WorkflowApiError(status, 'Message précis de l’API.')), 'Message précis de l’API.');
+  }
+  assert.match(workflowErrorMessage(new WorkflowApiError(429, 'HTTP 429')), /Trop de demandes/);
 });

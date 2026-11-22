@@ -2,8 +2,12 @@
 // Logique pure : aucun React. Les codes viennent du validateur partagé (@archivage/types) et du serveur.
 import { validateWorkflowGraph, wfEscalationConfigSchema, type WfGraph } from '@archivage/types';
 import type { WfDefinitionIssue, WfDefinitionIssueCode } from '../../lib/workflows-api';
+import { evaluationHref, toolGrantsHref } from './guardrails-links';
 
-/** Les 17 codes : les 14 du graphe + l'escalade invalide + l'exécuteur d'agent manquant + l'affectation à compléter (W5). */
+/**
+ * Les 21 codes : les 14 du graphe + l'escalade invalide + l'exécuteur d'agent manquant + l'affectation à compléter (W5)
+ * + les 4 contrôles des étapes agent émis à la publication (configuration, outil inconnu, outil non autorisé, autonomie).
+ */
 export const ALL_ISSUE_CODES: readonly WfDefinitionIssueCode[] = [
   'SCHEMA_INVALID',
   'DUPLICATE_STEP_KEY',
@@ -22,6 +26,10 @@ export const ALL_ISSUE_CODES: readonly WfDefinitionIssueCode[] = [
   'ESCALATION_INVALID',
   'EXECUTOR_MISSING',
   'AUTHORING_TO_COMPLETE',
+  'AGENT_CONFIG_INVALID',
+  'AGENT_TOOL_UNKNOWN',
+  'AGENT_TOOL_NOT_GRANTED',
+  'AGENT_AUTONOMY_NOT_ELIGIBLE',
 ];
 
 export interface IssueExplanation {
@@ -32,6 +40,18 @@ export interface IssueExplanation {
   stepKey?: string;
   /** Message d'origine (technique), à n'afficher que dans un détail repliable. */
   detail?: string;
+  /** Lien vers l'écran qui permet de résoudre le problème (présent seulement si l'identifiant du workflow est connu). */
+  action?: IssueAction;
+}
+
+export interface IssueAction {
+  label: string;
+  href: string;
+}
+
+export interface ExplainOptions {
+  /** Identifiant du workflow : permet de fournir les liens vers « Outils autorisés » et l'évaluation. */
+  definitionId?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,11 +208,23 @@ function explainSchema(issue: WfDefinitionIssue, graph: WfGraph | undefined): st
 // explainIssue
 // ---------------------------------------------------------------------------
 
-export function explainIssue(issue: WfDefinitionIssue, graph?: WfGraph): IssueExplanation {
+/**
+ * Explication d'un code, sans étape ni message : titre, ce que cela signifie et pourquoi c'est bloquant, comment corriger.
+ * Fonction pure pour les écrans qui n'ont que le code (aide, légende).
+ */
+export function explainDefinitionIssue(code: WfDefinitionIssueCode): { code: WfDefinitionIssueCode; title: string; explain: string; fix: string } {
+  const { title, explain, fix } = explainIssue({ code, message: '' });
+  return { code, title, explain, fix };
+}
+
+export function explainIssue(issue: WfDefinitionIssue, graph?: WfGraph, opts?: ExplainOptions): IssueExplanation {
   const ref = stepRef(graph, issue.stepKey);
-  const base = { code: issue.code, stepKey: issue.stepKey, detail: issue.message };
-  const make = (title: string, explain: string, fix: string): IssueExplanation =>
-    withoutUndefined({ ...base, title, explain, fix });
+  const base = { code: issue.code, stepKey: issue.stepKey, detail: issue.message || undefined };
+  const make = (title: string, explain: string, fix: string, action?: IssueAction | null): IssueExplanation =>
+    withoutUndefined({ ...base, title, explain, fix, action: action ?? undefined });
+  const definitionId = opts?.definitionId;
+  const toolGrantsLink = definitionId === undefined ? null : toolGrantsHref(definitionId);
+  const evaluationLink = definitionId === undefined ? null : evaluationHref(definitionId, issue.stepKey);
 
   switch (issue.code) {
     case 'SCHEMA_INVALID':
@@ -298,6 +330,32 @@ export function explainIssue(issue: WfDefinitionIssue, graph?: WfGraph): IssueEx
         'Affectation à compléter',
         `L'étape ${ref} a été proposée par l'IA sans responsable : « Affectation à compléter ». Le workflow ne peut pas être publié tant que personne n'est désigné.`,
         "Ouvrez l'étape, section « Affectation », et choisissez un utilisateur, un groupe, un rôle, le lanceur ou le propriétaire de l'objet.",
+      );
+    case 'AGENT_CONFIG_INVALID':
+      return make(
+        "Réglages de l'agent invalides",
+        `Les réglages de l'agent de l'étape ${ref} contiennent une valeur impossible : objectif vide, seuil de confiance hors de l'intervalle de 0 à 1, nombre d'actions ou délai hors des limites, ou coût négatif. Un agent mal réglé se comporterait de façon imprévisible : la publication est donc bloquée.`,
+        "Ouvrez l'étape, section « Agent », et corrigez les valeurs signalées. Le détail ci-dessous précise celles qui posent problème.",
+      );
+    case 'AGENT_TOOL_UNKNOWN':
+      return make(
+        'Outil inconnu ou désactivé',
+        `L'agent de l'étape ${ref} utilise un outil qui n'existe pas dans le catalogue ou qu'un administrateur a désactivé. L'agent ne pourrait pas s'en servir au moment de l'exécution : la publication est donc bloquée.`,
+        "Retirez cet outil de l'étape ou remplacez-le par un outil du catalogue. S'il a été désactivé volontairement, demandez à un administrateur de le réactiver.",
+      );
+    case 'AGENT_TOOL_NOT_GRANTED':
+      return make(
+        'Outil non autorisé pour ce workflow',
+        `L'agent de l'étape ${ref} utilise un outil qui n'est pas autorisé pour CE workflow. Chaque workflow ne peut employer que les outils qu'un administrateur lui a explicitement accordés : c'est une règle de sécurité (liste d'outils autorisés par workflow), et non une erreur dans les étapes ou les transitions.`,
+        "Demandez à un administrateur d'autoriser cet outil pour ce workflow dans l'écran « Outils autorisés », ou retirez l'outil de l'étape.",
+        toolGrantsLink === null ? null : { label: 'Ouvrir « Outils autorisés »', href: toolGrantsLink },
+      );
+    case 'AGENT_AUTONOMY_NOT_ELIGIBLE':
+      return make(
+        'Niveau autonome non éligible',
+        `L'agent de l'étape ${ref} est réglé sur « autonome », mais ce niveau n'est accordé qu'à un workflow marqué « à faible risque » et dont l'agent a réussi son évaluation avec les réglages actuels. Ici, au moins une de ces conditions n'est pas remplie (évaluation absente, échouée, ou réglages modifiés depuis). La publication est bloquée pour éviter qu'un agent agisse seul sans avoir été contrôlé.`,
+        "Lancez ou relancez l'évaluation de l'agent jusqu'à sa réussite, et vérifiez qu'un administrateur a marqué le workflow « à faible risque ». À défaut, choisissez un niveau moins autonome (« suggère » ou « agit avec validation »).",
+        evaluationLink === null ? null : { label: "Ouvrir l'évaluation", href: evaluationLink },
       );
     default:
       return make(

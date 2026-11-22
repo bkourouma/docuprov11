@@ -3,14 +3,24 @@
 // transition) sont recopiés ici : apps/api n'est pas importable depuis le web.
 //
 // Client local (calque de gouvernance-api.ts) : lib/api.ts ne conserve pas le code HTTP, or l'interface doit
-// distinguer 403 / 404 / 409 / 422 (dont la liste `issues` d'une publication refusée) et masquer
-// les emplacements dont l'API n'existe pas encore (W2 outils d'agent, W3 déclencheurs : 404 => masqués).
+// distinguer 403 / 404 / 409 / 422 (dont la liste `issues` d'une publication refusée). Les routes des agents
+// (outils et autorisations, évaluation, budget et arrêt d'urgence, configuration des étapes agent) existent
+// désormais : les méthodes strictes lèvent `WorkflowApiError`. Seuls `listAgentTools`, `listTriggers`,
+// `listTemplates` et `getEvalStatus` renvoient `null` quand l'accès est refusé ou la route absente
+// (403 / 404 / 405 / 501) afin que l'interface masque l'emplacement.
 import type {
+  UpsertWfAgentConfigInput,
+  WfAgentConfigDetailDto,
   WfAuthoringExplanation,
   WfAuthoringGenerateInput,
   WfAuthoringGenerateResponse,
+  WfBudgetDto,
+  WfBudgetPeriodKind,
   WfDefinitionDto,
   WfDefinitionVersionDto,
+  WfEvalCaseDto,
+  WfEvalRunDto,
+  WfEvalSetDto,
   WfEventLogDto,
   WfGraph,
   WfGraphIssueCode,
@@ -32,7 +42,12 @@ export type WfDefinitionIssueCode =
   | WfGraphIssueCode
   | 'ESCALATION_INVALID'
   | 'EXECUTOR_MISSING'
-  | 'AUTHORING_TO_COMPLETE';
+  | 'AUTHORING_TO_COMPLETE'
+  // Étapes agent, émis à la validation et à la publication (apps/api/.../workflows/definitions-agents.ts).
+  | 'AGENT_CONFIG_INVALID'
+  | 'AGENT_TOOL_UNKNOWN'
+  | 'AGENT_TOOL_NOT_GRANTED'
+  | 'AGENT_AUTONOMY_NOT_ELIGIBLE';
 
 export interface WfDefinitionIssue {
   code: WfDefinitionIssueCode;
@@ -48,6 +63,135 @@ export interface WfDefinitionValidationResponse {
 
 /** W2 : entrée du catalogue d'outils d'agent (`GET /workflows/agents/tools`, menu administration) : un `WfToolDto` sans identifiant ni date. */
 export type WfToolCatalogEntry = Omit<WfToolDto, 'wfToolId' | 'createdAt'>;
+
+/** Autorisation d'outil d'un workflow (`GET /workflows/agents/definitions/:id/tool-grants`, menu administration). */
+export interface WfToolGrantEntry {
+  toolKey: string;
+  maxCallsPerInstance: number | null;
+}
+
+/** Entrée du remplacement des autorisations : `maxCallsPerInstance` absent ou nul = pas de limite. */
+export interface WfToolGrantInput {
+  toolKey: string;
+  maxCallsPerInstance?: number | null;
+}
+
+export interface WfToolGrantsResponse {
+  grants: WfToolGrantEntry[];
+  /** Avertissements non bloquants en français (ex. autorisation retirée mais encore utilisée par le brouillon). */
+  warnings: string[];
+}
+
+// Évaluation des agents (`/workflows/agents/eval-*`, menu conception).
+
+/** Entrée d'un cas : blocs de texte non fiables, objet lié, contexte (champs inconnus refusés par l'API). */
+export interface WfEvalCaseInputPayload {
+  untrusted?: { label: string; origin: 'mail' | 'document' | 'ocr' | 'form' | 'context'; text: string }[];
+  subject?: { type: string | null; id: string | null };
+  context?: Record<string, unknown>;
+}
+
+/** Résultat attendu d'un cas : au moins un critère non vide. */
+export interface WfEvalExpectedPayload {
+  result?: Record<string, unknown>;
+  returnsToHuman?: boolean;
+  suspicionInjection?: boolean;
+  /** 0..1 */
+  minConfidence?: number;
+}
+
+export interface CreateEvalSetInput {
+  definitionId: number;
+  /** Étape agent visée ; nul ou absent = jeu général du workflow. */
+  stepKey?: string | null;
+  name: string;
+  description?: string | null;
+  /** Précision minimale, 0..1, au plus 3 décimales. */
+  minAccuracy?: number;
+}
+
+/** Le workflow d'un jeu ne change jamais (`definitionId` est donc absent ici). */
+export interface UpdateEvalSetInput {
+  stepKey?: string | null;
+  name?: string;
+  description?: string | null;
+  minAccuracy?: number;
+  isActive?: boolean;
+}
+
+export interface CreateEvalCaseInput {
+  label: string;
+  input: WfEvalCaseInputPayload;
+  expected: WfEvalExpectedPayload;
+  /** 1..1000 */
+  weight?: number;
+  sortOrder?: number;
+}
+
+export interface UpdateEvalCaseInput {
+  label?: string;
+  input?: WfEvalCaseInputPayload;
+  expected?: WfEvalExpectedPayload;
+  weight?: number;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+export interface RunEvalSetInput {
+  definitionVersionId?: number;
+  stepKey?: string;
+}
+
+/** `GET /workflows/agents/eval-status?definitionId=` (menu conception) : éligibilité à « autonome » par étape agent. */
+export interface WfEvalStatusStep {
+  stepKey: string;
+  evalSetId: number | null;
+  /** Éligibilité réelle à « autonome » (faible risque et dernier run réussi compris). */
+  eligible: boolean;
+  /** Raison en français quand l'étape n'est pas éligible ; nul sinon. */
+  reason: string | null;
+}
+
+export interface WfEvalStatus {
+  definitionId: number;
+  definitionVersionId: number;
+  versionNumber: number;
+  steps: WfEvalStatusStep[];
+}
+
+// Administration des agents (`/workflows/agents/status|budget|emergency-stop`, menu administration).
+
+export interface WfAgentStatus {
+  aiEnabled: boolean;
+  aiMode: number;
+  emergencyStopGlobal: boolean;
+}
+
+export interface WfAgentBudgetOverview {
+  global: WfBudgetDto;
+  workflows: WfBudgetDto[];
+}
+
+/** `definitionId` absent ou nul = budget global. Un champ absent n'est pas modifié ; `capAmount: null` retire le plafond. */
+export interface UpdateAgentBudgetInput {
+  definitionId?: number | null;
+  /** 0 .. 9 999 999 999, ou nul. */
+  capAmount?: number | null;
+  /** 0 = mensuel, 1 = journalier, 2 = cumulé. */
+  periodKind?: WfBudgetPeriodKind;
+  /** 0..1 */
+  alertThreshold?: number;
+  /** 3 lettres majuscules (ex. XOF). */
+  currency?: string;
+}
+
+export interface SetEmergencyStopInput {
+  /** Absent ou nul = arrêt d'urgence global. */
+  definitionId?: number | null;
+  active: boolean;
+  /** 500 caractères au plus. */
+  reason?: string;
+}
 
 export type WfDefinitionVersionSummary = Omit<WfDefinitionVersionDto, 'graph' | 'sourcePrompt'>;
 
@@ -163,6 +307,7 @@ export function workflowErrorMessage(e: unknown): string {
     if (e.status === 404) return 'Élément introuvable ou hors de votre périmètre.';
     if (e.status === 409) return 'L’état a changé entre-temps. Actualisez puis réessayez.';
     if (e.status === 422) return 'Les informations saisies sont refusées.';
+    if (e.status === 429) return 'Trop de demandes en peu de temps. Patientez quelques instants puis réessayez.';
   }
   return 'Une erreur est survenue. Réessayez.';
 }
@@ -176,6 +321,25 @@ function pathId(id: string): string {
   if (!isWorkflowBigintId(id)) throw new WorkflowApiError(404, 'Élément introuvable ou hors de votre périmètre.');
   return encodeURIComponent(id);
 }
+
+/** Identifiant entier positif (définition, jeu, cas…) pour un chemin ou une requête : sinon 404 local, aucun appel réseau. */
+function intId(id: number): number {
+  if (typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) {
+    throw new WorkflowApiError(404, 'Élément introuvable ou hors de votre périmètre.');
+  }
+  return id;
+}
+
+/** Clé d'étape pour un chemin (même motif que l'API : minuscule puis minuscules, chiffres, « _ » ; 100 caractères au plus). */
+function stepKeyPath(stepKey: string): string {
+  if (typeof stepKey !== 'string' || !/^[a-z][a-z0-9_]{0,99}$/.test(stepKey)) {
+    throw new WorkflowApiError(404, 'Étape introuvable.');
+  }
+  return encodeURIComponent(stepKey);
+}
+
+const put = <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+const patch = <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 
 // ---------------------------------------------------------------------------
 // Transport
@@ -359,17 +523,72 @@ export const workflowsApi = {
   delegate: (itemId: string, toUserGroupId: number, comment?: string) =>
     post<WfTransitionResult>(`${BASE}/inbox/${pathId(itemId)}/delegate`, { toUserGroupId, comment }),
 
-  // Emplacements des lots W2 / W3 : chemins supposés, `null` tant que l'API n'existe pas.
-  /** W2 : catalogue des outils d'agent (menu administration : 403 ou 404 => `null`, saisie manuelle des clés). */
+  // Agents (lots W2 / W3) : les routes existent.
+  /** Catalogue des outils d'agent, version TOLÉRANTE (menu administration : 403 ou 404 => `null`, saisie manuelle des clés). */
   listAgentTools: () => requestOptional<WfToolCatalogEntry[]>(`${BASE}/agents/tools`),
+  /** Catalogue des outils d'agent, version STRICTE : toute erreur (dont 403 et 404) lève `WorkflowApiError`. Menu administration. */
+  getAgentToolCatalog: () => request<WfToolCatalogEntry[]>(`${BASE}/agents/tools`),
+  /** Outils autorisés pour ce workflow (menu administration). */
+  getToolGrants: (definitionId: number) =>
+    request<WfToolGrantEntry[]>(`${BASE}/agents/definitions/${intId(definitionId)}/tool-grants`),
+  /** Remplace l'ensemble des autorisations du workflow (menu administration) ; `warnings` : avertissements non bloquants. */
+  replaceToolGrants: (definitionId: number, grants: WfToolGrantInput[]) =>
+    put<WfToolGrantsResponse>(`${BASE}/agents/definitions/${intId(definitionId)}/tool-grants`, { grants }),
+
+  // Évaluation des agents (menu conception).
+  listEvalSets: (definitionId?: number) =>
+    request<WfEvalSetDto[]>(
+      `${BASE}/agents/eval-sets${qs({ definitionId: definitionId === undefined ? undefined : intId(definitionId) })}`,
+    ),
+  createEvalSet: (input: CreateEvalSetInput) => post<WfEvalSetDto>(`${BASE}/agents/eval-sets`, input),
+  updateEvalSet: (setId: number, input: UpdateEvalSetInput) =>
+    patch<WfEvalSetDto>(`${BASE}/agents/eval-sets/${intId(setId)}`, input),
+  listEvalCases: (setId: number, includeInactive?: boolean) =>
+    request<WfEvalCaseDto[]>(
+      `${BASE}/agents/eval-sets/${intId(setId)}/cases${qs({ includeInactive })}`,
+    ),
+  addEvalCase: (setId: number, input: CreateEvalCaseInput) =>
+    post<WfEvalCaseDto>(`${BASE}/agents/eval-sets/${intId(setId)}/cases`, input),
+  updateEvalCase: (setId: number, caseId: number, input: UpdateEvalCaseInput) =>
+    patch<WfEvalCaseDto>(`${BASE}/agents/eval-sets/${intId(setId)}/cases/${intId(caseId)}`, input),
+  /** « Supprimer » un cas = le désactiver (les runs passés restent lisibles) ; renvoie le cas désactivé. */
+  removeEvalCase: (setId: number, caseId: number) =>
+    request<WfEvalCaseDto>(`${BASE}/agents/eval-sets/${intId(setId)}/cases/${intId(caseId)}`, { method: 'DELETE' }),
+  listEvalRuns: (setId: number) => request<WfEvalRunDto[]>(`${BASE}/agents/eval-sets/${intId(setId)}/runs`),
+  /** HTTP 202 : le run est créé « en cours » et s'exécute en arrière-plan ; relire avec `getEvalRun`. */
+  runEvalSet: (setId: number, input: RunEvalSetInput = {}) =>
+    post<WfEvalRunDto>(`${BASE}/agents/eval-sets/${intId(setId)}/runs`, input),
+  /** `runId` : identifiant décimal (BigInt) d'un run, en chaîne. */
+  getEvalRun: (runId: string) => request<WfEvalRunDto>(`${BASE}/agents/eval-runs/${pathId(runId)}`),
+  /** Étapes agent du brouillon avec leur jeu d'évaluation lié (`evalSetId`) ; menu conception. */
+  listDraftAgents: (definitionId: number) =>
+    request<WfAgentConfigDetailDto[]>(`${BASE}/definitions/${intId(definitionId)}/draft/agents`),
+  /** Met à jour une étape agent du brouillon, dont le lien `evalSetId` (nul = délier). */
+  updateDraftAgent: (definitionId: number, stepKey: string, input: UpsertWfAgentConfigInput) =>
+    put<WfAgentConfigDetailDto>(`${BASE}/definitions/${intId(definitionId)}/draft/agents/${stepKeyPath(stepKey)}`, input),
+  /** Éligibilité à « autonome » par étape agent de la dernière version : 403, 404, 405 ou 501 => `null`. */
+  getEvalStatus: (definitionId: number) =>
+    requestOptional<WfEvalStatus>(`${BASE}/agents/eval-status${qs({ definitionId: intId(definitionId) })}`),
+
+  // Administration des agents (menu administration).
+  getAgentStatus: () => request<WfAgentStatus>(`${BASE}/agents/status`),
+  getAgentBudget: () => request<WfAgentBudgetOverview>(`${BASE}/agents/budget`),
+  updateAgentBudget: (input: UpdateAgentBudgetInput) => put<WfBudgetDto>(`${BASE}/agents/budget`, input),
+  /** Arrêt d'urgence (global si `definitionId` est absent ou nul) ; renvoie la ligne de budget modifiée. */
+  setEmergencyStop: (input: SetEmergencyStopInput) => post<WfBudgetDto>(`${BASE}/agents/emergency-stop`, input),
+
   /** W3 (chemin confirmé) : déclencheurs d'un workflow ; la réponse est un sur-ensemble de `WfTriggerDto`. */
   listTriggers: (definitionId: number) =>
     requestOptional<WfTriggerDto[]>(`${BASE}/triggers${qs({ definitionId, limit: 100 })}`),
   /**
-   * W2 : aucune route d'évaluation n'existe à ce jour => `null` SANS appel réseau ; « Autonome » reste grisé.
-   * À brancher quand W2 en publiera une.
+   * Compatibilité de l'éditeur actuel : au moins une étape agent éligible à « autonome » => `hasPassedEvalRun`.
+   * Route absente ou refusée (`getEvalStatus` => `null`) => `null` : « Autonome » reste grisé. Le détail
+   * par étape est dans `getEvalStatus`.
    */
-  getEvaluationStatus: async (_definitionId: number): Promise<{ hasPassedEvalRun: boolean } | null> => null,
+  getEvaluationStatus: async (definitionId: number): Promise<{ hasPassedEvalRun: boolean } | null> => {
+    const status = await workflowsApi.getEvalStatus(definitionId);
+    return status === null ? null : { hasPassedEvalRun: status.steps.some((s) => s.eligible) };
+  },
 
   // W5 : création en langage naturel (brouillon, jamais publié).
   /** `signal` : annulation de l'attente côté navigateur (la génération côté serveur peut aboutir quand même). */

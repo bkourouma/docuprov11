@@ -115,6 +115,9 @@ interface Options {
   script?: (input: AgentRunInput, n: number) => AgentRunOutput | Promise<AgentRunOutput>;
   config?: LoadedAgentConfig | null;
   identityError?: AgentIdentityError;
+  /** Lignes `wf_agent_config` de la version la plus récente (étapes agent). */
+  agentConfigs?: { stepKey: string; evalSetId: number | null }[];
+  eligibility?: (versionId: number, stepKey: string) => { eligible: boolean; reason?: string };
 }
 
 function build(opts: Options = {}) {
@@ -156,7 +159,7 @@ function build(opts: Options = {}) {
   const prisma = {
     wfDefinition: {
       findUnique: jest.fn(({ where }: { where: { wfDefinitionId: number } }) =>
-        Promise.resolve([5, 9].includes(where.wfDefinitionId) ? { wfDefinitionId: where.wfDefinitionId } : null),
+        Promise.resolve([5, 9, 7].includes(where.wfDefinitionId) ? { wfDefinitionId: where.wfDefinitionId } : null),
       ),
     },
     wfDefinitionVersion: {
@@ -172,7 +175,10 @@ function build(opts: Options = {}) {
         Promise.resolve(versions.filter((v) => v.definitionId === where.definitionId)),
       ),
     },
-    wfAgentConfig: { count: jest.fn(() => Promise.resolve(opts.autonomousLinked ?? 0)) },
+    wfAgentConfig: {
+      count: jest.fn(() => Promise.resolve(opts.autonomousLinked ?? 0)),
+      findMany: jest.fn(() => Promise.resolve([...(opts.agentConfigs ?? [])].sort((a, b) => a.stepKey.localeCompare(b.stepKey)))),
+    },
     wfEvalSet: {
       findUnique: jest.fn(({ where }: { where: { wfEvalSetId: number } }) =>
         Promise.resolve(sets.find((s) => s.wfEvalSetId === where.wfEvalSetId) ?? null),
@@ -275,8 +281,13 @@ function build(opts: Options = {}) {
   };
   const loader = { load: jest.fn(() => Promise.resolve(opts.config === undefined ? CONFIG : opts.config)) };
   const audit = { dataChange: jest.fn((_entry: unknown) => Promise.resolve()) };
-  const service = new EvalService(prisma as never, runner, identity, loader as never, audit as never);
-  return { service, prisma, runner, identity, loader, audit, sets, cases, runs, calls };
+  const eligibility = {
+    check: jest.fn((versionId: number, stepKey: string) =>
+      Promise.resolve(opts.eligibility ? opts.eligibility(versionId, stepKey) : { eligible: true }),
+    ),
+  };
+  const service = new EvalService(prisma as never, runner, identity, loader as never, audit as never, eligibility as never);
+  return { service, prisma, runner, identity, loader, audit, eligibility, sets, cases, runs, calls };
 }
 
 const snap = (v: unknown): string => JSON.stringify(v, (_k, x: unknown) => (typeof x === 'bigint' ? x.toString() : x));
@@ -421,6 +432,69 @@ describe('EvalService : cas', () => {
   });
 });
 
+describe('EvalService : evalContext', () => {
+  it('le contexte du cas est transmis au runner (scope.evalContext) ; absent si le cas n’en a pas', async () => {
+    const { service, calls } = build({
+      cases: [
+        { input: { context: { delegates: [{ userGroupId: 8 }] } } },
+        { input: { untrusted: [{ label: 'M', origin: 'mail', text: 'x' }] } },
+      ],
+    });
+    await service.runSet(1, {}, actor);
+    await service.whenIdle();
+    expect(calls[0]!.scope.evalContext).toEqual({ delegates: [{ userGroupId: 8 }] });
+    expect(calls[1]!.scope).not.toHaveProperty('evalContext');
+  });
+});
+
+describe('EvalService : getEligibilityStatus', () => {
+  it('workflow inexistant : 404', async () => {
+    const { service } = build();
+    await expect(service.getEligibilityStatus(404)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('workflow sans version : 422 en français', async () => {
+    const { service } = build();
+    const err = await service.getEligibilityStatus(7).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UnprocessableEntityException);
+    expect((err as Error).message).toBe('Ce workflow n’a encore aucune version.');
+  });
+
+  it('aucune étape agent : steps vide, dernière version', async () => {
+    const { service, eligibility } = build();
+    await expect(service.getEligibilityStatus(5)).resolves.toEqual({
+      definitionId: 5,
+      definitionVersionId: 51,
+      versionNumber: 2,
+      steps: [],
+    });
+    expect(eligibility.check).not.toHaveBeenCalled();
+  });
+
+  it('étapes triées par clé : éligible (reason null) et non éligible (raison du service), sans écriture', async () => {
+    const { service, eligibility, audit, prisma } = build({
+      agentConfigs: [
+        { stepKey: 'tri', evalSetId: 1 },
+        { stepKey: 'analyse', evalSetId: null },
+      ],
+      eligibility: (_v, key) =>
+        key === 'tri' ? { eligible: true } : { eligible: false, reason: 'Aucun jeu d’évaluation n’est lié à cette étape.' },
+    });
+    await expect(service.getEligibilityStatus(5)).resolves.toEqual({
+      definitionId: 5,
+      definitionVersionId: 51,
+      versionNumber: 2,
+      steps: [
+        { stepKey: 'analyse', evalSetId: null, eligible: false, reason: 'Aucun jeu d’évaluation n’est lié à cette étape.' },
+        { stepKey: 'tri', evalSetId: 1, eligible: true, reason: null },
+      ],
+    });
+    expect(eligibility.check).toHaveBeenCalledWith(51, 'tri');
+    expect(audit.dataChange).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
 describe('EvalService : runs', () => {
   it('renvoie IMMÉDIATEMENT le run « en cours » ; le runner n’est appelé qu’en arrière-plan', async () => {
     let release: () => void = () => undefined;
@@ -507,7 +581,12 @@ describe('EvalService : runs', () => {
     await service.whenIdle();
     const input = calls[0]!;
     expect(input.mode).toBe('dry_run');
-    expect(input.scope).toEqual({ definitionId: 5, stepKey: 'tri', subject: { type: 'mail', id: '12' } });
+    expect(input.scope).toEqual({
+      definitionId: 5,
+      stepKey: 'tri',
+      subject: { type: 'mail', id: '12' },
+      evalContext: { langue: 'fr' },
+    });
     expect(input.scope.instanceId).toBeUndefined();
     expect(input.spec).toMatchObject({
       objective: 'Classer le courrier',

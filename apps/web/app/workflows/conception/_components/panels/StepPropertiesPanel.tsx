@@ -33,6 +33,7 @@ import {
 import { AgentSpecFields } from './AgentSpecFields';
 import { AssigneeFields } from './AssigneeFields';
 import { ConfigListEditor } from './ConfigListEditor';
+import type { StepGuardrails } from './editor-guardrails';
 import { EscalationFields } from './EscalationFields';
 import { HoursInput } from './HoursInput';
 import { PanelField } from './PanelField';
@@ -51,6 +52,8 @@ export interface StepPropertiesPanelProps {
   tools: WfToolCatalogEntry[] | null;
   /** Problèmes de CETTE étape (détaillés ailleurs). */
   issues: WfDefinitionIssue[];
+  /** Évaluation, outils autorisés et droits de l'étape agent (absent : seulement le bandeau d'autonomie). */
+  guardrails?: StepGuardrails;
   /** `undefined` dans le patch = supprimer le champ. */
   onChange(patch: Partial<Omit<WfStep, 'key' | 'next'>>): void;
   /** Renvoie un message d'erreur en français, ou `undefined` si le renommage est accepté. */
@@ -84,6 +87,7 @@ export function StepPropertiesPanel({
   hasPassedEval,
   tools,
   issues,
+  guardrails,
   onChange,
   onRenameKey,
   onSetStart,
@@ -356,6 +360,8 @@ export function StepPropertiesPanel({
           isLowRisk={isLowRisk}
           hasPassedEval={hasPassedEval}
           tools={tools}
+          stepKey={step.key}
+          {...(guardrails ? { guardrails } : {})}
           onChange={(agent) => onChange({ agent })}
         />
       ) : null}

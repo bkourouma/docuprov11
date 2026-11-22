@@ -16,7 +16,9 @@ import {
   type ImputationBaseArgs,
   type ImputationCourrierArgs,
 } from '../catalog.contracts';
+import { NOTIFICATION_TITLE_MAX, truncate } from './extra/extra-applier.utils';
 import { IMPUTATION_MENU_KEYS } from './imputable-actors.service';
+import { lockMailRow } from './row-locks';
 
 /**
  * Applicateurs d'IMPUTATION de courrier (après validation humaine, dans la transaction du moteur).
@@ -45,7 +47,6 @@ const VALIDATION_TYPES: ReadonlySet<number> = new Set([
   MAIL_INPUTATION_TYPE_IDS.validationDG,
   MAIL_INPUTATION_TYPE_IDS.validationDirection,
 ]);
-const NOTIFICATION_TITLE_MAX = 300;
 
 /** Clé `scratch` : imputations créées par le lot en cours (identifiants). */
 export const SCRATCH_IMPUTATIONS_CREATED = 'imputation.created';
@@ -77,6 +78,8 @@ export async function applyImputation(
   }
   await rights.requireAnyMenu(IMPUTATION_MENU_KEYS, 'imputer un courrier');
   await rights.requireMailReadable(args.mailId);
+  // Verrou du courrier (point de sérialisation : l'imputation n'existe pas encore) AVANT toute lecture/recherche de doublon.
+  await lockMailRow(tx, args.mailId);
 
   const mail = await tx.mail.findFirst({ where: { mailId: args.mailId, isDeleted: false }, select: { mailId: true, title: true } });
   if (!mail) {
@@ -249,9 +252,4 @@ async function resolveTypeByLabel(ctx: ApplierContext, label: string | undefined
 
 function normalizeLabel(label: string | undefined | null): string {
   return typeof label === 'string' ? label.trim().replace(/\s+/g, ' ').toLocaleLowerCase('fr') : '';
-}
-
-function truncate(text: string, max: number): string {
-  const chars = Array.from(text);
-  return chars.length <= max ? text : `${chars.slice(0, max - 1).join('')}…`;
 }

@@ -23,3 +23,12 @@ export function parseStrict<T>(schema: ZodType<T>, args: unknown, toolKey: strin
     'invalid_arguments',
   );
 }
+
+/** Longueur maximale d'un titre de courrier repris dans une notification in-app. */
+export const NOTIFICATION_TITLE_MAX = 300;
+
+/** Tronque `text` à `max` caractères (points de code), avec une ellipse finale. */
+export function truncate(text: string, max: number): string {
+  const chars = Array.from(text);
+  return chars.length <= max ? text : `${chars.slice(0, max - 1).join('')}…`;
+}

@@ -6,6 +6,7 @@ import type { WfDefinitionIssue, WfToolCatalogEntry } from '../../../../lib/work
 import { isFallbackEdge } from '../../../_lib/graph-model';
 import type { EditorSelection } from '../canvas/types';
 import { EdgePropertiesPanel } from '../panels/EdgePropertiesPanel';
+import { hasPassedEvalFor, stepGuardrails, type EditorGuardrails } from '../panels/editor-guardrails';
 import { StepPropertiesPanel } from '../panels/StepPropertiesPanel';
 import { WorkflowInfoPanel, type WorkflowInfoPanelProps } from './WorkflowInfoPanel';
 
@@ -14,7 +15,10 @@ export interface PropertiesPaneProps {
   selection: EditorSelection;
   readOnly: boolean;
   isLowRisk: boolean;
+  /** Valeur de repli ; quand `guardrails` est fourni, l'éligibilité vient du statut de l'étape sélectionnée. */
   hasPassedEval: boolean | null;
+  /** Évaluation par étape, outils autorisés et droits (absent : comportement historique). */
+  guardrails?: EditorGuardrails;
   tools: WfToolCatalogEntry[] | null;
   /** Tous les problèmes (locaux + serveur) : le panneau d'étape ne reçoit que les siens. */
   issues: WfDefinitionIssue[];
@@ -40,6 +44,10 @@ export function PropertiesPane(p: PropertiesPaneProps) {
   if (sel?.kind === 'step') {
     const step = p.graph.steps.find((s) => s.key === sel.key);
     if (step) {
+      const stepIssues = p.issues.filter((i) => i.stepKey === step.key);
+      const hasPassedEval = p.guardrails ? hasPassedEvalFor(p.guardrails.stepEvals, step.key) : p.hasPassedEval;
+      const guardrails =
+        p.guardrails && step.type === 'agent' ? stepGuardrails(p.guardrails, p.graph, step.key, stepIssues) : undefined;
       return (
         <div className="wfe-props-content">
           <Button type="link" size="small" className="wfe-back" onClick={p.onShowInfo}>
@@ -52,9 +60,10 @@ export function PropertiesPane(p: PropertiesPaneProps) {
             isStart={p.graph.start === step.key}
             readOnly={p.readOnly}
             isLowRisk={p.isLowRisk}
-            hasPassedEval={p.hasPassedEval}
+            hasPassedEval={hasPassedEval}
             tools={p.tools}
-            issues={p.issues.filter((i) => i.stepKey === step.key)}
+            issues={stepIssues}
+            {...(guardrails ? { guardrails } : {})}
             onChange={(patch) => p.onStepChange(step.key, patch)}
             onRenameKey={(newKey) => p.onRenameKey(step.key, newKey)}
             onSetStart={() => p.onSetStart(step.key)}
