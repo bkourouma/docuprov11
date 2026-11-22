@@ -114,6 +114,47 @@ export const NAV: NavSection[] = [
       },
     ],
   },
+  // Docu-Flow (lot W4). Les clés de menu SONT les routes ET les permissions du catalogue des rôles
+  // (apps/api/src/modules/roles/menu-catalog.ts, section « Docu-Flow »). La boîte de tâches et le suivi n'ont
+  // pas de menu propre : ils s'ouvrent dès que l'utilisateur détient l'un des menus Docu-Flow (altKeys).
+  {
+    label: 'Docu-Flow',
+    icon: 'organigramme',
+    items: [
+      {
+        key: '/workflows/boite',
+        label: 'Boîte de tâches',
+        icon: 'validated',
+        keywords: ['workflow', 'tâche', 'validation', 'à faire', 'agent', 'docu-flow'],
+        altKeys: ['/workflows/lancer', '/workflows/conception', '/workflows/administration'],
+      },
+      {
+        key: '/workflows/instances',
+        label: 'Suivi des workflows',
+        icon: 'pending',
+        keywords: ['workflow', 'instance', 'suivi', 'journal', 'docu-flow'],
+        altKeys: ['/workflows/lancer', '/workflows/administration'],
+      },
+      {
+        key: '/workflows/lancer',
+        label: 'Lancer un workflow',
+        icon: 'send',
+        keywords: ['workflow', 'démarrer', 'lancement', 'docu-flow'],
+      },
+      {
+        key: '/workflows/conception',
+        label: 'Conception des workflows',
+        icon: 'tune',
+        keywords: ['workflow', 'éditeur', 'graphe', 'définition', 'publier', 'docu-flow'],
+      },
+      {
+        key: '/workflows/administration',
+        label: 'Administration des workflows',
+        icon: 'admin',
+        keywords: ['workflow', 'toutes les instances', 'annuler', 'suspendre', 'docu-flow'],
+      },
+    ],
+  },
   {
     label: 'Docu-Courriers',
     icon: 'mail',
