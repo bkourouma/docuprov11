@@ -12,7 +12,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DefinitionsController } from './definitions.controller';
 import { DefinitionsService } from './definitions.service';
 import { WorkflowEngine, WfExecutorRegistry } from './engine';
-import type { WfTaskExecutorRegistry, WorkflowEngineApi } from './engine/engine.types';
+import { WfEffectApplierHolder } from './engine/effect-applier';
+import type { WfEffectApplierSource, WfTaskExecutorRegistry, WorkflowEngineApi } from './engine/engine.types';
 import {
   createGenerationSuggestionExecutor,
   WF_GENERATION_SUGGESTER,
@@ -27,7 +28,7 @@ import { InboxService } from './inbox.service';
 import { InstancesController } from './instances.controller';
 import { InstancesService } from './instances.service';
 import { PrincipalService } from './principal.service';
-import { WF_ENGINE, WF_EXECUTOR_REGISTRY, WF_TRIGGER_STARTER } from './workflows.tokens';
+import { WF_EFFECT_APPLIER, WF_ENGINE, WF_EXECUTOR_REGISTRY, WF_TRIGGER_STARTER } from './workflows.tokens';
 
 /**
  * Docu-Flow (workflows). `PrismaService` est global. Le moteur est une classe SANS Nest, construite ici en
@@ -40,19 +41,22 @@ import { WF_ENGINE, WF_EXECUTOR_REGISTRY, WF_TRIGGER_STARTER } from './workflows
   controllers: [DefinitionsController, InstancesController, InboxController],
   providers: [
     { provide: WF_EXECUTOR_REGISTRY, useValue: new WfExecutorRegistry() },
+    { provide: WF_EFFECT_APPLIER, useValue: new WfEffectApplierHolder() },
     {
       provide: WF_ENGINE,
-      inject: [PrismaService, WF_EXECUTOR_REGISTRY, PrincipalService, WorkflowEventsPublisher],
+      inject: [PrismaService, WF_EXECUTOR_REGISTRY, PrincipalService, WorkflowEventsPublisher, WF_EFFECT_APPLIER],
       useFactory: (
         prisma: PrismaService,
         registry: WfTaskExecutorRegistry,
         directory: PrincipalService,
         publisher: WorkflowEventsPublisher,
+        effects: WfEffectApplierSource,
       ): WorkflowEngineApi => {
         const logger = new Logger('WorkflowEngine');
         return new WorkflowEngine(prisma, {
           registry,
           directory,
+          effects,
           // Événements produits hors requête (exécuteurs en arrière-plan) : mêmes écouteurs que les routes.
           onEvents: (events) => publisher.publish(events),
           onBackgroundError: (err, ctx) =>
@@ -76,10 +80,12 @@ import { WF_ENGINE, WF_EXECUTOR_REGISTRY, WF_TRIGGER_STARTER } from './workflows
   exports: [
     WF_ENGINE,
     WF_EXECUTOR_REGISTRY,
+    WF_EFFECT_APPLIER,
     WF_TRIGGER_STARTER,
     WorkflowEventsPublisher,
     SubjectAccessRegistry,
     PrincipalService, // utilisé par le module des agents (identité = droits du lanceur)
+    DefinitionsService, // utilisé par les modèles du catalogue (W6) : une seule instance
   ],
 })
 export class WorkflowsModule implements OnModuleInit, OnApplicationBootstrap {

@@ -36,6 +36,7 @@ import {
   type WfAgentAudit,
   type WfAssigneeRef,
   type WfDirectory,
+  type WfEffectApplierSource,
   type WfEngineEvent,
   type WfExecutorOutcome,
   type WfInboxEntry,
@@ -48,6 +49,13 @@ import {
   type WfTransitionResult,
   type WorkflowEngineApi,
 } from './engine.types';
+import {
+  compensationOf,
+  noApplierError,
+  runCompensations,
+  selectValidatedActions,
+  toEffectEngineError,
+} from './effect-applier';
 import {
   WF_AUTO_CHAIN_LIMIT,
   WF_COMMENT_MAX,
@@ -110,6 +118,8 @@ export interface WorkflowEngineDeps {
   onBackgroundError?: (error: unknown, context: { taskId?: string; stage: string }) => void;
   /** Délai maximal d'une transaction (ms). Défaut 15 000. */
   transactionTimeoutMs?: number;
+  /** (Ajout W6) Applicateur des actions validées (absent : toute action à appliquer est refusée). */
+  effects?: WfEffectApplierSource;
 }
 
 interface Run {
@@ -134,6 +144,8 @@ interface Run {
   launcherLabel?: string;
   /** Au moins une écriture : l'instance doit être mise à jour (row_version + 1). */
   dirty: boolean;
+  /** (Ajout W6) Compensations d'effets non transactionnels, appelées si la transaction échoue. */
+  compensations?: Array<() => Promise<void>>;
 }
 
 interface LogEntry {
@@ -189,6 +201,7 @@ export class WorkflowEngine implements WorkflowEngineApi {
   private readonly onEvents?: WorkflowEngineDeps['onEvents'];
   private readonly onBackgroundError?: WorkflowEngineDeps['onBackgroundError'];
   private readonly txTimeout: number;
+  private readonly effects?: WfEffectApplierSource;
   private readonly graphCache = new Map<number, WfGraph>();
   private readonly pending = new Set<Promise<void>>();
 
@@ -202,6 +215,7 @@ export class WorkflowEngine implements WorkflowEngineApi {
     this.onEvents = deps.onEvents;
     this.onBackgroundError = deps.onBackgroundError;
     this.txTimeout = deps.transactionTimeoutMs ?? 15_000;
+    this.effects = deps.effects;
   }
 
   /** Attend la fin des exécuteurs lancés en arrière-plan (tests, arrêt propre). */
@@ -495,6 +509,7 @@ export class WorkflowEngine implements WorkflowEngineApi {
         result: validation.value,
         actor: { kind: 'user', userGroupId: input.principal.userGroupId },
         mode: 'normal',
+        validator: input.principal,
       });
     });
   }
@@ -590,8 +605,11 @@ export class WorkflowEngine implements WorkflowEngineApi {
     const ref = await this.prisma.wfTask.findUnique({ where: { wfTaskId: taskId }, select: { instanceId: true } });
     if (!ref) throw new WfEngineError('NOT_FOUND', 'Tâche introuvable.');
 
+    // (Ajout W6) Effets non transactionnels appliqués puis transaction en échec : compensations, jamais bloquantes.
+    const compensations: Array<() => Promise<void>> = [];
     const run = await this.transact(async (tx) => {
       const r = await this.lockRun(tx, ref.instanceId);
+      r.compensations = compensations;
       const task = await tx.wfTask.findUnique({ where: { wfTaskId: taskId } });
       if (!task) throw new WfEngineError('NOT_FOUND', 'Tâche introuvable.');
       if (!isTaskAssignee(principal, task)) {
@@ -620,6 +638,9 @@ export class WorkflowEngine implements WorkflowEngineApi {
       await body(r, { task, step, items, claimedBy });
       if (r.dirty) r.row = await this.finalize(r);
       return r;
+    }).catch((err: unknown) => {
+      if (compensations.length > 0) this.compensateInBackground(compensations, taskId);
+      throw err;
     });
     this.afterCommit(run, false);
     return this.toResult(run);
@@ -1022,12 +1043,16 @@ export class WorkflowEngine implements WorkflowEngineApi {
       mode: 'normal' | 'rejected';
       comment?: string;
       explanation?: string;
+      /** (Ajout W6) Humain qui valide (completeTask) : seul cas où des actions préparées s'appliquent. */
+      validator?: WfPrincipal;
     },
   ): Promise<void> {
     const { tx, now } = run;
     const { task, step, items } = scope;
     const rejected = args.mode === 'rejected';
     const userId = args.actor.kind === 'user' ? (args.actor.userGroupId ?? null) : null;
+    // (Ajout W6) Actions validées : appliquées AVANT la clôture, dans la même transaction (échec => rollback).
+    if (!rejected && args.validator) await this.applyValidatedEffects(run, scope, args.result, args.validator);
 
     const closed = await tx.wfTask.update({
       where: { wfTaskId: task.wfTaskId },
@@ -1132,6 +1157,91 @@ export class WorkflowEngine implements WorkflowEngineApi {
     } else {
       await this.enterStep(run, choice.edge.to);
     }
+  }
+
+  /**
+   * (Ajout W6) Validation humaine d'une proposition d'agent « agit avec validation » : les actions préparées
+   * (sélection stricte : `selectValidatedActions`) sont appliquées par l'applicateur DANS la transaction, avec
+   * les droits du valideur ET du lanceur, puis `agent.acted` est journalisé (avant la clôture). Tout refus ou
+   * échec lève `INVALID_INPUT` : la transaction est annulée (la validation n'est pas enregistrée).
+   */
+  private async applyValidatedEffects(
+    run: Run,
+    scope: TaskScope,
+    result: Record<string, unknown>,
+    validator: WfPrincipal,
+  ): Promise<void> {
+    const selection = selectValidatedActions(scope.step, scope.items, result);
+    if (!selection || selection.actions.length === 0) return;
+    // Échec fermé : des actions à appliquer sans applicateur branché => la validation est refusée.
+    const port = this.effects?.get();
+    if (!port) throw noApplierError(selection.actions[0]!.tool);
+    const { task, step } = scope;
+    let output;
+    try {
+      output = await port.apply({
+        tx: run.tx,
+        now: run.now,
+        instanceId: run.instanceId.toString(),
+        taskId: task.wfTaskId.toString(),
+        stepKey: step.key,
+        definitionVersionId: run.row.definitionVersionId,
+        subject: {
+          type: run.row.subjectType ?? null,
+          id: run.row.subjectId == null ? null : run.row.subjectId.toString(),
+        },
+        input: structuredClone(run.context.input),
+        stepConfig: structuredClone(isPlainObject(step.config) ? step.config : {}),
+        validator,
+        launcherUserGroupId: run.row.startedBy,
+        outcome: selection.outcome,
+        actions: selection.actions,
+      });
+    } catch (err) {
+      const compensate = compensationOf(err);
+      if (compensate) (run.compensations ??= []).push(compensate);
+      throw toEffectEngineError(err);
+    }
+    if (typeof output?.compensate === 'function') (run.compensations ??= []).push(output.compensate);
+    const effects = Array.isArray(output?.effects) ? output.effects : [];
+    // Filet : une action ignorée n'est jamais acceptée en silence (compensations déjà collectées conservées).
+    const skipped = effects.find((e) => e.skipped);
+    if (skipped) throw noApplierError(skipped.tool);
+    if (effects.length === 0) return; // rien d'appliqué : aucun événement
+    await this.log(run, {
+      type: 'agent.acted',
+      actor: AGENT,
+      taskId: task.wfTaskId,
+      stepKey: step.key,
+      decision: {
+        kind: 'effects_applied',
+        effects: effects.map((e) => ({ tool: e.tool, summary: e.summary })),
+        validatedBy: validator.userGroupId,
+        outcome: selection.outcome,
+        itemId: selection.itemId.toString(),
+      },
+      explanation: truncateText(
+        `Actions préparées par l'agent appliquées après validation par l'utilisateur n°${validator.userGroupId} : ${[
+          ...new Set(effects.map((e) => e.tool)),
+        ].join(', ')}.`,
+        WF_LOG_INSTRUCTION_MAX,
+      ),
+      validatedBy: validator.userGroupId,
+      validatedAt: run.now,
+    });
+  }
+
+  /** (Ajout W6) Compensations après l'échec d'une transaction : en arrière-plan, jamais de levée. */
+  private compensateInBackground(compensations: ReadonlyArray<() => Promise<void>>, taskId: bigint): void {
+    // Seul le type d'erreur est rapporté (le message pourrait contenir des données).
+    const job = runCompensations(compensations, (err) =>
+      this.reportBackgroundError(new Error(`compensation en échec (${err instanceof Error ? err.name : 'erreur inconnue'})`), {
+        taskId: taskId.toString(),
+        stage: 'compensation',
+      }),
+    ).catch(() => undefined);
+    this.pending.add(job);
+    void job.finally(() => this.pending.delete(job));
   }
 
   /**

@@ -34,6 +34,7 @@ import { UsersModule } from './modules/users/users.module';
 // --- Docu-Flow W1 ---
 import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { WorkflowAgentsModule } from './modules/workflow-agents/workflow-agents.module';
+import { WorkflowAgentCatalogModule } from './modules/workflow-agent-catalog/workflow-agent-catalog.module';
 // --- fin Docu-Flow W1 ---
 // --- Docu-Flow W3 ---
 import { WorkflowTriggersModule } from './modules/workflow-triggers/workflow-triggers.module';
@@ -90,6 +91,7 @@ import { HealthController } from './health.controller';
     // --- Docu-Flow W1 ---
     WorkflowsModule,
     WorkflowAgentsModule, // Docu-Flow W2 : agents
+    WorkflowAgentCatalogModule, // Docu-Flow W6 : catalogue d'agents et modèles prêts à l'emploi
     // --- fin Docu-Flow W1 ---
     // --- Docu-Flow W3 ---
     WorkflowTriggersModule,

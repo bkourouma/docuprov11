@@ -6,6 +6,7 @@ import type {
   WfStep,
   WfTaskDto,
 } from '@archivage/types';
+import type { Prisma } from '@prisma/client';
 
 // Docu-Flow — CONTRAT PUBLIC du moteur (lot W1). Types seulement ; l'implémentation est dans engine.ts /
 // interpreter.ts. Le moteur est SANS dépendance NestJS (classe simple construite avec un PrismaClient) pour
@@ -182,6 +183,80 @@ export interface WfDirectory {
    * de boîte ; null / absent => « l'utilisateur n°… ». Ne doit renvoyer aucune donnée sensible.
    */
   describeUserGroup?(userGroupId: number): Promise<string | null>;
+}
+
+// ---------------------------------------------------------------------------
+// (Ajout W6) Applicateur d'effets : actions préparées par un agent, appliquées à la validation humaine
+// ---------------------------------------------------------------------------
+
+/** Action préparée validée (même forme que `WfPreparedAction` des agents), déjà filtrée par le moteur. */
+export interface WfEffectAction {
+  tool: string;
+  arguments: Record<string, unknown>;
+  sideEffect: 0 | 1 | 2;
+  requiresValidation: boolean;
+  preview: string;
+}
+
+/** Entrée de l'applicateur : TOUTE écriture passe par `tx` (transaction de la validation). */
+export interface WfEffectApplyInput {
+  tx: Prisma.TransactionClient;
+  now: Date;
+  instanceId: string;
+  taskId: string;
+  stepKey: string;
+  definitionVersionId: number;
+  subject: { type: string | null; id: string | null };
+  /** `context.input` de l'instance (lecture seule). */
+  input: Readonly<Record<string, unknown>>;
+  /** `step.config` de l'étape agent (lecture seule). */
+  stepConfig: Readonly<Record<string, unknown>>;
+  /** Humain qui valide (bénéficiaire de la tâche). */
+  validator: WfPrincipal;
+  /** Lanceur de l'instance (`started_by`) : ses droits bornent aussi l'effet. */
+  launcherUserGroupId: number;
+  outcome: 'accepted' | 'modified';
+  actions: readonly WfEffectAction[];
+}
+
+/** Effet résumé (jamais de contenu de courrier). `skipped` (pas d'applicateur) : refusé par le moteur (échec fermé). */
+export interface WfEffectSummary {
+  tool: string;
+  summary: Record<string, unknown>;
+  skipped?: boolean;
+}
+
+export interface WfEffectApplyOutput {
+  effects: WfEffectSummary[];
+  /** Annulation des effets NON transactionnels, appelée si la transaction échoue ensuite. Ne lève jamais. */
+  compensate?: () => Promise<void>;
+}
+
+export interface WfEffectApplierPort {
+  /** Lève `WfEffectApplyError` (refus explicable) ; toute autre erreur est un échec technique. */
+  apply(input: WfEffectApplyInput): Promise<WfEffectApplyOutput>;
+}
+
+/** Source de l'applicateur (support mutable : branché après la construction du moteur). */
+export interface WfEffectApplierSource {
+  get(): WfEffectApplierPort | undefined;
+}
+
+/**
+ * Refus d'appliquer : message en français SANS contenu de courrier. Le moteur le traduit en
+ * `WfEngineError('INVALID_INPUT', message, { code, tool })` ; la transaction est annulée, puis les
+ * compensations déjà collectées (`compensate`) sont appelées.
+ */
+export class WfEffectApplyError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly tool: string | null = null,
+    readonly compensate?: () => Promise<void>,
+  ) {
+    super(message);
+    this.name = 'WfEffectApplyError';
+  }
 }
 
 // ---------------------------------------------------------------------------

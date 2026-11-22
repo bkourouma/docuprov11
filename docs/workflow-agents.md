@@ -174,7 +174,7 @@ pnpm --filter @archivage/api exec jest -i engine.integration budget.integration 
 
 ## 12. Limites connues
 
-- **Les outils d'écriture ne font que préparer.** Il n'existe pas d'applicateur d'effets : l'imputation ou la réponse validées ne sont pas écrites dans le module courriers. Les applicateurs relèvent du lot W6 (piste : registre appelé dans la transaction de validation, avec journalisation `agent.acted`).
+- **Les outils d'écriture ne font que préparer.** Les effets sont appliqués après validation humaine par les applicateurs du lot W6, dans la transaction de validation (voir `docs/workflow-agents-catalogue.md`). Sans module catalogue, le comportement W2 est conservé : rien n'est appliqué.
 - **Schéma JSON non strict côté fournisseur** : le tour d'agent contient des objets libres (`arguments`, `result`) ; le runner envoie `strictSchema: false` (option additive de `AiCompletionRequest`, honorée par les deux fournisseurs ; strict par défaut pour tous les autres appelants). La validation zod stricte côté serveur reste la référence.
 - `AiService.run` ne prend pas de modèle : `spec.model` est ignoré (`audit.model` reçoit le modèle renvoyé par le fournisseur).
 - La détection d'injection est heuristique (faux positifs et négatifs possibles) ; elle ne remplace pas la validation humaine.
