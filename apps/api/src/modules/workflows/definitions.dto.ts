@@ -64,6 +64,7 @@ export type WfDefinitionIssueCode =
   | WfGraphIssue['code']
   | 'ESCALATION_INVALID'
   | 'EXECUTOR_MISSING'
+  | 'AUTHORING_TO_COMPLETE' // brouillon généré en langage naturel : affectation « à compléter » (W5)
   // Étapes agent (lot W2)
   | 'AGENT_TOOL_UNKNOWN' // outil absent du registre ou désactivé
   | 'AGENT_TOOL_NOT_GRANTED' // outil non autorisé pour ce workflow (wf_tool_grant)

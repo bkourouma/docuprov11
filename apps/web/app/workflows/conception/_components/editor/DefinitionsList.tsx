@@ -18,9 +18,12 @@ import { WorkflowApiError, workflowErrorMessage, workflowsApi } from '../../../.
 import { formatDateTime } from '../../../_lib/format';
 import { useWorkflowAccess } from '../../../_lib/useWorkflowAccess';
 import { AccessDenied } from '../../../instances/_components/AccessDenied';
+import { DescribeNeedButton } from '../authoring/DescribeNeedModal';
+import { TemplateButton } from '../authoring/TemplatePickerModal';
 import { CreateDefinitionModal } from './CreateDefinitionModal';
 import { DefinitionStatusTag } from './DefinitionStatusTags';
 import '../../../workflows.css';
+import '../authoring/authoring.css';
 import './editeur.css';
 
 const STATUS_OPTIONS = WF_DEFINITION_STATUS_VALUES.map((v) => ({ value: v, label: WF_DEFINITION_STATUS_LABELS[v] }));
@@ -100,9 +103,13 @@ export function DefinitionsList() {
       icon="tune"
       actions={
         allowed ? (
-          <Button type="primary" icon={<icons.add {...iconDefaults} size={16} />} onClick={() => setCreating(true)}>
-            Nouveau workflow
-          </Button>
+          <div className="wfe-row-actions wf-touch">
+            <Button type="primary" icon={<icons.add {...iconDefaults} size={16} />} onClick={() => setCreating(true)}>
+              Nouveau workflow
+            </Button>
+            <DescribeNeedButton />
+            <TemplateButton />
+          </div>
         ) : undefined
       }
     />

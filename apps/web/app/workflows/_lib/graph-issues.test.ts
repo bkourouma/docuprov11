@@ -97,9 +97,9 @@ test('validateLive tolère une entrée absurde', () => {
   }
 });
 
-test('explainIssue : titre, explication et correction non vides, en français, pour les 16 codes', () => {
-  assert.equal(ALL_ISSUE_CODES.length, 16);
-  assert.equal(new Set(ALL_ISSUE_CODES).size, 16);
+test('explainIssue : titre, explication et correction non vides, en français, pour les 17 codes', () => {
+  assert.equal(ALL_ISSUE_CODES.length, 17);
+  assert.equal(new Set(ALL_ISSUE_CODES).size, 17);
   const jargon = /zod|schéma|schema|bpathb|json|undefined|bnullb/i;
   for (const code of ALL_ISSUE_CODES) {
     const e = explainIssue({ code, message: 'Message du serveur', stepKey: 'a' });
@@ -115,6 +115,17 @@ test('explainIssue : titre, explication et correction non vides, en français, p
   // Code inconnu venu d'un serveur plus récent : repli propre.
   const unknown = explainIssue({ code: 'AUTRE' as WfDefinitionIssueCode, message: 'm' });
   assert.ok(unknown.title && unknown.explain && unknown.fix);
+});
+
+test('explainIssue : AUTHORING_TO_COMPLETE (W5) cite l’étape et explique comment corriger', () => {
+  const graph = raw('a', [{ key: 'visa_daf', name: 'Visa du DAF' }]) as WfGraph;
+  const e = explainIssue(
+    { code: 'AUTHORING_TO_COMPLETE', message: 'Affectation à compléter à l’étape « visa_daf »', stepKey: 'visa_daf' },
+    graph,
+  );
+  assert.equal(e.title, 'Affectation à compléter');
+  assert.match(e.explain, /Visa du DAF/);
+  assert.match(e.fix, /Affectation/);
 });
 
 test('explainIssue cite le nom de l’étape quand le graphe est fourni', () => {
