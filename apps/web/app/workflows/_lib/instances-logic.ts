@@ -69,6 +69,7 @@ const EVENT_SPECS: Record<string, EventSpec> = {
   'agent.proposed': spec('agents', 'agent', 'a proposé une action, en attente de validation'),
   'agent.acted': spec('agents', 'agent', 'a exécuté une action de manière automatique'),
   'agent.escalated': spec('agents', 'agent', 'a confié la décision à un humain'),
+  'agent.tool_called': spec('agents', 'agent', 'a appelé un outil (ou s’est vu refuser un outil non autorisé)'),
   'executor.error': spec('agents', 'error', 'a rencontré une erreur lors de l’exécution automatique'),
   'eval.run_completed': spec('agents', 'info', 'a terminé une évaluation de l’agent'),
 
@@ -208,6 +209,12 @@ export function readDecisionSummary(decision: unknown): string[] {
   if (cond) lines.push(`Condition satisfaite : ${cond}`);
   const source = primitiveText(d.source);
   if (source) lines.push(`Source : ${source}`);
+  // Refus d'un outil par l'agent (`agent.tool_called`) : toujours visible, jamais le contenu des arguments.
+  const deniedTool = primitiveText(d.deniedTool);
+  if (deniedTool) lines.push(`Outil refusé : ${deniedTool}`);
+  const denied = primitiveText(d.denied);
+  if (denied) lines.push(`Motif du refus : ${denied}`);
+  if (d.suspicion_injection === true) lines.push('Suspicion d’injection de consigne signalée');
   if (d.escalation !== undefined && d.escalation !== null && d.escalation !== false) {
     const esc = primitiveText(d.escalation);
     lines.push(esc && esc !== 'oui' ? `Escalade : ${esc}` : 'Escalade déclenchée');
