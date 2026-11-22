@@ -1,0 +1,84 @@
+/* Boîte de tâches Docu-Flow : uniquement des variables AntD / design system (clair et sombre). Préfixe « wfb- ». */
+.wfb-page { max-width: 960px; }
+.wfb-search { flex: 1 1 220px; }
+.wfb-filters .ant-select { width: 100%; min-width: 160px; }
+.wfb-count { margin: 0 0 12px; font-weight: 600; }
+.wfb-gap { margin-bottom: 12px; }
+.wfb-list-wrap:focus { outline: none; }
+.wfb-list-wrap:focus-visible { outline: 2px solid var(--ant-color-primary); outline-offset: 2px; }
+
+/* Liste : cartes empilées, jamais de tableau. */
+.wfb-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.wfb-item { margin: 0; }
+.wfb-card {
+  display: flex; flex-direction: column; gap: 6px; width: 100%; min-height: 44px; text-align: left;
+  font: inherit; color: var(--ant-color-text); cursor: pointer;
+  padding: 12px 16px; background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius-lg);
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.wfb-card:hover { border-color: var(--ant-color-primary); }
+.wfb-card:focus-visible { outline: 2px solid var(--ant-color-primary); outline-offset: 2px; }
+.wfb-card--selected { border-color: var(--ant-color-primary); box-shadow: inset 0 0 0 1px var(--ant-color-primary); }
+/* Retard : bordure épaisse + fond teinté, EN PLUS du texte « En retard de … » (la couleur ne porte jamais seule). */
+.wfb-card--overdue {
+  background: var(--ant-color-error-bg); border-color: var(--ant-color-error-border);
+  border-inline-start: 4px solid var(--ant-color-error);
+}
+.wfb-card--overdue:hover { border-color: var(--ant-color-error); }
+.wfb-card-title { font-weight: 600; overflow-wrap: anywhere; }
+.wfb-card-sub { font-size: 13px; color: var(--ant-color-text-secondary); overflow-wrap: anywhere; }
+.wfb-card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 0; }
+.wfb-card-tags .ant-tag { margin-inline-end: 8px; }
+.wfb-late { display: inline-flex; align-items: center; gap: 4px; color: var(--ant-color-error); font-weight: 600; }
+.wfb-more { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; }
+.wfb-more .ant-alert { flex: 1 1 100%; }
+.wfb-more .ant-btn { min-height: 44px; }
+
+/* Tiroir de détail. */
+.wfb-drawer { display: flex; flex-direction: column; gap: 16px; }
+.wfb-tags { display: flex; flex-wrap: wrap; gap: 6px 0; }
+.wfb-tags .ant-tag { margin-inline-end: 8px; }
+.wfb-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; margin: 0; }
+.wfb-meta dt { font-size: 12px; font-weight: 600; color: var(--ant-color-text-secondary); }
+.wfb-meta dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.wfb-section { display: flex; flex-direction: column; gap: 8px; }
+.wfb-sub { margin: 0; font-size: 14px; font-weight: 600; }
+.wfb-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.wfb-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.wfb-actions .ant-btn { min-height: 44px; }
+.wfb-footer-note { margin: 0; }
+
+/* Explication de l'agent : bloc bien visible. */
+.wfb-agent {
+  display: flex; flex-direction: column; gap: 12px; padding: 14px 16px;
+  background: var(--ant-color-primary-bg); border: 1px solid var(--ant-color-primary-border);
+  border-radius: var(--ant-border-radius-lg);
+}
+.wfb-agent-title { margin: 0; font-size: 15px; font-weight: 600; }
+.wfb-agent-block { display: flex; flex-direction: column; gap: 4px; }
+.wfb-proposal { padding: 8px 12px; background: var(--ant-color-bg-container); border-radius: var(--ant-border-radius); border: 1px solid var(--ant-color-border-secondary); }
+.wfb-sources { margin: 0; padding-inline-start: 20px; overflow-wrap: anywhere; }
+.wfb-confidence { margin: 0; }
+.wfb-agent-empty { margin: 0; }
+
+/* Formulaires. */
+.wfb-form { display: flex; flex-direction: column; gap: 14px; }
+.wfb-field { min-width: 0; }
+.wfb-field .ant-input, .wfb-field .ant-input-affix-wrapper { width: 100%; }
+.wfb-fieldset { margin: 0; padding: 0; border: 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.wfb-fieldset legend { padding: 0; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--ant-color-text-secondary); }
+.wfb-vertical { display: flex; flex-direction: column; gap: 8px; }
+.wfb-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+.wfb-form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.wfb-form-actions .ant-btn { min-height: 44px; }
+.wfb-errors { margin: 0; padding-inline-start: 18px; }
+.wfb-json { font-family: var(--ant-font-family-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 13px; }
+
+@media (max-width: 767px) {
+  .wfb-row { grid-template-columns: 1fr; }
+  .wfb-actions { justify-content: stretch; }
+  .wfb-actions .ant-btn { flex: 1 1 100%; }
+  .wfb-form-actions .ant-btn { flex: 1 1 100%; }
+  .wfb-filters .wf-field { min-width: 100%; }
+}

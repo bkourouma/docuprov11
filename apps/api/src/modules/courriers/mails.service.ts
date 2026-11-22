@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { MailActionCode, MailInputationTypeId, MailStatus, MailType } from '@archivage/types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +7,7 @@ import { effectiveMenuKeys } from '../auth/menu-access';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { MailSeverity } from '../notifications/email.service';
 import { MailScannedDocumentsService } from './mail-scanned.service';
+import { WorkflowEventBus, mailArrivedEvent } from '../workflow-triggers/bus';
 import {
   archiveEffect,
   mailScopeFromMenuKeys,
@@ -95,7 +96,20 @@ export class MailsService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly scanned: MailScannedDocumentsService,
+    // Docu-Flow W3 : bus d'événements métier (facultatif : absent hors application complète).
+    @Optional() private readonly wfEvents?: WorkflowEventBus,
   ) {}
+
+  private readonly wfLogger = new Logger('MailsService');
+
+  /** Docu-Flow W3 : construction ET émission protégées ; ne remonte jamais (le courrier est déjà enregistré). */
+  private emitMailArrived(mail: Parameters<typeof mailArrivedEvent>[0], hasDocument: boolean): void {
+    try {
+      this.wfEvents?.emit(mailArrivedEvent(mail, { hasDocument }));
+    } catch (err) {
+      this.wfLogger.warn(`émission « courrier arrivé » ignorée : ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // ---- Worklists (§03.2/§03.4) ---------------------------------------------
   /**
@@ -576,6 +590,9 @@ export class MailsService {
       }
       return created;
     });
+
+    // Docu-Flow W3 : événement « courrier arrivé », APRÈS commit, sans attente ni échec possible (champs structurés seulement).
+    this.emitMailArrived(mail, documentId != null);
 
     // §05 : notification d'enregistrement (NotificationEnregistrementCourrierAsync). Aucun journal
     // de contrôle ici (émis par valider()). Le destinataire étant un rôle, « le » destinataire =

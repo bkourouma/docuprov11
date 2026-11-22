@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -40,6 +41,7 @@ import type {
 import { KeyedMutex } from './keyed-mutex';
 import { MAX_REGISTRY_IDS, MentionRegistryStore } from './collab-mentions-registry';
 import { WorkingStateStore, safeDocumentId } from './collab-working-state';
+import { WorkflowEventBus, documentDepositedEvent } from '../../workflow-triggers/bus';
 
 /** Niveau de permission minimal pour créer une version (3 = Modification), comme doc-versions. */
 const MIN_WRITE_LEVEL = 3;
@@ -162,7 +164,18 @@ export class CollabPersistenceService implements CollabPersistencePort {
     private readonly config: ConfigService,
     private readonly documents: DocumentsService,
     private readonly notifications: NotificationsService,
+    // Docu-Flow W3 : bus d'événements métier (facultatif).
+    @Optional() private readonly wfEvents?: WorkflowEventBus,
   ) {}
+
+  /** Docu-Flow W3 : événement « document déposé », après commit, jamais bloquant (champs structurés seulement). */
+  private emitDocumentDeposited(documentId: number, createdBy: number | null): void {
+    try {
+      this.wfEvents?.emit(documentDepositedEvent({ documentId, createdBy }, { source: 'editeur', pageCount: null }));
+    } catch (err) {
+      this.logger.warn(`émission « document déposé » ignorée : ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   /** Coffre disque ; point d'extension pour les tests. */
   protected getStore(): FileStore {
@@ -517,6 +530,7 @@ export class CollabPersistenceService implements CollabPersistencePort {
         );
       }
     });
+    this.emitDocumentDeposited(created.documentId, input.user.userGroupId);
     await this.auditVersionCreated(created.documentId, created.versionNumber, input.user);
     return { documentId: created.documentId, documentVersionId: created.documentVersionId };
   }

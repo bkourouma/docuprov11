@@ -15,6 +15,7 @@ import type { DocumentPlan } from './segment';
 import { pageKey } from './page-source';
 import { grantConsultation } from './grant-permission';
 import { sealFreshDocument } from './seal-document';
+import { safeEmitDocumentDeposited } from './workflow-deadlines.events';
 
 /**
  * Empreinte de référence du binaire, posée DÈS l'ingestion (2026-09-15).
@@ -140,6 +141,8 @@ export async function persistDocument(opts: PersistOptions): Promise<void> {
   if (createdBy != null) {
     await grantConsultation(document.documentId, createdBy);
   }
+  // Docu-Flow W3 : document entièrement créé (version, fichier, cachet, droit), hors transaction ; ne lève jamais.
+  safeEmitDocumentDeposited(document, { source: 'acquisition', pageCount: plan.pages.length });
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +247,8 @@ export async function persistMergedDocument(opts: PersistMergedOptions): Promise
   if (createdBy != null) {
     await grantConsultation(document.documentId, createdBy);
   }
+  // Docu-Flow W3 : document entièrement créé (version, fichier, cachet, droit), hors transaction ; ne lève jamais.
+  safeEmitDocumentDeposited(document, { source: 'fusion', pageCount });
 }
 
 // ---------------------------------------------------------------------------
@@ -684,6 +689,8 @@ export async function ingestExternalFile(
     throw err;
   }
   await (deps.seal ?? sealFreshDocument)(document.documentId, deps.archivesPath);
+  // Docu-Flow W3 : document créé avec ses droits, octets écrits et scellé ; hors transaction, ne lève jamais.
+  safeEmitDocumentDeposited(document, { source: 'externe', pageCount: file.pageCount });
   return {
     documentId: document.documentId,
     documentVersionId: version.documentVersionId,

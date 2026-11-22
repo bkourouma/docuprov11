@@ -336,8 +336,9 @@ class TestableService extends CollabPersistenceService {
     private readonly fakeStore: FileStore,
     private readonly fakeWorking: WorkingStateStore,
     private readonly fakeMentions: MentionRegistryStore,
+    wfEvents?: { emit: (event: unknown) => unknown },
   ) {
-    super(prisma, audit, {} as ConfigService, documents, notifications);
+    super(prisma, audit, {} as ConfigService, documents, notifications, wfEvents as never);
   }
   protected override getStore(): FileStore {
     return this.fakeStore;
@@ -375,7 +376,13 @@ afterEach(async () => {
   await rm(workDir, { recursive: true, force: true });
 });
 
-function setup(opts: { canAccess?: (documentId: number, user: AuthUser) => boolean; level?: number | null } = {}) {
+function setup(
+  opts: {
+    canAccess?: (documentId: number, user: AuthUser) => boolean;
+    level?: number | null;
+    wfEvents?: { emit: (event: unknown) => unknown };
+  } = {},
+) {
   const db = new FakeDb();
   const prisma = db.prisma();
   const audit = { dataChange: jest.fn(async () => undefined) };
@@ -394,6 +401,7 @@ function setup(opts: { canAccess?: (documentId: number, user: AuthUser) => boole
     db.store(),
     new WorkingStateStore(workDir),
     new MentionRegistryStore(workDir),
+    opts.wfEvents,
   );
   return { db, prisma, audit, documents, notifications, service };
 }
@@ -434,6 +442,28 @@ describe('CollabPersistenceService.createDocument', () => {
     expect(audit.dataChange).toHaveBeenCalledWith(
       expect.objectContaining({ objectRef: `document:${documentId}`, newValue: 'version-created:v1' }),
     );
+  });
+
+  it('émet document.deposited (origine editeur) après la création, sans texte libre', async () => {
+    const events: Record<string, unknown>[] = [];
+    const { service } = setup({ wfEvents: { emit: (e) => events.push(e as Record<string, unknown>) } });
+    const { documentId } = await seedDocument(service);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'document.deposited', subjectType: 'document', subjectId: String(documentId) });
+    expect((events[0].fields as Record<string, unknown>).source).toBe('editeur');
+    expect(JSON.stringify(events[0])).not.toContain('Note');
+  });
+
+  it('un bus dont emit lève ne casse pas la création', async () => {
+    const { service } = setup({
+      wfEvents: {
+        emit: () => {
+          throw new Error('bus en panne');
+        },
+      },
+    });
+    const created = await seedDocument(service);
+    expect(created.documentId).toBeGreaterThan(0);
   });
 
   it('supprime le document et les binaires si l’écriture disque échoue', async () => {

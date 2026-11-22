@@ -1,0 +1,76 @@
+/* Éditeur et liste de conception Docu-Flow (préfixe wfe-). Variables AntD uniquement : clair et sombre. */
+
+/* ---- Liste des workflows ---- */
+.wfe-list-name { font-weight: 600; overflow-wrap: anywhere; }
+.wfe-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.wfe-cards { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.wfe-card { display: flex; flex-direction: column; gap: 8px; }
+.wfe-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.wfe-card-desc { margin: 0; overflow-wrap: anywhere; }
+
+/* ---- Éditeur : en-tête d'état ---- */
+.wfe-root { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wfe-root > header { margin-bottom: 0 !important; }
+.wfe-status-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.wfe-dirty { color: var(--ant-color-warning-text, var(--ant-color-warning)); }
+.wfe-save-status { color: var(--ant-color-text-secondary); font-size: 13px; }
+.wfe-banner { margin: 0; }
+.wfe-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ant-color-text-secondary); }
+
+/* ---- Barre d'outils ---- */
+.wfe-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 0;
+}
+.wfe-toolbar-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.wfe-toolbar-reason { flex-basis: 100%; }
+
+/* ---- Disposition ---- */
+.wfe-main { display: grid; gap: 12px; min-width: 0; }
+.wfe-main--stacked { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) {
+  .wfe-main { grid-template-columns: 200px minmax(0, 1fr) 360px; align-items: start; }
+  .wfe-main--list { grid-template-columns: minmax(0, 1fr) 360px; }
+}
+.wfe-palette, .wfe-props {
+  min-width: 0; padding: 12px; background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius-lg);
+}
+.wfe-props { max-height: calc(100vh - 160px); overflow: auto; }
+.wfe-props:focus-visible { outline: 2px solid var(--ant-color-primary); outline-offset: 2px; }
+.wfe-center { min-width: 0; }
+.wfe-canvas-box {
+  height: clamp(420px, 68vh, 780px); min-height: 420px; overflow: hidden;
+  background: var(--ant-color-bg-container); border: 1px solid var(--ant-color-border);
+  border-radius: var(--ant-border-radius-lg);
+}
+.wfe-canvas-loading {
+  display: grid; place-items: center; height: 100%; min-height: 420px; color: var(--ant-color-text-secondary);
+}
+.wfe-subbar { display: flex; justify-content: flex-end; }
+.wfe-issues { background: var(--ant-color-bg-container); }
+
+/* ---- Panneau de fiche et versions ---- */
+.wfe-props-content { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wfe-back { align-self: flex-start; padding-inline: 0; }
+.wfe-info { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.wfe-panel-title, .wfe-section-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--ant-color-text); }
+.wfe-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wfe-field > label { font-size: 12px; font-weight: 600; color: var(--ant-color-text-secondary); }
+.wfe-error { font-size: 12px; color: var(--ant-color-error); }
+.wfe-versions { display: flex; flex-direction: column; gap: 8px; }
+.wfe-version-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.wfe-version {
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius);
+}
+.wfe-version--open { border-color: var(--ant-color-primary); background: var(--ant-color-primary-bg); }
+.wfe-version-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.wfe-version-open { font-size: 12px; font-weight: 600; color: var(--ant-color-primary); }
+.wfe-version-lock { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ant-color-text-secondary); }
+.wfe-version-note { font-size: 13px; overflow-wrap: anywhere; }
+
+/* ---- Mobile : cibles tactiles confortables ---- */
+@media (max-width: 767px) {
+  .wfe-toolbar .ant-btn, .wfe-row-actions .ant-btn, .wfe-subbar .ant-btn { min-height: 44px; }
+  .wfe-canvas-box { height: 60vh; min-height: 360px; }
+}

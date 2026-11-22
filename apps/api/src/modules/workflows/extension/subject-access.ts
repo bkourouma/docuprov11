@@ -14,6 +14,8 @@ export interface SubjectActor {
 export interface SubjectAccessChecker {
   readonly subjectType: string;
   canAccess(actor: SubjectActor, subjectId: string): Promise<boolean>;
+  /** (Facultatif) Propriétaire (user_group_id) de l'objet ; null si inconnu. */
+  resolveOwner?(subjectId: string): Promise<number | null>;
 }
 
 @Injectable()
@@ -26,6 +28,17 @@ export class SubjectAccessRegistry {
 
   get(subjectType: string): SubjectAccessChecker | undefined {
     return this.checkers.get(subjectType);
+  }
+
+  /** Propriétaire d'un objet lié ; null sans contrôleur, sans `resolveOwner` ou en cas d'erreur (ne lève jamais). */
+  async resolveOwner(subjectType: string, subjectId: string): Promise<number | null> {
+    try {
+      const checker = this.checkers.get(subjectType);
+      if (!checker?.resolveOwner) return null;
+      return (await checker.resolveOwner(subjectId)) ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /**

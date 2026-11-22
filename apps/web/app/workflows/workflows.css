@@ -1,0 +1,24 @@
+/* Docu-Flow : socle commun. Uniquement des variables AntD / design system (clair et sombre).
+   Chaque écran ajoute sa propre feuille (boite.css, instances.css, editeur.css) : ne pas y mettre de règle partagée. */
+.wf-muted { color: var(--ant-color-text-secondary); font-size: 13px; }
+.wf-toolbar { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; margin-bottom: 16px; }
+.wf-field { display: flex; flex-direction: column; gap: 4px; min-width: 160px; }
+.wf-field > label { font-size: 12px; font-weight: 600; color: var(--ant-color-text-secondary); }
+.wf-card {
+  padding: 14px 16px; background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius-lg);
+}
+.wf-pre {
+  margin: 0; padding: 10px 12px; font-family: var(--ant-font-family-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto;
+  background: var(--ant-color-fill-quaternary); border: 1px solid var(--ant-color-border-secondary); border-radius: var(--ant-border-radius);
+}
+.wf-sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+/* Cibles tactiles confortables sur mobile. */
+@media (max-width: 767px) {
+  .wf-field { min-width: 100%; }
+  .wf-touch .ant-btn { min-height: 44px; }
+}
