@@ -55,6 +55,9 @@ import {
 // --- Docu-Flow W1 : minuteries ---
 import { startWorkflowTimers } from './processors/workflow-timers.scheduler';
 // --- fin Docu-Flow W1 ---
+// --- Docu-Flow W3 ---
+import { startWorkflowDeadlines } from './processors/workflow-deadlines.scheduler';
+// --- fin Docu-Flow W3 ---
 
 /**
  * Rappels Docu-Courriers (§03.5) : planificateurs répétables + consommateur.
@@ -407,6 +410,11 @@ function main(): void {
     logger.error({ err: err.message }, 'démarrage des minuteries du workflow impossible'),
   );
   // --- fin Docu-Flow W1 ---
+  // --- Docu-Flow W3 ---
+  void startWorkflowDeadlines(connection as unknown as ConnectionOptions, prisma).catch((err: Error) =>
+    logger.error({ err: err.message }, 'démarrage des balayages d’échéances du workflow impossible'),
+  );
+  // --- fin Docu-Flow W3 ---
 
   void startReminders(
     connection as unknown as ConnectionOptions,

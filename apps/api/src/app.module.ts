@@ -34,6 +34,9 @@ import { UsersModule } from './modules/users/users.module';
 // --- Docu-Flow W1 ---
 import { WorkflowsModule } from './modules/workflows/workflows.module';
 // --- fin Docu-Flow W1 ---
+// --- Docu-Flow W3 ---
+import { WorkflowTriggersModule } from './modules/workflow-triggers/workflow-triggers.module';
+// --- fin Docu-Flow W3 ---
 import { HealthController } from './health.controller';
 
 @Module({
@@ -83,6 +86,9 @@ import { HealthController } from './health.controller';
     // --- Docu-Flow W1 ---
     WorkflowsModule,
     // --- fin Docu-Flow W1 ---
+    // --- Docu-Flow W3 ---
+    WorkflowTriggersModule,
+    // --- fin Docu-Flow W3 ---
   ],
   providers: [
     // Deny-by-default at the transport layer: every route needs a JWT unless @Public().

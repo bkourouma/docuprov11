@@ -136,6 +136,33 @@ describe('MailScannedDocumentsService', () => {
       await expect(readFile(join(archives, '77.pdf'), 'utf8')).resolves.toBe('%PDF-scan');
     });
 
+    it('émet document.deposited (origine scan) après l’écriture, sans texte libre ; un bus qui lève ne casse rien', async () => {
+      const src = join(archives, 'scan-evt.pdf');
+      await writeFile(src, '%PDF-scan');
+      prisma.mailScannedDocument.findUnique.mockResolvedValue({
+        mailScannedDocumentId: 6,
+        fileName: 'lettre.pdf',
+        filePath: src,
+        isTraite: false,
+      });
+      const events: Record<string, unknown>[] = [];
+      const withBus = new MailScannedDocumentsService(prisma as never, config as never, {
+        emit: (e: unknown) => events.push(e as Record<string, unknown>),
+      } as never);
+      await expect(withBus.promoteToDocument(6, 'Libellé confidentiel', user)).resolves.toBe(55);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ type: 'document.deposited', subjectId: '55' });
+      expect((events[0].fields as Record<string, unknown>).source).toBe('scan');
+      expect(JSON.stringify(events[0])).not.toContain('confidentiel');
+
+      const broken = new MailScannedDocumentsService(prisma as never, config as never, {
+        emit: () => {
+          throw new Error('bus en panne');
+        },
+      } as never);
+      await expect(broken.promoteToDocument(6, 'X', user)).resolves.toBe(55);
+    });
+
     it('normalise .jpeg en .jpg pour retrouver le file_type', async () => {
       const src = join(archives, 'scan.jpeg');
       await writeFile(src, 'JPEG');
