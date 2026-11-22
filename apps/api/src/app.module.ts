@@ -42,6 +42,7 @@ import { WorkflowTriggersModule } from './modules/workflow-triggers/workflow-tri
 // --- Docu-Flow W5 ---
 import { WorkflowAuthoringModule } from './modules/workflow-authoring/workflow-authoring.module';
 // --- fin Docu-Flow W5 ---
+import { AssistantModule } from './modules/assistant/assistant.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -99,6 +100,7 @@ import { HealthController } from './health.controller';
     // --- Docu-Flow W5 ---
     WorkflowAuthoringModule,
     // --- fin Docu-Flow W5 ---
+    AssistantModule, // Assistant A0 : assistant qui agit
   ],
   providers: [
     // Deny-by-default at the transport layer: every route needs a JWT unless @Public().
