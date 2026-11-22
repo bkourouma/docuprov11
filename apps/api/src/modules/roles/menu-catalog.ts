@@ -16,6 +16,9 @@ import { GOVERNANCE_MENU } from '../governance/governance.menus';
 // --- Docu-Flow W1 ---
 import { WORKFLOWS_MENUS } from '../workflows/workflows.menus';
 // --- fin Docu-Flow W1 ---
+// --- Assistant A0 ---
+import { ASSISTANT_MENU } from '../assistant/assistant.menus';
+// --- fin Assistant A0 ---
 
 export interface MenuPermission {
   key: string; // clé de route (ex. /admin/users)
@@ -155,6 +158,9 @@ export const MENU_CATALOG: MenuPermission[] = [
   { key: WORKFLOWS_MENUS.launch, label: 'Lancer un workflow', section: 'Docu-Flow' },
   { key: WORKFLOWS_MENUS.admin, label: 'Administration des workflows', section: 'Docu-Flow' },
   // --- fin Docu-Flow W1 ---
+  // --- Assistant A0 ---
+  { key: ASSISTANT_MENU, label: 'Assistant', section: 'Docu-Flow' },
+  // --- fin Assistant A0 ---
   { key: '/admin/users', label: 'Utilisateurs', section: 'Administration' },
   { key: '/admin/roles', label: 'Rôles', section: 'Administration' },
   {
