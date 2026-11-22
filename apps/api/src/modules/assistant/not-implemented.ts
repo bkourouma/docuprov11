@@ -42,6 +42,8 @@ export class NotImplementedProposalStore implements AsstProposalStore {
   getProposal = unavailable;
   transitionProposal = unavailable;
   listExpirableProposals = unavailable;
+  listStaleConfirmedProposals = unavailable;
+  getProposalActor = unavailable;
 }
 
 export class NotImplementedGate implements AsstGatePort {
