@@ -13,7 +13,7 @@ import {
   AsstError,
   type AsstIdentity,
 } from './assistant.contracts';
-import { NotImplementedConversations, NotImplementedExecutor } from './not-implemented';
+import { UnavailableConversations, UnavailableExecutor } from './testing/unavailable-ports';
 
 const HASH = 'a'.repeat(64);
 
@@ -283,8 +283,8 @@ describe('AssistantController : implémentations par défaut', () => {
   beforeEach(async () => {
     app = await boot([
       { provide: ASST_IDENTITY, useValue: identity },
-      { provide: ASST_CONVERSATIONS, useClass: NotImplementedConversations },
-      { provide: ASST_EXECUTOR, useClass: NotImplementedExecutor },
+      { provide: ASST_CONVERSATIONS, useClass: UnavailableConversations },
+      { provide: ASST_EXECUTOR, useClass: UnavailableExecutor },
     ]);
   });
   afterEach(async () => {

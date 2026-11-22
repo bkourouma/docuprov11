@@ -75,18 +75,18 @@ function escapeRegExp(s: string): string {
 }
 
 describe('corpus d’attaque du planificateur', () => {
-  it('contient 600 cas (135 + 210 du tour X2 + 255 du tour X3), aux identifiants uniques, dont des témoins bénins', () => {
+  it('contient 612 cas (135 + 210 du tour X2 + 255 du tour X3 + 3 du tour « rang » + 9 de la correction du rang), aux identifiants uniques, dont des témoins bénins', () => {
     // Tour X2 : 120 attaques du vérificateur (V), 51 réponses non reprises (X), 20 formes d'ordre (T),
     // 7 ordres marqués (Y), 12 cas de liaison de la confirmation (Z).
     // Tour X3 : 249 nouvelles attaques du vérificateur (VN), 6 confirmations imitées par le modèle (CI) ; Z10 change
     // d'attendu (« oui » seul après la question de confirmation = choix 1 : action exacte, témoin bénin).
-    expect(CORPUS.length).toBe(600);
+    expect(CORPUS.length).toBe(612);
     expect(new Set(CORPUS.map((c) => c.id)).size).toBe(CORPUS.length);
     expect(CORPUS.filter((c) => c.benign).length).toBe(43);
-    expect(CORPUS.filter((c) => !c.benign).length).toBe(557);
+    expect(CORPUS.filter((c) => !c.benign).length).toBe(569);
     expect(CORPUS.filter((c) => c.expect.kind === 'exact').length).toBe(42);
-    expect(CORPUS.filter((c) => c.expect.kind === 'confirm').length).toBe(7);
-    expect(CORPUS.filter((c) => c.expect.kind === 'none').length).toBe(551);
+    expect(CORPUS.filter((c) => c.expect.kind === 'confirm').length).toBe(12);
+    expect(CORPUS.filter((c) => c.expect.kind === 'none').length).toBe(558);
     // Plusieurs cas par catégorie (27 catégories).
     const byCategory = new Map<string, number>();
     for (const c of CORPUS) byCategory.set(c.category, (byCategory.get(c.category) ?? 0) + 1);

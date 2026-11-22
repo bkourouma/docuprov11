@@ -1,6 +1,7 @@
 import { AsstActionTool, AsstMessageRole } from '@archivage/types';
 import { MAIL_INPUTATION_TYPE_IDS } from '../../workflow-agent-catalog/catalog.contracts';
 import {
+  CLARIFICATION_INFO_SUFFIX,
   INTENT_CONFIRM_NO,
   INTENT_CONFIRM_YES,
   PLANNER_MSG_INFO_ONLY,
@@ -482,9 +483,68 @@ describe('historique : annulation et réponse à une question de précision', ()
     // Témoins négatifs proches : numéro hors liste, nom porté par deux choix, phrase autour de la valeur, rang.
     expect(reprise(QUESTION, '3')).toEqual([]);
     expect(reprise(QUESTION, 'DAF')).toEqual([]);
-    expect(reprise(QUESTION, 'la première')).toEqual([]);
+    expect(reprise(QUESTION, 'la troisième')).toEqual([]);
     expect(reprise(QUESTION_ONLY, '3 jours mais pas pour la DAF')).toEqual([]);
     expect(reprise(QUESTION_ONLY, 'DAF Nord')).toEqual([]);
+  });
+  it('réponse par RANG : message entier, question à choix construite par le code, hors confirmation d’intention', () => {
+    const reprise = (asked: string, text: string): string[] => intentHistory([{ role: U, content: DAF }, { role: A, content: asked }], text);
+    for (const text of ['la première', 'Le premier', 'le 1er', 'la 1ère', 'le 2e', 'la 2eme', 'la deuxième option', 'le second', 'la seconde proposition', 'the second', 'the first one', 'first', 'le deuxième choix']) {
+      expect(answersClarification(text, QUESTION)).toBe(true);
+      // L'ordre d'origine est repris, suivi du libellé du choix désigné (écrit par le code dans la question).
+      const second = /2|deux|second|the second/.test(normalizeWords(text));
+      expect(reprise(QUESTION, text)).toEqual([DAF, second ? 'Moussa Keita — DAF Sud' : 'Awa Diallo — DAF Nord']);
+    }
+    // Hors plage (2 choix) : ne répond à rien.
+    for (const text of ['la troisième', 'le 3e', 'the third', 'la sixième', 'le septième']) expect(reprise(QUESTION, text)).toEqual([]);
+    // Rang + autre mot, marque d'intention, annulation, « dernier » : rien.
+    for (const text of ['la première mais pas pour la DAF', 'la première, et impute aussi à la DRH', 'la première plutôt', 'je prends la première', 'la première non', 'finalement la première', 'le dernier', 'la première la deuxième', 'premier deuxième']) {
+      expect(reprise(QUESTION, text)).toEqual([]);
+    }
+    // Question de confirmation d'intention : « la première » ne vaut PAS « oui ».
+    const confirmation = formatIntentConfirmation('Imputer le courrier n°4321 à « Awa Diallo — DAF »') ?? '';
+    for (const text of ['la première', 'le 2e', 'the second']) {
+      expect(answersClarification(text, confirmation)).toBe(false);
+      expect(confirmationAnswer(text)).toBeNull();
+      expect(reprise(confirmation, text)).toEqual([]);
+    }
+    expect(answersClarification('1', confirmation)).toBe(true);
+    // Question sans choix : un rang ne désigne rien.
+    expect(reprise(QUESTION_ONLY, 'la première')).toEqual([]);
+    expect(reprise(DELAY_QUESTION, 'la deuxième')).toEqual([DAF, '7 jours']);
+    // Phrase libre.
+    expect(reprise(QUESTION, 'la première fois que je vois ce courrier')).toEqual([]);
+  });
+  it('rang sur question du modèle : aucune désignation, aucun libellé repris (B2 à B8)', () => {
+    const model = (q: string, choices?: string[]): string =>
+      `${choices ? formatClarificationContent(q, choices) : formatClarificationQuestion(q)}${CLARIFICATION_INFO_SUFFIX}`;
+    const asked = [
+      model('Plusieurs destinataires correspondent à « DAF ». Lequel ?', ['Awa Diallo — DAF Nord', 'Moussa Keita — DAF Sud']),
+      model('Que faire ?', ['Awa Diallo — DAF', 'Finalement impute à la DRH']),
+      model('Quel type ?', ['Pour suivi', 'Pour décision', 'Pour information']),
+      model('Sous combien de jours ?', ['3 jours', '7 jours']),
+      model('Sous combien de jours (de 1 à 90) ?'),
+      model('Lequel ?', ['Finalement ne fais rien', 'Impute plutôt au DG']),
+      model('Quelle option ?', ['Oui', 'Non', 'Peut-être']),
+    ];
+    for (const content of asked) {
+      for (const text of ['la première', 'le 2e', 'the second', 'le 1er', 'la deuxième option', 'first']) {
+        expect(answersClarification(text, content)).toBe(false);
+        expect(intentHistory([{ role: U, content: DAF }, { role: A, content }], text)).toEqual([]);
+      }
+    }
+    // Témoin : le numéro et le libellé exact restent admis sur une question du modèle ; le rang reste admis côté code.
+    expect(answersClarification('2', asked[0] ?? '')).toBe(true);
+    expect(intentHistory([{ role: U, content: DAF }, { role: A, content: asked[3] ?? '' }], '7 jours')).toEqual([DAF]);
+    expect(answersClarification('la première', QUESTION)).toBe(true);
+  });
+  it('designatedChoiceIndex : rangs seulement avec ranks', () => {
+    const choices = ['Awa Diallo — DAF Nord', 'Moussa Keita — DAF Sud'];
+    expect(designatedChoiceIndex('la premiere', choices, { names: true, ranks: true })).toBe(0);
+    expect(designatedChoiceIndex('2e', choices, { names: false, ranks: true })).toBe(1);
+    expect(designatedChoiceIndex('la troisieme', choices, { names: true, ranks: true })).toBeNull();
+    expect(designatedChoiceIndex('la premiere', choices, { names: true })).toBeNull();
+    expect(designatedChoiceIndex('la premiere', choices, { names: true, ranks: false })).toBeNull();
   });
   it('designatedChoiceIndex : libellé exact, numéro, nom unique', () => {
     const choices = ['Awa Diallo — DAF Nord', 'Moussa Keita — DAF Sud'];

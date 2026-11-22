@@ -23,7 +23,7 @@ Guide pour les développeurs de l'exécuteur (lot A2) et du magasin de propositi
 | `asst-expiry-sweeper.ts` | Balayage périodique dans le processus. |
 | `asst-actions-hash.ts` | `argsHash` : SHA-256 hexadécimal du JSON canonique des actions. |
 
-`AssistantModule` déclare `AsstConfirmLimiter`, `AsstExecutorService` (fourni aussi sous `ASST_EXECUTOR`) et `AsstExpirySweeper`.
+`AssistantModule` déclare `AsstConfirmLimiter`, `AsstExecutorService` (fourni aussi sous `ASST_EXECUTOR`) et `AsstExpirySweeper`. Tous les ports (identité, porte de coût, planificateur, magasin, conversations, exécuteur) sont liés à leur implémentation dans `assistant.module.ts` ; le magasin Prisma (`AsstProposalStoreService`) existe depuis le lot A1. Les ports par défaut « non implémenté » (`not-implemented.ts`) ont été retirés en A4 ; le code d'erreur `not_implemented` reste dans le contrat et est géré par l'interface.
 
 ## 2. Cycle de vie d'une proposition
 
@@ -142,7 +142,7 @@ La dernière ligne n'est pas atteignable : la délégation est exclue de la list
 
 - **Périmètre.** Seuls les effets non transactionnels sont compensés : les brouillons (`preparer_brouillon_reponse`). `createDocumentFromHtml` écrit hors de la transaction, sur la base et sur disque.
 - **Mécanisme.** Un applicateur qui crée un brouillon renvoie une fonction `compensate` qui supprime le document et ses fichiers. Elle est idempotente et journalise sans contenu.
-- **Déclenchement.** Après le rollback, dans la branche d'échec de `run`, en ORDRE INVERSE. Jamais après une issue ambiguë (section 11.1). Chaque fonction est isolée (`try/catch`). Une seule passe est faite. Aucune exception ne remonte à l'appelant.
+- **Déclenchement.** Après le rollback, dans la branche d'échec de `run`, en ORDRE INVERSE. Jamais tant que l'issue reste ambiguë (section 11.1) : la compensation n'est autorisée qu'après une relecture SOUS VERROU (`FOR UPDATE` avec `lock_timeout` court) qui établit que la transaction est annulée (statut 1 Confirmée ou 5 Échec). Chaque fonction est isolée (`try/catch`). Une seule passe est faite. Aucune exception ne remonte à l'appelant.
 - **Compensation en échec.** Elle est journalisée (document à nettoyer à la main). Elle n'est pas rejouée.
 - **Limite.** Si le processus s'arrête entre la création d'un brouillon et la fin de la compensation, le document reste en place. Aucun journal persistant de compensation n'existe pour le retrouver.
 
@@ -219,15 +219,17 @@ Le magasin Prisma (`AsstProposalStoreService`) doit implémenter les points suiv
 - **Plafond d'instance des relances.** Neutralisé pour l'assistant (section 5).
 - **Délégation exclue.** Ses codes de droits ne figurent pas dans `FORBIDDEN_CODES` (section 4.2).
 - **Heure de référence.** La confirmation est jugée à l'horloge applicative (`clock`). Le déclencheur SQL se fonde sur l'heure de la base (`docs/assistant-donnees.md`, §3 et §8) : les deux peuvent différer de quelques secondes, et une confirmation dans une transaction ouverte avant l'échéance reste acceptée.
-- **Issue ambiguë (erreur APRÈS la fin du callback).** Le runner distingue deux cas. Échec AVANT la fin du callback : annulation certaine, compensation permise (section 6). Échec APRÈS (COMMIT en erreur, coupure de la connexion côté client) : la transaction a pu être validée. `resolveAmbiguous` relit alors la proposition : une lecture immédiate, puis trois relectures espacées de 200, 500 et 1 000 ms (`retryDelaysMs`).
-  - **« Appliquée »** : succès renvoyé, aucune compensation.
-  - **« Confirmée » ou « Échec »** : transaction annulée, compensation permise, puis échec normal (`effect_failed`, message technique générique). Pour « Échec », la proposition est relue en statut 5.
-  - **État inconnu** (aucune lecture aboutie, ou statut inattendu) : **aucune compensation**. L'exécuteur ne clôture pas la proposition. La réponse est `effect_failed` (422) avec `details: { outcome: 'uncertain' }` et le message « Résultat incertain : la connexion s'est interrompue pendant la validation. Vérifiez l'état de la proposition avant toute nouvelle demande. ». La proposition est relue si la lecture aboutit : statut 1, ou 2 si la validation a finalement réussi.
+- **Issue ambiguë (erreur APRÈS la fin du callback).** Le runner distingue deux cas. Échec AVANT la fin du callback : annulation certaine, compensation permise (section 6). Échec APRÈS (COMMIT en erreur, coupure de la connexion côté client) : la transaction a pu être validée. `resolveAmbiguous` relit alors le statut de la proposition **sous verrou de ligne**.
+  - **Relecture.** Chaque lecture est une transaction courte : `SET LOCAL lock_timeout` (constante `ASST_AMBIGUOUS_LOCK_TIMEOUT_MS` = 2 000 ms, champ d'instance `lockTimeoutMs`, modifiable en test), puis `SELECT status FROM asst_proposal WHERE asst_proposal_id = $1 FOR UPDATE`. Le verrou attend la fin (validation ou annulation) de la transaction encore en vol, donc la lecture ne voit jamais un statut 1 « en cours de COMMIT ». Une lecture immédiate, puis trois relectures espacées de 200, 500 et 1 000 ms (`retryDelaysMs`).
+  - **Décision.**
+    - **Statut 2 (« Appliquée »)** : succès. Le DTO est relu via le magasin ; s'il est illisible, nouvel essai, puis `uncertain`. Aucune compensation.
+    - **Statut 1 (« Confirmée ») ou 5 (« Échec ») lu sous verrou** : transaction annulée. Compensation des brouillons (une seule passe), puis échec normal (`effect_failed`, message technique générique).
+    - **Tout autre cas** : **aucune compensation**. Statut 0, 3, 4 ou inconnu, ligne absente, `lock_timeout` (SQLSTATE 55P03) sur tous les essais, lecture impossible. La réponse est `effect_failed` (422) avec `details: { outcome: 'uncertain' }` et le message « Résultat incertain : la connexion s'est interrompue pendant la validation. Vérifiez l'état de la proposition avant toute nouvelle demande. ». L'exécuteur ne clôture pas la proposition.
   - **Statut** : laissé au balayage `recoverInterrupted`. Une proposition restée en statut 1 passe en 5 avec `execution_interrupted` après 2 minutes de grâce, avec le message de la section 9.4. Une proposition validée reste en statut 2 et le balayage ne la touche pas.
-  - **Brouillons** : le balayage ne supprime aucun brouillon. Si un brouillon a été créé et que la proposition n'est pas appliquée, il peut rester : à vérifier à la main (document non publié, sans e-mail).
-  - **Limite résiduelle** : une relecture « Confirmée » faite pendant que le COMMIT est encore en cours côté serveur ne peut pas être exclue. Des brouillons seraient alors supprimés, alors que la transaction finit par être validée. Aucune garde supplémentaire n'existe.
-- **Magasin Prisma absent.** Le magasin de propositions (lot A1) n'est pas encore écrit. Les tests unitaires utilisent un magasin en mémoire, et les ports restent liés à `NotImplemented*` tant que A1 n'est pas livré.
-- **Suite d'intégration ignorée par défaut.** `asst-executor.integration.spec.ts` (13 tests) est ignorée sans `WF_TEST_DATABASE_URL`. Elle s'exécute sur une base PostgreSQL jetable (section 11.2).
+  - **Brouillons** : le balayage ne supprime aucun brouillon. Si un brouillon a été créé et que la proposition n'est pas appliquée, il peut rester : à vérifier à la main (document non publié, sans e-mail). Procédure d'exploitation : `docs/assistant-deploiement.md` §5.5.
+  - **Ancienne limite résiduelle fermée.** Avant la relecture sous verrou, une relecture « Confirmée » faite pendant que le COMMIT était encore en cours côté serveur pouvait déclencher la suppression de brouillons alors que la transaction finissait par être validée. Ce cas n'existe plus : la lecture attend la fin de la transaction.
+  - **Note honnête.** Si la connexion du COMMIT est coupée sans que le serveur ait fini de la traiter, le verrou de ligne peut durer jusqu'à la détection de la coupure par PostgreSQL. Les relectures échouent alors en `lock_timeout` : on reste en `uncertain`, sans compensation (un brouillon supprimé à tort serait irréparable, un brouillon conservé à tort se supprime à la main).
+- **Suite d'intégration ignorée par défaut.** `asst-executor.integration.spec.ts` (17 tests) est ignorée sans `WF_TEST_DATABASE_URL`. Elle s'exécute sur une base PostgreSQL jetable (section 11.2). Le parcours de bout en bout (`asst-e2e.integration.spec.ts`, 15 tests) obéit à la même règle.
 
 ### 11.2 Commandes
 
@@ -237,7 +239,7 @@ Tests unitaires, depuis `apps/api` :
 npx jest src/modules/assistant/executor
 ```
 
-Résultat à la rédaction : 4 suites unitaires, 92 tests, tous réussis (5, 29, 51 et 7 tests). La suite d'intégration (13 tests) est ignorée dans ce cas.
+Résultat vérifié à la rédaction : 4 suites unitaires, 104 tests réussis (5 pour le limiteur de confirmations, 41 pour le runner d'effets, 7 pour le balayeur, 51 pour le service). Les 17 tests d'intégration sont ignorés dans ce cas (1 suite ignorée).
 
 Tests d'intégration, depuis `apps/api`, sur une base jetable :
 
@@ -245,4 +247,12 @@ Tests d'intégration, depuis `apps/api`, sur une base jetable :
 WF_TEST_DATABASE_URL=postgresql://… npx jest src/modules/assistant/executor/asst-executor.integration --runInBand
 ```
 
-La suite refuse de s'exécuter si `WF_TEST_DATABASE_URL` est égale à `DATABASE_URL`. C'est la même garde que `appliers.integration.spec.ts`. Sans `WF_TEST_DATABASE_URL`, la suite est ignorée. Résultat rapporté à la rédaction : 13 tests réussis sur base PostgreSQL jetable.
+La suite refuse de s'exécuter si `WF_TEST_DATABASE_URL` est égale à `DATABASE_URL`. C'est la même garde que `appliers.integration.spec.ts`. Sans `WF_TEST_DATABASE_URL`, la suite est ignorée. Résultat : 17 tests réussis (dont ceux de la relecture sous verrou) (vérifié sur base PostgreSQL jetable).
+
+Parcours de bout en bout, même base jetable, en série :
+
+```
+WF_TEST_DATABASE_URL=postgresql://… npx jest src/modules/assistant/asst-e2e.integration --runInBand
+```
+
+`asst-e2e.integration.spec.ts` : 15 tests, 6 scénarios (imputation, refus, expiration, budget, droits, anti-injection), du message de l'utilisateur à l'effet en base, avec un modèle scripté. Résultat : vérifié sur base PostgreSQL jetable (15 tests réussis). Préparation de la base jetable : `docs/assistant.md` §8.
