@@ -31,7 +31,7 @@ export function TriggersView({ triggers }: { triggers: WfTriggerDto[] | null | u
             <div className="wfp-hint">
               Dernière activation : {t.lastFiredAt ? formatDateTime(t.lastFiredAt) : 'jamais'}
             </div>
-            <div className="wfp-hint">Exécuté en tant que utilisateur n° {t.runAsUserGroupId}</div>
+            <div className="wfp-hint">Exécuté en tant qu’utilisateur n° {t.runAsUserGroupId}</div>
           </li>
         ))}
       </ul>
