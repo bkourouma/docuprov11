@@ -31,8 +31,8 @@ import { WF_ENGINE, WF_EXECUTOR_REGISTRY, WF_TRIGGER_STARTER } from './workflows
 
 /**
  * Docu-Flow (workflows). `PrismaService` est global. Le moteur est une classe SANS Nest, construite ici en
- * usine avec l'annuaire (`PrincipalService`) et le registre d'exécuteurs (vide en W1 : W2 y enregistre
- * l'exécuteur 'agent'). Exports : le moteur, le registre, le démarreur de déclencheurs (W3), l'éditeur
+ * usine avec l'annuaire (`PrincipalService`) et le registre d'exécuteurs (le module des agents, W2, y
+ * enregistre l'exécuteur 'agent'). Exports : le moteur, le registre, le démarreur de déclencheurs (W3), l'éditeur
  * d'événements et le registre des contrôleurs d'accès aux objets liés.
  */
 @Module({
@@ -73,7 +73,14 @@ import { WF_ENGINE, WF_EXECUTOR_REGISTRY, WF_TRIGGER_STARTER } from './workflows
     InboxService,
     { provide: WF_TRIGGER_STARTER, useClass: WorkflowTriggerStarterService },
   ],
-  exports: [WF_ENGINE, WF_EXECUTOR_REGISTRY, WF_TRIGGER_STARTER, WorkflowEventsPublisher, SubjectAccessRegistry],
+  exports: [
+    WF_ENGINE,
+    WF_EXECUTOR_REGISTRY,
+    WF_TRIGGER_STARTER,
+    WorkflowEventsPublisher,
+    SubjectAccessRegistry,
+    PrincipalService, // utilisé par le module des agents (identité = droits du lanceur)
+  ],
 })
 export class WorkflowsModule implements OnModuleInit, OnApplicationBootstrap {
   private readonly logger = new Logger(WorkflowsModule.name);

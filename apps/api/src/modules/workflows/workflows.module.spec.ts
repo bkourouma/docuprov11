@@ -8,6 +8,7 @@ import { DefinitionsController } from './definitions.controller';
 import { DefinitionsService } from './definitions.service';
 import { InboxController } from './inbox.controller';
 import { InstancesController } from './instances.controller';
+import { PrincipalService } from './principal.service';
 import { WORKFLOWS_MENUS } from './workflows.menus';
 import { WorkflowsModule } from './workflows.module';
 import { WF_ENGINE, WF_EXECUTOR_REGISTRY, WF_TRIGGER_STARTER } from './workflows.tokens';
@@ -71,7 +72,7 @@ describe('WorkflowsModule : câblage', () => {
     expect(meta<unknown[]>('imports')).toHaveLength(2);
     expect(meta<unknown[]>('controllers')).toEqual([DefinitionsController, InstancesController, InboxController]);
     expect(meta<unknown[]>('exports')).toEqual(
-      expect.arrayContaining([WF_ENGINE, WF_EXECUTOR_REGISTRY, WF_TRIGGER_STARTER, WorkflowEventsPublisher]),
+      expect.arrayContaining([WF_ENGINE, WF_EXECUTOR_REGISTRY, WF_TRIGGER_STARTER, WorkflowEventsPublisher, PrincipalService]),
     );
   });
 

@@ -112,15 +112,50 @@ export interface WfExecutorContext {
   context: Readonly<Record<string, unknown>>;
   /** Droits d'exécution : ceux du lanceur (`started_by`), JAMAIS davantage. */
   runAs: { userGroupId: number };
+  /** (Ajout W2) Définition et VERSION de l'instance (config d'agent, jeu d'évaluation, budget par workflow). */
+  definitionId: number;
+  definitionVersionId: number;
+  /** (Ajout W2) Objet lié de l'instance (courrier, document…), s'il existe. */
+  subject: { type: string | null; id: string | null };
+}
+
+/**
+ * (Ajout W2) Éléments d'audit d'une action d'agent, copiés dans le journal (`wf_event_log`). Jamais de
+ * contenu de document ni de secret : instruction masquée, sources résumées. Tout champ absent reste nul.
+ */
+export interface WfAgentAudit {
+  instruction?: string;
+  sources?: unknown;
+  decision?: unknown;
+  confidence?: number;
+  /** 0 suggère, 1 agit avec validation, 2 autonome. */
+  autonomyLevel?: 0 | 1 | 2;
+  model?: string | null;
+  /** Identifiant décimal de `ged_ai_decision` (BigInt en chaîne). */
+  aiDecisionId?: string | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  costAmount?: number | null;
 }
 
 export type WfExecutorOutcome =
   /** Rien à faire seul : la tâche reste ouverte pour son bénéficiaire (comportement humain). */
-  | { kind: 'wait' }
+  | {
+      kind: 'wait';
+      /** (Ajout W2) Escalade d'une étape agent : journalisée (`agent.escalated`) avant le passage à l'humain. */
+      escalation?: { reason: string; explanation: string; audit?: WfAgentAudit };
+    }
   /** Résultat produit : le moteur termine la tâche (acteur 'agent'/'system') et avance. */
-  | { kind: 'complete'; result: unknown; explanation?: string }
+  | { kind: 'complete'; result: unknown; explanation?: string; audit?: WfAgentAudit }
   /** Proposition à valider par un humain : déposée dans `wf_inbox_item` (kind = 1) ; tâche ouverte. */
-  | { kind: 'propose'; proposal: unknown; explanation?: string; sources?: unknown; confidence?: number }
+  | {
+      kind: 'propose';
+      proposal: unknown;
+      explanation?: string;
+      sources?: unknown;
+      confidence?: number;
+      audit?: WfAgentAudit;
+    }
   | { kind: 'fail'; error: string };
 
 export interface WfTaskExecutor {

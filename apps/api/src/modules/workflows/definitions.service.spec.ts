@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type { WfGraph } from '@archivage/types';
 import type { AuthUser } from '../auth/auth.types';
+import { agentSpecHash, evalCasesHash } from './agent-spec-hash';
 import { DefinitionsService, canonicalJson, hashGraph } from './definitions.service';
 import type { WfTaskExecutorRegistry } from './engine/engine.types';
 
@@ -98,6 +99,25 @@ function makePrisma() {
         isDisabled: false,
       })),
     },
+    // Lot W2 : configuration des agents (lignes, outils, registre, autorisations, jeux et runs d'évaluation).
+    wfAgentConfig: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn(),
+      update: jest.fn(),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    wfAgentConfigTool: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    wfTool: { findMany: jest.fn().mockResolvedValue([]) },
+    wfToolGrant: { findMany: jest.fn().mockResolvedValue([]) },
+    wfEvalSet: { findUnique: jest.fn().mockResolvedValue(null) },
+    wfEvalRun: { findMany: jest.fn().mockResolvedValue([]) },
+    wfEvalCase: { findMany: jest.fn().mockResolvedValue([]) },
+    // Verrou `SELECT … FOR UPDATE` de la définition.
+    $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn(),
   };
   // Transaction interactive : le client transactionnel est le même objet (les appels restent traçables).
@@ -367,7 +387,8 @@ describe('DefinitionsService.validateDraft', () => {
       'AUTONOMY_REQUIRES_LOW_RISK',
     );
     prisma.wfDefinition.findUnique.mockResolvedValueOnce(defRow({ isLowRisk: true }));
-    expect((await service.validateDraft(5, designer)).ok).toBe(true);
+    // Marquage posé : reste le contrôle d'éligibilité (jeu d'évaluation lié, run réussi), couvert plus bas.
+    expect((await service.validateDraft(5, designer)).issues.map((i) => i.code)).toEqual(['AGENT_AUTONOMY_NOT_ELIGIBLE']);
   });
 
   it('aucun brouillon : 409', async () => {
@@ -555,5 +576,557 @@ describe('DefinitionsService.setLowRisk', () => {
     const { prisma, service } = setup();
     prisma.wfDefinition.findUnique.mockResolvedValue(null);
     await expect(service.setLowRisk(5, true, admin)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lot W2 : configuration des agents sur le brouillon
+// ---------------------------------------------------------------------------
+
+function agentSpecOf(over: Record<string, unknown> = {}) {
+  return { objective: 'Résumer', tools: [] as string[], confidenceThreshold: 0.8, autonomy: 'suggere', ...over };
+}
+
+function graphWithAgent(spec: Record<string, unknown> | undefined, extraStep = true): WfGraph {
+  const steps: Array<Record<string, unknown>> = [
+    { key: 'ia', name: 'Analyse', type: 'agent', ...(spec ? { agent: spec } : {}), next: extraStep ? [{ to: 'visa' }] : [] },
+  ];
+  if (extraStep) steps.push({ key: 'visa', name: 'Visa', type: 'validation', next: [] });
+  return { schemaVersion: 1, start: 'ia', steps } as unknown as WfGraph;
+}
+
+const DOC_READ = { wfToolId: 3, toolKey: 'doc.read', isEnabled: true };
+const MAIL_SEND = { wfToolId: 4, toolKey: 'mail.send', isEnabled: false };
+
+function rowOf(over: Record<string, unknown> = {}) {
+  return {
+    wfAgentConfigId: 31,
+    definitionVersionId: 50,
+    stepKey: 'ia',
+    objective: 'Résumer',
+    autonomyLevel: 0,
+    confidenceThreshold: '0.800',
+    model: null,
+    maxSteps: 10,
+    maxCostPerRun: null,
+    timeoutSeconds: 120,
+    evalSetId: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    tools: [] as Array<{ toolId: number }>,
+    ...over,
+  };
+}
+
+function expectedHash(over: Record<string, unknown> = {}): string {
+  return agentSpecHash({
+    objective: 'Résumer',
+    tools: [],
+    confidenceThreshold: 0.8,
+    model: null,
+    maxSteps: 10,
+    maxCostPerRun: null,
+    timeoutSeconds: 120,
+    ...over,
+  });
+}
+
+describe('DefinitionsService.upsertAgentConfig', () => {
+  function draftWith(prisma: ReturnType<typeof makePrisma>, graph: WfGraph, ver: Record<string, unknown> = {}) {
+    prisma.wfDefinition.findUnique.mockResolvedValue(defRow());
+    prisma.wfDefinitionVersion.findFirst.mockResolvedValue(verRow({ graph, ...ver }));
+    prisma.wfDefinitionVersion.update.mockImplementation(async ({ data }: Data) => verRow(data));
+  }
+
+  it('identité machine : 403 sans toucher la base', async () => {
+    const { prisma, service } = setup(true);
+    await expect(service.upsertAgentConfig(5, 'ia', { objective: 'x' }, machine)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.listAgentConfigs(5, noGroup)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.wfDefinition.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('dernière version publiée : 409, rien d’écrit', async () => {
+    const { prisma, service } = setup(true);
+    draftWith(prisma, graphWithAgent(agentSpecOf()), { status: 1 });
+    await expect(service.upsertAgentConfig(5, 'ia', { objective: 'Autre' }, designer)).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.listAgentConfigs(5, designer)).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.wfDefinitionVersion.update).not.toHaveBeenCalled();
+    expect(prisma.wfAgentConfig.create).not.toHaveBeenCalled();
+  });
+
+  it('workflow archivé : 409 ; inconnu : 404 ; étape absente : 404 ; étape non agent : 422', async () => {
+    const { prisma, service } = setup(true);
+    prisma.wfDefinition.findUnique.mockResolvedValueOnce(defRow({ status: 2 }));
+    await expect(service.upsertAgentConfig(5, 'ia', { objective: 'x' }, designer)).rejects.toBeInstanceOf(ConflictException);
+    prisma.wfDefinition.findUnique.mockResolvedValueOnce(null);
+    await expect(service.upsertAgentConfig(5, 'ia', { objective: 'x' }, designer)).rejects.toBeInstanceOf(NotFoundException);
+    draftWith(prisma, graphWithAgent(agentSpecOf()));
+    await expect(service.upsertAgentConfig(5, 'zzz', { objective: 'x' }, designer)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.upsertAgentConfig(5, 'visa', { objective: 'x' }, designer)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
+    expect(prisma.wfDefinitionVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('outil inconnu ou désactivé : 422, rien d’écrit', async () => {
+    const { prisma, service } = setup(true);
+    draftWith(prisma, graphWithAgent(agentSpecOf()));
+    prisma.wfTool.findMany.mockResolvedValue([DOC_READ, MAIL_SEND]);
+    const err = await service.upsertAgentConfig(5, 'ia', { tools: ['doc.read', 'mail.send', 'absent.tool'] }, designer).catch((e) => e);
+    expect(err).toBeInstanceOf(UnprocessableEntityException);
+    expect(err.message).toContain('mail.send');
+    expect(err.message).toContain('absent.tool');
+    expect(err.message).not.toContain('doc.read');
+    expect(prisma.wfDefinitionVersion.update).not.toHaveBeenCalled();
+    expect(prisma.wfAgentConfig.create).not.toHaveBeenCalled();
+  });
+
+  it('jeu d’évaluation d’un autre workflow ou inexistant : 422', async () => {
+    const { prisma, service } = setup(true);
+    draftWith(prisma, graphWithAgent(agentSpecOf()));
+    prisma.wfEvalSet.findUnique.mockResolvedValueOnce({ definitionId: 99 });
+    await expect(service.upsertAgentConfig(5, 'ia', { evalSetId: 8 }, designer)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    prisma.wfEvalSet.findUnique.mockResolvedValueOnce(null);
+    await expect(service.upsertAgentConfig(5, 'ia', { evalSetId: 8 }, designer)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(prisma.wfDefinitionVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('création : graphe (source de vérité) ET ligne ET outils dans UNE transaction ; empreinte renvoyée', async () => {
+    const { prisma, service } = setup(true);
+    draftWith(prisma, graphWithAgent(agentSpecOf()));
+    prisma.wfTool.findMany.mockResolvedValue([DOC_READ]);
+    prisma.wfEvalSet.findUnique.mockResolvedValue({ definitionId: 5 });
+    prisma.wfAgentConfig.create.mockImplementation(async ({ data }: Data) => rowOf({ ...data, wfAgentConfigId: 31, evalSetId: data.evalSetId }));
+
+    const out = await service.upsertAgentConfig(
+      5,
+      'ia',
+      {
+        objective: 'Classer le courrier',
+        tools: ['doc.read'],
+        confidenceThreshold: 0.8333,
+        autonomy: 'agit_avec_validation',
+        model: 'modele-x',
+        maxSteps: 7,
+        maxCostPerRun: 1.23456,
+        timeoutSeconds: 300,
+        evalSetId: 8,
+      },
+      designer,
+    );
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    const graphWritten = prisma.wfDefinitionVersion.update.mock.calls[0][0].data.graph as WfGraph;
+    expect(graphWritten.steps[0]!.agent).toEqual({
+      objective: 'Classer le courrier',
+      tools: ['doc.read'],
+      confidenceThreshold: 0.833,
+      autonomy: 'agit_avec_validation',
+      model: 'modele-x',
+      maxSteps: 7,
+      maxCostPerRun: 1.2346,
+    });
+    expect(graphWritten.steps[1]).toMatchObject({ key: 'visa', type: 'validation' }); // le reste du graphe est intact
+    expect(prisma.wfAgentConfig.create.mock.calls[0][0].data).toMatchObject({
+      definitionVersionId: 50,
+      stepKey: 'ia',
+      objective: 'Classer le courrier',
+      autonomyLevel: 1,
+      confidenceThreshold: 0.833,
+      model: 'modele-x',
+      maxSteps: 7,
+      maxCostPerRun: 1.2346,
+      timeoutSeconds: 300,
+      evalSetId: 8,
+    });
+    expect(prisma.wfAgentConfigTool.deleteMany).toHaveBeenCalledWith({ where: { agentConfigId: 31 } });
+    expect(prisma.wfAgentConfigTool.createMany.mock.calls[0][0].data).toEqual([{ agentConfigId: 31, toolId: 3 }]);
+    expect(out).toMatchObject({
+      wfAgentConfigId: 31,
+      stepKey: 'ia',
+      autonomyLevel: 1,
+      confidenceThreshold: '0.833',
+      maxCostPerRun: '1.2346',
+      timeoutSeconds: 300,
+      evalSetId: 8,
+      tools: ['doc.read'],
+    });
+    expect(out.agentSpecHash).toBe(
+      expectedHash({
+        objective: 'Classer le courrier',
+        tools: ['doc.read'],
+        confidenceThreshold: 0.833,
+        model: 'modele-x',
+        maxSteps: 7,
+        maxCostPerRun: 1.2346,
+        timeoutSeconds: 300,
+      }),
+    );
+  });
+
+  it('modification : champs absents conservés (graphe et ligne), timeout et jeu existants préservés', async () => {
+    const { prisma, service } = setup(true);
+    draftWith(prisma, graphWithAgent(agentSpecOf({ tools: ['doc.read'], model: 'm1', maxSteps: 5 })));
+    prisma.wfTool.findMany.mockResolvedValue([DOC_READ]);
+    prisma.wfAgentConfig.findUnique.mockResolvedValue({ wfAgentConfigId: 31, timeoutSeconds: 200, evalSetId: 8 });
+    prisma.wfAgentConfig.update.mockImplementation(async ({ data }: Data) => rowOf({ ...data }));
+
+    const out = await service.upsertAgentConfig(5, 'ia', { confidenceThreshold: 0.9 }, designer);
+
+    const graphWritten = prisma.wfDefinitionVersion.update.mock.calls[0][0].data.graph as WfGraph;
+    expect(graphWritten.steps[0]!.agent).toEqual({
+      objective: 'Résumer',
+      tools: ['doc.read'],
+      confidenceThreshold: 0.9,
+      autonomy: 'suggere',
+      model: 'm1',
+      maxSteps: 5,
+    });
+    const upd = prisma.wfAgentConfig.update.mock.calls[0][0];
+    expect(upd.where).toEqual({ wfAgentConfigId: 31 });
+    expect(upd.data).toMatchObject({ confidenceThreshold: 0.9, model: 'm1', maxSteps: 5, evalSetId: 8, timeoutSeconds: 200 });
+    expect(prisma.wfAgentConfig.create).not.toHaveBeenCalled();
+    expect(out.tools).toEqual(['doc.read']);
+  });
+
+  it('null délie le jeu et retire modèle et plafond', async () => {
+    const { prisma, service } = setup(true);
+    draftWith(prisma, graphWithAgent(agentSpecOf({ model: 'm1', maxCostPerRun: 2 })));
+    prisma.wfAgentConfig.findUnique.mockResolvedValue({ wfAgentConfigId: 31, timeoutSeconds: 120, evalSetId: 8 });
+    prisma.wfAgentConfig.update.mockImplementation(async ({ data }: Data) => rowOf({ ...data }));
+    await service.upsertAgentConfig(5, 'ia', { evalSetId: null, model: null, maxCostPerRun: null }, designer);
+    const graphWritten = prisma.wfDefinitionVersion.update.mock.calls[0][0].data.graph as WfGraph;
+    expect(graphWritten.steps[0]!.agent).not.toHaveProperty('model');
+    expect(graphWritten.steps[0]!.agent).not.toHaveProperty('maxCostPerRun');
+    expect(prisma.wfAgentConfig.update.mock.calls[0][0].data).toMatchObject({ evalSetId: null, model: null, maxCostPerRun: null });
+  });
+
+  it('étape sans configuration ni objectif fourni : 422', async () => {
+    const { prisma, service } = setup(true);
+    draftWith(prisma, graphWithAgent(undefined));
+    await expect(service.upsertAgentConfig(5, 'ia', { confidenceThreshold: 0.9 }, designer)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
+    expect(prisma.wfDefinitionVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('déclencheur d’autonomie : 409 en français ; autre erreur propagée telle quelle', async () => {
+    const { prisma, service } = setup(true);
+    draftWith(prisma, graphWithAgent(agentSpecOf()));
+    prisma.wfAgentConfig.create.mockRejectedValueOnce(
+      Object.assign(new Error('autonomie « autonome » refusée : le workflow n\'est pas marqué faible risque (check_violation)'), { code: 'P2010' }),
+    );
+    const err = await service.upsertAgentConfig(5, 'ia', { autonomy: 'autonome', evalSetId: null }, designer).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toContain('faible risque');
+
+    prisma.wfAgentConfig.create.mockRejectedValueOnce(
+      Object.assign(new Error('autonomie « autonome » refusée : aucun run d\'évaluation réussi pour cette version (check_violation)'), { code: 'P2010' }),
+    );
+    const err2 = await service.upsertAgentConfig(5, 'ia', { autonomy: 'autonome' }, designer).catch((e) => e);
+    expect(err2).toBeInstanceOf(ConflictException);
+    expect(err2.message).toContain('run d’évaluation');
+
+    const boom = new Error('connexion perdue');
+    prisma.wfAgentConfig.create.mockRejectedValueOnce(boom);
+    await expect(service.upsertAgentConfig(5, 'ia', { autonomy: 'autonome' }, designer)).rejects.toBe(boom);
+  });
+});
+
+describe('DefinitionsService.listAgentConfigs', () => {
+  it('le graphe fait foi pour les champs communs ; la ligne apporte timeout, jeu et identifiant ; sans ligne : id 0', async () => {
+    const { prisma, service } = setup(true);
+    const graph = {
+      schemaVersion: 1,
+      start: 'a',
+      steps: [
+        { key: 'a', name: 'A', type: 'agent', agent: agentSpecOf({ objective: 'Du graphe', tools: ['doc.read'] }), next: [{ to: 'b' }] },
+        { key: 'b', name: 'B', type: 'agent', agent: agentSpecOf({ objective: 'Sans ligne' }), next: [{ to: 'c' }] },
+        { key: 'c', name: 'C', type: 'validation', next: [] },
+      ],
+    } as unknown as WfGraph;
+    prisma.wfDefinition.findUnique.mockResolvedValue(defRow());
+    prisma.wfDefinitionVersion.findFirst.mockResolvedValue(verRow({ graph }));
+    prisma.wfAgentConfig.findMany.mockResolvedValue([
+      rowOf({ stepKey: 'a', objective: 'Périmé dans la ligne', timeoutSeconds: 90, evalSetId: 8 }),
+    ]);
+    const out = await service.listAgentConfigs(5, designer);
+    expect(out.map((c) => c.stepKey)).toEqual(['a', 'b']);
+    expect(out[0]).toMatchObject({ wfAgentConfigId: 31, objective: 'Du graphe', timeoutSeconds: 90, evalSetId: 8, tools: ['doc.read'] });
+    expect(out[0]!.agentSpecHash).toBe(expectedHash({ objective: 'Du graphe', tools: ['doc.read'], timeoutSeconds: 90 }));
+    expect(out[1]).toMatchObject({ wfAgentConfigId: 0, objective: 'Sans ligne', timeoutSeconds: 120, evalSetId: null });
+  });
+});
+
+describe('DefinitionsService.updateDraft : copie des configurations d’agent', () => {
+  it('nouvelle version depuis une publiée : lignes et outils copiés (jeu et délai conservés), autonome ramené à 1', async () => {
+    const { prisma, service } = setup(true);
+    const graph = graphWithAgent(agentSpecOf());
+    prisma.wfDefinition.findUnique.mockResolvedValue(defRow({ status: 1 }));
+    prisma.wfDefinitionVersion.findFirst.mockResolvedValue(verRow({ status: 1, versionNumber: 3, graph }));
+    prisma.wfDefinitionVersion.create.mockImplementation(async ({ data }: Data) => verRow({ ...data, wfDefinitionVersionId: 60 }));
+    prisma.wfAgentConfig.findMany.mockResolvedValue([
+      rowOf({ autonomyLevel: 2, evalSetId: 8, timeoutSeconds: 200, tools: [{ toolId: 3 }, { toolId: 4 }] }),
+      rowOf({ wfAgentConfigId: 32, stepKey: 'ancienne_etape', tools: [] }),
+    ]);
+    prisma.wfAgentConfig.create.mockResolvedValue(rowOf());
+    await service.updateDraft(5, { changeNote: 'n' }, designer);
+
+    expect(prisma.wfAgentConfig.findMany.mock.calls[0][0].where).toEqual({ definitionVersionId: 50 });
+    expect(prisma.wfAgentConfig.create).toHaveBeenCalledTimes(1); // l'étape qui n'est plus agent n'est pas copiée
+    const data = prisma.wfAgentConfig.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({
+      definitionVersionId: 60,
+      stepKey: 'ia',
+      autonomyLevel: 1,
+      evalSetId: 8,
+      timeoutSeconds: 200,
+      tools: { create: [{ toolId: 3 }, { toolId: 4 }] },
+    });
+  });
+
+  it('brouillon existant modifié : aucune copie', async () => {
+    const { prisma, service } = setup(true);
+    prisma.wfDefinition.findUnique.mockResolvedValue(defRow());
+    prisma.wfDefinitionVersion.findFirst.mockResolvedValue(verRow());
+    prisma.wfDefinitionVersion.update.mockImplementation(async ({ data }: Data) => verRow(data));
+    await service.updateDraft(5, { changeNote: 'n' }, designer);
+    expect(prisma.wfAgentConfig.findMany).not.toHaveBeenCalled();
+    expect(prisma.wfAgentConfig.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('DefinitionsService : publication des étapes agent', () => {
+  function publishSetup(graph: WfGraph, defOver: Record<string, unknown> = {}) {
+    const ctx = setup(true);
+    const { prisma } = ctx;
+    prisma.wfDefinition.findUnique.mockResolvedValue(defRow(defOver));
+    prisma.wfDefinitionVersion.findFirst.mockResolvedValue(verRow({ graph }));
+    prisma.wfDefinitionVersion.update.mockImplementation(async ({ data }: Data) => verRow(data));
+    prisma.wfDefinition.update.mockResolvedValue(defRow({ status: 1 }));
+    prisma.wfAgentConfig.create.mockResolvedValue(rowOf());
+    prisma.wfAgentConfig.update.mockResolvedValue(rowOf());
+    return ctx;
+  }
+  const codes = (r: { issues: Array<{ code: string }> }) => r.issues.map((i) => i.code);
+
+  it('synchronisation : lignes créées depuis le graphe AVANT la mise à publication ; outils alignés', async () => {
+    const order: string[] = [];
+    const { prisma, service } = publishSetup(graphWithAgent(agentSpecOf({ tools: ['doc.read'] })));
+    prisma.wfTool.findMany.mockResolvedValue([DOC_READ]);
+    prisma.wfToolGrant.findMany.mockResolvedValue([{ toolId: 3 }]);
+    prisma.wfAgentConfig.create.mockImplementation(async () => {
+      order.push('config');
+      return rowOf();
+    });
+    prisma.wfAgentConfigTool.createMany.mockImplementation(async () => {
+      order.push('tools');
+      return { count: 1 };
+    });
+    prisma.wfDefinitionVersion.update.mockImplementation(async ({ data }: Data) => {
+      order.push('publish');
+      return verRow(data);
+    });
+    await service.publish(5, designer);
+    expect(order).toEqual(['config', 'tools', 'publish']);
+    expect(prisma.wfAgentConfig.create.mock.calls[0][0].data).toMatchObject({
+      definitionVersionId: 50,
+      stepKey: 'ia',
+      objective: 'Résumer',
+      autonomyLevel: 0,
+      confidenceThreshold: 0.8,
+      maxSteps: 10,
+      timeoutSeconds: 120,
+    });
+    expect(prisma.wfAgentConfig.create.mock.calls[0][0].data).not.toHaveProperty('evalSetId', 8);
+    expect(prisma.wfAgentConfigTool.createMany.mock.calls[0][0].data).toEqual([{ agentConfigId: 31, toolId: 3 }]);
+  });
+
+  it('ligne existante : mise à jour SANS toucher timeout ni jeu ; outils périmés retirés, nouveaux ajoutés', async () => {
+    const { prisma, service } = publishSetup(graphWithAgent(agentSpecOf({ tools: ['doc.read'], autonomy: 'agit_avec_validation' })));
+    prisma.wfTool.findMany.mockResolvedValue([DOC_READ]);
+    prisma.wfToolGrant.findMany.mockResolvedValue([{ toolId: 3 }]);
+    prisma.wfAgentConfig.findMany.mockResolvedValue([rowOf({ timeoutSeconds: 200, evalSetId: 8, tools: [{ toolId: 9 }] })]);
+    await service.publish(5, designer);
+    const upd = prisma.wfAgentConfig.update.mock.calls[0][0];
+    expect(upd.where).toEqual({ wfAgentConfigId: 31 });
+    expect(upd.data).toMatchObject({ autonomyLevel: 1 });
+    expect(upd.data).not.toHaveProperty('timeoutSeconds');
+    expect(upd.data).not.toHaveProperty('evalSetId');
+    expect(prisma.wfAgentConfigTool.deleteMany).toHaveBeenCalledWith({ where: { agentConfigId: 31, toolId: { in: [9] } } });
+    expect(prisma.wfAgentConfigTool.createMany.mock.calls[0][0].data).toEqual([{ agentConfigId: 31, toolId: 3 }]);
+  });
+
+  it('lignes des étapes qui ne sont plus agent : supprimées (outils d’abord)', async () => {
+    const { prisma, service } = publishSetup(graphWithAgent(agentSpecOf()));
+    await service.publish(5, designer);
+    expect(prisma.wfAgentConfigTool.deleteMany.mock.calls[0][0]).toEqual({
+      where: { agentConfig: { definitionVersionId: 50, stepKey: { notIn: ['ia'] } } },
+    });
+    expect(prisma.wfAgentConfig.deleteMany.mock.calls[0][0]).toEqual({
+      where: { definitionVersionId: 50, stepKey: { notIn: ['ia'] } },
+    });
+    // Un graphe sans étape agent supprime aussi les lignes orphelines.
+    const plain = publishSetup(validGraph());
+    await plain.service.publish(5, designer);
+    expect(plain.prisma.wfAgentConfig.deleteMany.mock.calls[0][0].where.stepKey).toEqual({ notIn: [] });
+  });
+
+  it('AGENT_TOOL_UNKNOWN : outil absent ou désactivé ; AGENT_TOOL_NOT_GRANTED : outil non autorisé au workflow', async () => {
+    const { prisma, service } = publishSetup(graphWithAgent(agentSpecOf({ tools: ['doc.read', 'mail.send', 'absent.tool'] })));
+    prisma.wfTool.findMany.mockResolvedValue([DOC_READ, MAIL_SEND]);
+    prisma.wfToolGrant.findMany.mockResolvedValue([]);
+    const v = await service.validateDraft(5, designer);
+    expect(codes(v)).toEqual(['AGENT_TOOL_UNKNOWN', 'AGENT_TOOL_NOT_GRANTED']);
+    expect(v.issues[0]!.message).toContain('mail.send');
+    expect(v.issues[0]!.message).toContain('absent.tool');
+    expect(v.issues[1]!.message).toContain('doc.read');
+    expect(v.issues[0]).toMatchObject({ stepKey: 'ia', path: ['steps', 0, 'agent', 'tools'] });
+    // Publication : 422 identique, rien d'écrit.
+    const err = await service.publish(5, designer).catch((e) => e);
+    expect(err).toBeInstanceOf(UnprocessableEntityException);
+    expect(err.getResponse().issues.map((i: { code: string }) => i.code)).toEqual(['AGENT_TOOL_UNKNOWN', 'AGENT_TOOL_NOT_GRANTED']);
+    expect(prisma.wfAgentConfig.create).not.toHaveBeenCalled();
+    expect(prisma.wfAgentConfigTool.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.wfDefinitionVersion.update).not.toHaveBeenCalled();
+  });
+
+  it('outils tous autorisés : publication acceptée', async () => {
+    const { prisma, service } = publishSetup(graphWithAgent(agentSpecOf({ tools: ['doc.read'] })));
+    prisma.wfTool.findMany.mockResolvedValue([DOC_READ]);
+    prisma.wfToolGrant.findMany.mockResolvedValue([{ toolId: 3 }]);
+    expect(prisma.wfToolGrant.findMany).not.toHaveBeenCalled();
+    await expect(service.validateDraft(5, designer)).resolves.toMatchObject({ ok: true });
+    expect(prisma.wfToolGrant.findMany.mock.calls[0][0].where).toEqual({ definitionId: 5, toolId: { in: [3] } });
+  });
+
+  it('AGENT_CONFIG_INVALID : objectif blanc', async () => {
+    const { service } = publishSetup(graphWithAgent(agentSpecOf({ objective: '   ' })));
+    const v = await service.validateDraft(5, designer);
+    expect(codes(v)).toEqual(['AGENT_CONFIG_INVALID']);
+    expect(v.issues[0]!.message).toContain('objectif');
+  });
+
+  describe('autonomie', () => {
+    const autonomous = () => graphWithAgent(agentSpecOf({ autonomy: 'autonome' }));
+    const lowRisk = { isLowRisk: true };
+    const withSet = (prisma: ReturnType<typeof makePrisma>, set: Record<string, unknown> | null, evalSetId: number | null = 8) => {
+      prisma.wfAgentConfig.findMany.mockResolvedValue([rowOf({ evalSetId })]);
+      prisma.wfEvalSet.findUnique.mockResolvedValue(set);
+    };
+    const okSet = { definitionId: 5, isActive: true, minAccuracy: '0.900' };
+    const reason = (v: { issues: Array<{ code: string; message: string }> }) => v.issues.find((i) => i.code === 'AGENT_AUTONOMY_NOT_ELIGIBLE')?.message ?? '';
+
+    it('sans jeu d’évaluation lié : refusé', async () => {
+      const { prisma, service } = publishSetup(autonomous(), lowRisk);
+      withSet(prisma, null, null);
+      const v = await service.validateDraft(5, designer);
+      expect(codes(v)).toEqual(['AGENT_AUTONOMY_NOT_ELIGIBLE']);
+      expect(reason(v)).toContain('aucun jeu');
+    });
+
+    it('jeu d’un autre workflow, introuvable ou désactivé : refusé', async () => {
+      const { prisma, service } = publishSetup(autonomous(), lowRisk);
+      withSet(prisma, { ...okSet, definitionId: 99 });
+      expect(reason(await service.validateDraft(5, designer))).toContain('n’appartient pas');
+      withSet(prisma, null);
+      expect(reason(await service.validateDraft(5, designer))).toContain('introuvable');
+      withSet(prisma, { ...okSet, isActive: false });
+      expect(reason(await service.validateDraft(5, designer))).toContain('désactivé');
+      expect(prisma.wfEvalRun.findMany).not.toHaveBeenCalled();
+    });
+
+    it('seuil de précision du jeu sous le plancher (0,8) : refusé', async () => {
+      const { prisma, service } = publishSetup(autonomous(), lowRisk);
+      withSet(prisma, { ...okSet, minAccuracy: '0.700' });
+      const v = await service.validateDraft(5, designer);
+      expect(reason(v)).toContain('plancher');
+      expect(prisma.wfEvalRun.findMany).not.toHaveBeenCalled();
+    });
+
+    it('aucun run réussi (ou seuil du run inférieur à celui du jeu) : refusé ; requête bornée à CETTE version', async () => {
+      const { prisma, service } = publishSetup(autonomous(), lowRisk);
+      withSet(prisma, okSet);
+      prisma.wfEvalRun.findMany.mockResolvedValueOnce([]);
+      expect(reason(await service.validateDraft(5, designer))).toContain('aucun run');
+      expect(prisma.wfEvalRun.findMany.mock.calls[0][0].where).toEqual({
+        evalSetId: 8,
+        definitionVersionId: 50,
+        status: 1,
+        passed: true,
+        totalCases: { gt: 0 },
+      });
+      // Run réussi avec l'ancien seuil 0,8 alors que le jeu exige maintenant 0,9.
+      prisma.wfEvalRun.findMany.mockResolvedValueOnce([{ requiredAccuracy: '0.800', results: { agentSpecHash: expectedHash(), casesHash: evalCasesHash([]) } }]);
+      expect(reason(await service.validateDraft(5, designer))).toContain('aucun run');
+    });
+
+    it('empreinte périmée (configuration changée depuis l’évaluation) : refusé', async () => {
+      const { prisma, service } = publishSetup(autonomous(), lowRisk);
+      withSet(prisma, okSet);
+      prisma.wfEvalRun.findMany.mockResolvedValue([
+        { requiredAccuracy: '0.900', results: { agentSpecHash: expectedHash({ objective: 'Ancien objectif' }), casesHash: evalCasesHash([]) } },
+        { requiredAccuracy: '0.900', results: null },
+      ]);
+      const v = await service.validateDraft(5, designer);
+      expect(reason(v)).toContain('a changé');
+      const err = await service.publish(5, designer).catch((e) => e);
+      expect(err).toBeInstanceOf(UnprocessableEntityException);
+      expect(prisma.wfDefinitionVersion.update).not.toHaveBeenCalled();
+    });
+
+    it('run réussi à jour (même empreinte, délai du jeu pris en compte) : accepté et publié', async () => {
+      const { prisma, service } = publishSetup(autonomous(), lowRisk);
+      prisma.wfAgentConfig.findMany.mockResolvedValue([rowOf({ evalSetId: 8, timeoutSeconds: 60 })]);
+      prisma.wfEvalSet.findUnique.mockResolvedValue(okSet);
+      prisma.wfEvalRun.findMany.mockResolvedValue([
+        { requiredAccuracy: '0.900', results: { agentSpecHash: expectedHash({ timeoutSeconds: 60 }), casesHash: evalCasesHash([]) } },
+      ]);
+      await expect(service.validateDraft(5, designer)).resolves.toMatchObject({ ok: true });
+      await expect(service.publish(5, designer)).resolves.toMatchObject({ version: { status: 1 } });
+      expect(prisma.wfAgentConfig.update.mock.calls[0][0].data).toMatchObject({ autonomyLevel: 2 });
+    });
+
+    it('cas du jeu modifiés depuis le run réussi : refusé à la publication (empreinte du jeu de cas)', async () => {
+      const { prisma, service } = publishSetup(autonomous(), lowRisk);
+      prisma.wfAgentConfig.findMany.mockResolvedValue([rowOf({ evalSetId: 8, timeoutSeconds: 60 })]);
+      prisma.wfEvalSet.findUnique.mockResolvedValue(okSet);
+      prisma.wfEvalRun.findMany.mockResolvedValue([
+        { requiredAccuracy: '0.900', results: { agentSpecHash: expectedHash({ timeoutSeconds: 60 }), casesHash: evalCasesHash([]) } },
+      ]);
+      prisma.wfEvalCase.findMany.mockResolvedValue([{ wfEvalCaseId: 3, input: {}, expected: { returnsToHuman: true } }]);
+      const v = await service.validateDraft(5, designer);
+      expect(reason(v)).toContain('cas du jeu');
+      await expect(service.publish(5, designer)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('workflow non marqué faible risque : seul le contrôle du graphe signale (pas de doublon)', async () => {
+      const { prisma, service } = publishSetup(autonomous(), { isLowRisk: false });
+      withSet(prisma, okSet);
+      prisma.wfEvalRun.findMany.mockResolvedValue([{ requiredAccuracy: '0.900', results: { agentSpecHash: expectedHash(), casesHash: evalCasesHash([]) } }]);
+      expect(codes(await service.validateDraft(5, designer))).toEqual(['AUTONOMY_REQUIRES_LOW_RISK']);
+    });
+  });
+
+  it('refus du déclencheur SQL à la synchronisation : 422 lisible plutôt que 500', async () => {
+    const { prisma, service } = publishSetup(graphWithAgent(agentSpecOf()));
+    prisma.wfAgentConfig.create.mockRejectedValueOnce(
+      Object.assign(new Error('autonomie « autonome » refusée (check_violation)'), { code: 'P2010' }),
+    );
+    const err = await service.publish(5, designer).catch((e) => e);
+    expect(err).toBeInstanceOf(UnprocessableEntityException);
+    expect(err.getResponse().issues[0].code).toBe('AGENT_AUTONOMY_NOT_ELIGIBLE');
+    const boom = new Error('connexion perdue');
+    prisma.wfAgentConfig.create.mockRejectedValueOnce(boom);
+    await expect(service.publish(5, designer)).rejects.toBe(boom);
+  });
+
+  it('sans exécuteur « agent » : EXECUTOR_MISSING reste signalé', async () => {
+    const prisma = makePrisma();
+    const service = new DefinitionsService(prisma as never, registry(false));
+    prisma.wfDefinition.findUnique.mockResolvedValue(defRow());
+    prisma.wfDefinitionVersion.findFirst.mockResolvedValue(verRow({ graph: graphWithAgent(agentSpecOf()) }));
+    expect(codes(await service.validateDraft(5, designer))).toEqual(['EXECUTOR_MISSING']);
   });
 });

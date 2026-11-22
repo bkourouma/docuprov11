@@ -314,7 +314,7 @@ describe('AiService.run — journal', () => {
     expect(JSON.stringify(input, (_k, v: unknown) => (typeof v === 'bigint' ? String(v) : v))).not.toContain(
       'jean@exemple.com',
     );
-    expect(result).toMatchObject({ decisionId: BigInt(42) });
+    expect(result).toMatchObject({ decisionId: BigInt(42), promptTokens: 10, completionTokens: 4 });
   });
 
   it('un échec du journal n’échoue pas l’appel (decisionId null)', async () => {

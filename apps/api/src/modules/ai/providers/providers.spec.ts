@@ -192,6 +192,33 @@ describe('OpenAiCompatibleProvider (local)', () => {
   });
 });
 
+describe('strictSchema : schéma non strict à la demande, strict par défaut', () => {
+  const okLocal = () =>
+    jsonResponse({ model: 'm', choices: [{ message: { content: '{}' } }], usage: { prompt_tokens: 1, completion_tokens: 1 } });
+  const okCloud = () => jsonResponse({ model: 'm', output_text: '{}', usage: { input_tokens: 1, output_tokens: 1 } });
+  const schema = { name: 'out', schema: { type: 'object' } };
+
+  it('compatible (local) : strictSchema:false => strict:false ; absent => strict:true', async () => {
+    const fetchMock = jest.fn().mockImplementation(() => Promise.resolve(okLocal()));
+    const p = new OpenAiCompatibleProvider(options(fetchMock as unknown as typeof fetch));
+    await p.complete({ system: 's', text: 't', jsonSchema: schema, strictSchema: false });
+    await p.complete({ system: 's', text: 't', jsonSchema: schema });
+    expect(sentBody(fetchMock, 0)).toMatchObject({ response_format: { json_schema: { strict: false } } });
+    expect(sentBody(fetchMock, 1)).toMatchObject({ response_format: { json_schema: { strict: true } } });
+  });
+
+  it('cloud : strictSchema:false => strict:false ; absent => strict:true', async () => {
+    const fetchMock = jest.fn().mockImplementation(() => Promise.resolve(okCloud()));
+    const p = new OpenAiCloudProvider(
+      options(fetchMock as unknown as typeof fetch, { name: 'openai', endpoint: 'https://api.openai.com/v1', apiKey: SECRET, model: 'gpt-x' }),
+    );
+    await p.complete({ system: 's', text: 't', jsonSchema: schema, strictSchema: false });
+    await p.complete({ system: 's', text: 't', jsonSchema: schema });
+    expect(sentBody(fetchMock, 0)).toMatchObject({ text: { format: { strict: false } } });
+    expect(sentBody(fetchMock, 1)).toMatchObject({ text: { format: { strict: true } } });
+  });
+});
+
 describe('OpenAiCloudProvider (cloud)', () => {
   const cloudOpts = (fetchImpl: typeof fetch): HttpProviderOptions =>
     options(fetchImpl, {

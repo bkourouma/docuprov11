@@ -116,6 +116,16 @@ test('readDecisionSummary : clés connues en texte', () => {
   assert.ok(!lines.join(' ').includes('secret'));
 });
 
+test('readDecisionSummary : refus d’outil et suspicion d’injection apparaissent clairement', () => {
+  const lines = readDecisionSummary({ deniedTool: 'envoyer_courrier', denied: 'tool_not_allowed', suspicion_injection: true, argsHash: 'x' });
+  assert.deepEqual(lines, [
+    'Outil refusé : envoyer_courrier',
+    'Motif du refus : tool_not_allowed',
+    'Suspicion d’injection de consigne signalée',
+  ]);
+  assert.deepEqual(readDecisionSummary({ suspicion_injection: false }), []);
+});
+
 test('readDecisionSummary : robuste aux valeurs étranges', () => {
   for (const v of [null, undefined, 42, 'texte', [], [1, 2], true, () => 1, Symbol('x')]) {
     assert.deepEqual(readDecisionSummary(v), []);

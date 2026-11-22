@@ -27,6 +27,8 @@ export interface WfGenerationSuggester {
     context: Readonly<Record<string, unknown>>;
     /** Droits d'exécution : ceux du lanceur. */
     runAs: { userGroupId: number };
+    /** (Ajout W2, facultatif) Définition de l'instance : permet au fournisseur de passer par la garde budgétaire. */
+    definitionId?: number;
   }): Promise<WfGenerationSuggestion>;
 }
 
@@ -46,6 +48,7 @@ export function createGenerationSuggestionExecutor(suggester: WfGenerationSugges
           stepKey: ctx.step.key,
           context: ctx.context,
           runAs: ctx.runAs,
+          definitionId: ctx.definitionId,
         });
         if (!s.content?.trim()) return { kind: 'wait' };
         return {

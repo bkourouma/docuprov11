@@ -1,7 +1,10 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import {
   createWfDefinitionSchema,
+  upsertWfAgentConfigSchema,
   type CreateWfDefinitionInput,
+  type UpsertWfAgentConfigInput,
+  type WfAgentConfigDetailDto,
   type WfDefinitionDto,
   type WfDefinitionVersionDto,
 } from '@archivage/types';
@@ -15,6 +18,7 @@ import {
   setWfLowRiskSchema,
   updateWfDraftSchema,
   wfDefinitionIdSchema,
+  wfStepKeySchema,
   wfVersionNumberSchema,
   type ListWfDefinitionsQuery,
   type SetWfLowRiskInput,
@@ -28,6 +32,7 @@ import { WORKFLOWS_MENUS } from './workflows.menus';
 
 const idPipe = new ZodValidationPipe(wfDefinitionIdSchema);
 const versionPipe = new ZodValidationPipe(wfVersionNumberSchema);
+const stepKeyPipe = new ZodValidationPipe(wfStepKeySchema);
 
 /**
  * Définitions de workflow (conception). Accès refusé par défaut : le menu « conception » est exigé
@@ -88,6 +93,24 @@ export class DefinitionsController {
     @CurrentUser() user: AuthUser,
   ): Promise<WfDefinitionWithVersionDto> {
     return this.service.updateDraft(id, body, user);
+  }
+
+  /** Configuration des étapes agent du brouillon (graphe + lignes `wf_agent_config`). */
+  @Get(':id/draft/agents')
+  @RequireMenu(WORKFLOWS_MENUS.design)
+  listAgents(@Param('id', idPipe) id: number, @CurrentUser() user: AuthUser): Promise<WfAgentConfigDetailDto[]> {
+    return this.service.listAgentConfigs(id, user);
+  }
+
+  @Put(':id/draft/agents/:stepKey')
+  @RequireMenu(WORKFLOWS_MENUS.design)
+  upsertAgent(
+    @Param('id', idPipe) id: number,
+    @Param('stepKey', stepKeyPipe) stepKey: string,
+    @Body(new ZodValidationPipe(upsertWfAgentConfigSchema)) body: UpsertWfAgentConfigInput,
+    @CurrentUser() user: AuthUser,
+  ): Promise<WfAgentConfigDetailDto> {
+    return this.service.upsertAgentConfig(id, stepKey, body, user);
   }
 
   @Post(':id/validate')

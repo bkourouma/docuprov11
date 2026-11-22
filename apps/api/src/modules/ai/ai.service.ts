@@ -176,6 +176,8 @@ export class AiService {
       confidence,
       provider: provider.name,
       model: completion.model,
+      promptTokens: completion.promptTokens,
+      completionTokens: completion.completionTokens,
     };
   }
 

@@ -49,11 +49,26 @@ export const updateWfDraftSchema = z
   );
 export type UpdateWfDraftInput = z.infer<typeof updateWfDraftSchema>;
 
+/** Clé d'étape dans le chemin (même forme que `wfGraphSchema`). */
+export const wfStepKeySchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .regex(/^[a-z][a-z0-9_]*$/, "clé d'étape invalide");
+
 export const setWfLowRiskSchema = z.object({ isLowRisk: z.boolean() });
 export type SetWfLowRiskInput = z.infer<typeof setWfLowRiskSchema>;
 
 /** Problème de validation : ceux du graphe, plus les contrôles de publication propres à l'API. */
-export type WfDefinitionIssueCode = WfGraphIssue['code'] | 'ESCALATION_INVALID' | 'EXECUTOR_MISSING';
+export type WfDefinitionIssueCode =
+  | WfGraphIssue['code']
+  | 'ESCALATION_INVALID'
+  | 'EXECUTOR_MISSING'
+  // Étapes agent (lot W2)
+  | 'AGENT_TOOL_UNKNOWN' // outil absent du registre ou désactivé
+  | 'AGENT_TOOL_NOT_GRANTED' // outil non autorisé pour ce workflow (wf_tool_grant)
+  | 'AGENT_AUTONOMY_NOT_ELIGIBLE' // autonome sans jeu d'évaluation / run réussi à jour
+  | 'AGENT_CONFIG_INVALID'; // seuil, plafonds ou objectif hors bornes
 
 export interface WfDefinitionIssue {
   code: WfDefinitionIssueCode;

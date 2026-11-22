@@ -1,5 +1,6 @@
-import { ForbiddenException, type ExecutionContext } from '@nestjs/common';
+import { ForbiddenException, RequestMethod, type ExecutionContext } from '@nestjs/common';
 import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
+import { upsertWfAgentConfigSchema } from '@archivage/types';
 import { Reflector } from '@nestjs/core';
 import 'reflect-metadata';
 import type { AuthUser } from '../auth/auth.types';
@@ -45,7 +46,7 @@ describe('DefinitionsController : accès refusé par défaut', () => {
   it('chaque route exige un menu (ou admin) : aucune n’est ouverte à tout utilisateur authentifié', () => {
     const names = Object.getOwnPropertyNames(DefinitionsController.prototype).filter((n) => n !== 'constructor');
     const routed = names.filter((n) => Reflect.getMetadata(METHOD_METADATA, proto[n]) !== undefined);
-    expect(routed).toHaveLength(10);
+    expect(routed).toHaveLength(12);
     for (const n of routed) {
       const menus = Reflect.getMetadata(REQUIRE_MENU_KEY, proto[n]) as string[] | undefined;
       const adminOnly = Reflect.getMetadata(REQUIRE_ADMIN_KEY, proto[n]) as boolean | undefined;
@@ -54,7 +55,7 @@ describe('DefinitionsController : accès refusé par défaut', () => {
   });
 
   it('les écritures exigent le menu conception ; le faible risque est réservé aux administrateurs', () => {
-    for (const n of ['create', 'updateDraft', 'validate', 'publish', 'archive']) {
+    for (const n of ['create', 'updateDraft', 'listAgents', 'upsertAgent', 'validate', 'publish', 'archive']) {
       expect(Reflect.getMetadata(REQUIRE_MENU_KEY, proto[n])).toEqual([WORKFLOWS_MENUS.design]);
     }
     expect(Reflect.getMetadata(REQUIRE_ADMIN_KEY, proto.setLowRisk)).toBe(true);
@@ -98,5 +99,52 @@ describe('DefinitionsController : accès refusé par défaut', () => {
     await controller.setLowRisk(3, { isLowRisk: true }, admin);
     expect(service.publish).toHaveBeenCalledWith(3, designer);
     expect(service.setLowRisk).toHaveBeenCalledWith(3, true, admin);
+  });
+
+  it('config d’agent : chemins, méthodes et garde de menu (concevoir, administrateur non exempté)', async () => {
+    expect(Reflect.getMetadata(PATH_METADATA, proto.listAgents)).toBe(':id/draft/agents');
+    expect(Reflect.getMetadata(PATH_METADATA, proto.upsertAgent)).toBe(':id/draft/agents/:stepKey');
+    expect(Reflect.getMetadata(METHOD_METADATA, proto.listAgents)).toBe(RequestMethod.GET);
+    expect(Reflect.getMetadata(METHOD_METADATA, proto.upsertAgent)).toBe(RequestMethod.PUT);
+    for (const n of ['listAgents', 'upsertAgent']) {
+      await expect(guardWithMenus([]).canActivate(ctxFor(n, designer))).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(guardWithMenus([WORKFLOWS_MENUS.launch]).canActivate(ctxFor(n, designer))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      await expect(guardWithMenus([WORKFLOWS_MENUS.design]).canActivate(ctxFor(n, designer))).resolves.toBe(true);
+    }
+  });
+
+  it('config d’agent : délègue au service avec l’identifiant, la clé d’étape, le corps et l’acteur', async () => {
+    const service = {
+      listAgentConfigs: jest.fn().mockResolvedValue([]),
+      upsertAgentConfig: jest.fn().mockResolvedValue({ stepKey: 'ia' }),
+    };
+    const controller = new DefinitionsController(service as never);
+    await controller.listAgents(3, designer);
+    await controller.upsertAgent(3, 'ia', { confidenceThreshold: 0.9 }, designer);
+    expect(service.listAgentConfigs).toHaveBeenCalledWith(3, designer);
+    expect(service.upsertAgentConfig).toHaveBeenCalledWith(3, 'ia', { confidenceThreshold: 0.9 }, designer);
+  });
+
+  it('config d’agent : corps zod borné comme le SQL', () => {
+    const ok = (v: unknown) => upsertWfAgentConfigSchema.safeParse(v).success;
+    expect(ok({ confidenceThreshold: 0.5 })).toBe(true);
+    expect(ok({})).toBe(false); // aucune modification
+    expect(ok({ confidenceThreshold: 1.1 })).toBe(false);
+    expect(ok({ confidenceThreshold: -0.1 })).toBe(false);
+    expect(ok({ maxSteps: 0 })).toBe(false);
+    expect(ok({ maxSteps: 51 })).toBe(false);
+    expect(ok({ maxSteps: 50 })).toBe(true);
+    expect(ok({ timeoutSeconds: 0 })).toBe(false);
+    expect(ok({ timeoutSeconds: 3601 })).toBe(false);
+    expect(ok({ maxCostPerRun: -1 })).toBe(false);
+    expect(ok({ maxCostPerRun: null, model: null, evalSetId: null })).toBe(true);
+    expect(ok({ evalSetId: 0 })).toBe(false);
+    expect(ok({ tools: ['doc.read', 'doc.read'] })).toBe(false);
+    expect(ok({ tools: ['Doc Read'] })).toBe(false);
+    expect(ok({ autonomy: 'autonome' })).toBe(true);
+    expect(ok({ autonomy: 'libre' })).toBe(false);
+    expect(ok({ objective: 'x', inconnu: 1 })).toBe(false);
   });
 });
