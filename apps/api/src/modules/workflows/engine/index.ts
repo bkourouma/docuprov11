@@ -2,6 +2,7 @@
 export { WorkflowEngine, toEventDto, toInboxDto, toInstanceDto, toTaskDto } from './engine';
 export type { WorkflowEngineDeps } from './engine';
 export { WfExecutorRegistry } from './executor-registry';
+export { WF_EFFECT_ACTIONS_MAX, WfEffectApplierHolder, selectValidatedActions } from './effect-applier';
 export {
   WF_AUTO_CHAIN_LIMIT,
   WF_DEFAULT_MAX_ATTEMPTS,

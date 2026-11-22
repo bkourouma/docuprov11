@@ -15,6 +15,7 @@ import {
   WF_AGENT_GATE,
   WF_AGENT_IDENTITY,
   WF_AGENT_RUNNER,
+  WF_TOOL_REGISTRY,
 } from './agent.contracts';
 import { AgentEventSink } from './agent-event-sink.service';
 import { AgentAdminController } from './budget/agent-admin.controller';
@@ -70,7 +71,7 @@ import { agentDataProvider, toolRegistryProvider } from './tools/tools.provider'
     AgentTaskExecutor,
     DraftingGenerationSuggester,
   ],
-  exports: [WF_AGENT_GATE, WF_AGENT_RUNNER, WF_AGENT_IDENTITY, AutonomyEligibilityService, EvalService],
+  exports: [WF_AGENT_GATE, WF_AGENT_RUNNER, WF_AGENT_IDENTITY, AutonomyEligibilityService, EvalService, AgentDataAdapter, WF_TOOL_REGISTRY],
 })
 export class WorkflowAgentsModule implements OnModuleInit {
   private readonly logger = new Logger(WorkflowAgentsModule.name);

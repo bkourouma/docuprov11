@@ -251,6 +251,8 @@ export interface AgentRunInput {
     taskId?: string;
     stepKey: string;
     subject?: { type: string | null; id: string | null };
+    /** Contexte du cas d'évaluation, transmis aux outils en `dry_run` seulement. */
+    evalContext?: Readonly<Record<string, unknown>>;
   };
   spec: AgentRunSpec;
   identity: AgentIdentity;
