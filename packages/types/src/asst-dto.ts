@@ -198,10 +198,28 @@ export type AsstErrorBodyDto = {
 // Requêtes (schémas zod stricts)
 // ---------------------------------------------------------------------------
 
+/**
+ * Caractères de contrôle interdits : NUL, C0 (sauf tabulation, LF, CR), DEL et C1.
+ * Le texte multiligne (message) autorise tabulation, LF et CR ; le titre (affiché sur une ligne) les refuse aussi.
+ */
+// eslint-disable-next-line no-control-regex
+const ASST_CONTROL_CHARS_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/;
+// eslint-disable-next-line no-control-regex
+const ASST_TITLE_FORBIDDEN_RE = /[\u0000-\u001F\u007F-\u009F]/;
+const noControlChars = (v: string): boolean => !ASST_CONTROL_CHARS_RE.test(v);
+const NO_CONTROL_MESSAGE = 'Le texte contient des caractères de contrôle interdits.';
+const NO_TITLE_CONTROL_MESSAGE = 'Le titre ne doit contenir ni retour à la ligne ni caractère de contrôle.';
+
 /** L'utilisateur est celui du jeton, JAMAIS dans le corps. */
 export const createConversationBody = z
   .object({
-    title: z.string().trim().min(1).max(ASST_TITLE_MAX_CHARS).optional(),
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(ASST_TITLE_MAX_CHARS)
+      .refine((v) => !ASST_TITLE_FORBIDDEN_RE.test(v), { message: NO_TITLE_CONTROL_MESSAGE })
+      .optional(),
     pageContext: asstPageContextSchema.optional(),
   })
   .strict();
@@ -220,7 +238,7 @@ export const proposalIdParam = asstIdSchema;
 
 export const postMessageBody = z
   .object({
-    content: z.string().trim().min(1).max(ASST_MESSAGE_MAX_CHARS),
+    content: z.string().trim().min(1).max(ASST_MESSAGE_MAX_CHARS).refine(noControlChars, { message: NO_CONTROL_MESSAGE }),
     pageContext: asstPageContextSchema.optional(),
   })
   .strict();

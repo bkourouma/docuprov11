@@ -163,7 +163,16 @@ export class InMemoryProposalStore implements AsstProposalStore {
     const conv = this.ownedConversation(userId, conversationId);
     if (!conv) return false;
     conv.deletedAt = new Date(now);
-    conv.purgeAt = new Date(now);
+    // Trace d'exécution (proposition confirmée, appliquée ou en échec) : masquage SANS abaisser purge_at.
+    const hasTrace = [...this.proposals.values()].some(
+      (p) =>
+        p.conversationId === conv.id &&
+        (p.status === AsstProposalStatus.Confirmed ||
+          p.status === AsstProposalStatus.Applied ||
+          p.status === AsstProposalStatus.Failed),
+    );
+    if (!hasTrace) conv.purgeAt = new Date(now);
+    conv.updatedAt = new Date(now);
     return true;
   }
 
@@ -206,6 +215,16 @@ export class InMemoryProposalStore implements AsstProposalStore {
     conv.updatedAt = new Date(now);
     conv.lastMessageAt = new Date(now);
     return this.messageDto(row);
+  }
+
+  async deleteMessage(userId: number, conversationId: string, messageId: string): Promise<boolean> {
+    const conv = this.ownedConversation(userId, conversationId);
+    const id = parseId(messageId);
+    const row = id === null ? undefined : this.messages.get(id);
+    if (!conv || !row || row.conversationId !== conv.id) return false;
+    if ([...this.proposals.values()].some((p) => p.messageId === row.id)) return false;
+    this.messages.delete(row.id);
+    return true;
   }
 
   // ---------------------------------------------------------------------------
@@ -338,6 +357,13 @@ export class InMemoryProposalStore implements AsstProposalStore {
     const conv = this.conversations.get(row.conversationId);
     if (!conv || conv.deletedAt !== null) return null;
     return { userId: row.userId, userGroupId: row.userGroupId };
+  }
+
+  /** Observation de test : échéance de purge d'un échange (même masqué) ; `null` si l'échange n'existe pas. */
+  peekPurgeAt(conversationId: string): Date | null {
+    const id = parseId(conversationId);
+    const conv = id === null ? undefined : this.conversations.get(id);
+    return conv ? new Date(conv.purgeAt) : null;
   }
 
   // ---------------------------------------------------------------------------

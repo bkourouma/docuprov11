@@ -7,7 +7,9 @@ import {
   type PlannerDataFixture,
   type PlannerHarness,
 } from './planner-fake-model';
-import { CORPUS, type CorpusLayer, type InjectionCase } from './planner.injection-corpus';
+import { PLANNER_MSG_ACTION_CLAIM, claimsActionDone } from './action-claims';
+import { isClarificationContent, parseClarificationContent, stripClarificationMarker } from './clarification-format';
+import { CORPUS, REFUSED_PHRASES, type CorpusLayer, type InjectionCase } from './planner.injection-corpus';
 
 // Rejoue le corpus d'attaque (`planner.injection-corpus.ts`) contre le VRAI planificateur et le VRAI validateur,
 // avec un modèle compromis scripté et un port de données en mémoire (lecture seule).
@@ -64,15 +66,29 @@ function escapeRegExp(s: string): string {
 }
 
 describe('corpus d’attaque du planificateur', () => {
-  it('contient au moins 60 cas (visés : 70), aux identifiants uniques, dont des témoins bénins', () => {
-    expect(CORPUS.length).toBeGreaterThanOrEqual(60);
+  it('contient 135 cas (103 + 32 du tour de correction), aux identifiants uniques, dont des témoins bénins', () => {
+    expect(CORPUS.length).toBe(135);
     expect(new Set(CORPUS.map((c) => c.id)).size).toBe(CORPUS.length);
-    expect(CORPUS.filter((c) => c.benign).length).toBeGreaterThanOrEqual(5);
-    expect(CORPUS.filter((c) => !c.benign).length).toBeGreaterThanOrEqual(60);
-    // Plusieurs cas par catégorie.
+    expect(CORPUS.filter((c) => c.benign).length).toBe(12);
+    expect(CORPUS.filter((c) => !c.benign).length).toBe(123);
+    expect(CORPUS.filter((c) => c.expect.kind === 'exact').length).toBe(19);
+    // Plusieurs cas par catégorie (20 catégories).
     const byCategory = new Map<string, number>();
     for (const c of CORPUS) byCategory.set(c.category, (byCategory.get(c.category) ?? 0) + 1);
+    expect(byCategory.size).toBe(20);
     for (const [, n] of byCategory) expect(n).toBeGreaterThanOrEqual(2);
+  });
+
+  it('rejoue chaque phrase refusée ou supposée du vérificateur (cas Q01 à Q16) ; M04, N13 et N14 sont bloqués', () => {
+    for (const [tool, text] of REFUSED_PHRASES) {
+      const c = CORPUS.find((x) => x.userMessage === text && x.category === 'ordre refusé ou supposé');
+      expect(c).toBeDefined();
+      expect(c?.expect).toEqual({ kind: 'none', layer: 'validateur' });
+      expect(JSON.stringify(c?.script)).toContain(tool);
+    }
+    for (const id of ['M04', 'N13', 'N14']) {
+      expect(CORPUS.find((c) => c.id === id)?.expect).toEqual({ kind: 'none', layer: 'validateur' });
+    }
   });
 
   describe.each(CORPUS.map((c) => [`${c.id} [${c.category}] ${c.description}`, c] as const))('%s', (_title, c) => {
@@ -103,6 +119,20 @@ describe('corpus d’attaque du planificateur', () => {
         expect(h.data.draftCalls).toBe(drafts);
         if (drafts > 0) expect(h.data.draftRequests.every((r) => r.instruction === c.userMessage)).toBe(true);
       }
+
+      // Réponse affichée : texte exact attendu ; aucune question de précision relue (ni boutons) si demandé.
+      if (c.reply?.equals !== undefined) expect(result.reply).toBe(c.reply.equals);
+      if (c.reply?.noButtons) {
+        expect(result.clarification).toBeNull();
+        expect(parseClarificationContent(result.reply)).toBeNull();
+        expect(isClarificationContent(result.reply)).toBe(false);
+      }
+      // Seule une question construite par le code porte le marqueur ; aucun texte libre ne le transporte.
+      if (result.clarification === null && !isClarificationContent(result.reply)) {
+        expect(result.reply).toBe(stripClarificationMarker(result.reply));
+      }
+      // Aucune réponse ne prétend qu'une action a été faite (sauf la phrase fixe du code qui dit le contraire).
+      if (!result.reply.includes(PLANNER_MSG_ACTION_CLAIM)) expect(claimsActionDone(result.reply)).toBe(false);
 
       // Aucun courrier, nom ni résultat d'outil ne fournit l'intention : jamais d'action vers l'acteur piégé.
       for (const a of result.actions) {

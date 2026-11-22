@@ -114,11 +114,20 @@ export class AsstProposalStoreService implements AsstProposalStore {
   async deleteConversation(userId: number, conversationId: string, now: Date): Promise<boolean> {
     const id = parseAsstId(conversationId);
     if (id === null) return false;
-    // Un seul UPDATE conditionnel : masquage immédiat, purge échue.
-    const { count } = await this.prisma.asstConversation.updateMany({
-      where: { asstConversationId: id, userId, deletedAt: null },
-      data: { deletedAt: now, purgeAt: now, updatedAt: now },
-    });
+    // Un seul UPDATE conditionnel (atomique) : masquage immédiat. `purge_at` ne passe à `now` que si l'échange ne
+    // porte AUCUNE trace d'exécution : proposition appliquée (2) ou en échec (5), ou confirmée (1), qui deviendra
+    // l'une des deux. Dans ce cas la trace est conservée jusqu'à l'échéance de purge d'origine.
+    const count = await this.prisma.$executeRaw`
+      UPDATE "asst_conversation" AS c
+      SET "deleted_at" = ${now},
+          "updated_at" = ${now},
+          "purge_at" = CASE
+            WHEN EXISTS (SELECT 1 FROM "asst_proposal" p
+                         WHERE p."conversation_id" = c."asst_conversation_id" AND p."status" IN (1, 2, 5))
+            THEN c."purge_at"
+            ELSE ${now}
+          END
+      WHERE c."asst_conversation_id" = ${id} AND c."user_id" = ${userId} AND c."deleted_at" IS NULL`;
     return count > 0;
   }
 
@@ -175,6 +184,26 @@ export class AsstProposalStoreService implements AsstProposalStore {
       });
       return toMessageDto(row);
     });
+  }
+
+  /**
+   * Supprime un message de l'utilisateur uniquement s'il appartient à un échange non masqué ET ne porte aucune
+   * proposition (quel que soit son statut : la cascade emporterait une trace d'exécution). Un seul DELETE conditionnel.
+   */
+  async deleteMessage(userId: number, conversationId: string, messageId: string): Promise<boolean> {
+    const convId = parseAsstId(conversationId);
+    const msgId = parseAsstId(messageId);
+    if (convId === null || msgId === null) return false;
+    const count = await this.prisma.$executeRaw`
+      DELETE FROM "asst_message" m
+      USING "asst_conversation" c
+      WHERE m."asst_message_id" = ${msgId}
+        AND m."conversation_id" = ${convId}
+        AND c."asst_conversation_id" = m."conversation_id"
+        AND c."user_id" = ${userId}
+        AND c."deleted_at" IS NULL
+        AND NOT EXISTS (SELECT 1 FROM "asst_proposal" p WHERE p."message_id" = m."asst_message_id")`;
+    return count > 0;
   }
 
   // ---------------------------------------------------------------------------

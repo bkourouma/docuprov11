@@ -24,7 +24,15 @@ import {
   type AsstPlanResult,
   type AsstReservation,
 } from '../assistant.contracts';
-import { formatClarificationContent, parseClarificationContent } from './clarification-format';
+import { PLANNER_MSG_ACTION_CLAIM, claimsActionDone } from './action-claims';
+import {
+  formatClarificationContent,
+  formatClarificationQuestion,
+  isClarificationContent,
+  parseClarificationContent,
+  stripClarificationMarker,
+} from './clarification-format';
+import { intentHistory } from './intent-guards';
 import { buildPlannerPrompt, type PlannerPromptRequest, type PlannerPromptToolEntry } from './planner-prompt';
 import { createPlannerToolbox } from './planner-toolbox';
 import { AsstTurnError, parseAsstTurn, type AsstTurn } from './planner-turn';
@@ -56,7 +64,12 @@ import {
 //     (`detectInjection`) : une consigne détournée lève un drapeau pour TOUTE la requête ;
 //  4. proposition : portes successives, échec fermé (suspicion du modèle, intention venue d'une donnée, drapeau de
 //     la requête, puis validateur d'actions qui recalcule tout depuis le message de l'utilisateur) ;
-//  5. la réponse qui accompagne une proposition est CONSTRUITE PAR LE CODE : le texte du modèle n'y figure jamais.
+//  5. la réponse qui accompagne une proposition est CONSTRUITE PAR LE CODE : le texte du modèle n'y figure jamais ;
+//  6. un texte libre du modèle qui REVENDIQUE une action (« j'ai imputé », « c'est fait ») est remplacé par une phrase
+//     fixe ; seule une question construite ici porte le marqueur de question de précision (`clarification-format.ts`),
+//     retiré de toute autre réponse ;
+//  7. historique : seul le message courant établit l'intention, sauf réponse à une question de précision marquée
+//     (`intentHistory`), et jamais un ordre annulé.
 // Aucune écriture métier ; ne crée ni message ni proposition. Aucun contenu dans les journaux (types d'erreur seuls).
 
 const MSG_UNAVAILABLE = 'L’assistant est momentanément indisponible.';
@@ -192,7 +205,10 @@ export class AsstPlannerService implements AsstPlannerPort {
     const message = typeof input.message === 'string' ? input.message : '';
     const pageContext = input.pageContext ?? null;
     const history = this.boundedHistory(input.history, message);
-    const previousUserMessages = history.filter((m) => m.role === AsstMessageRole.User).map((m) => m.content);
+    // Intention : le message COURANT seul, sauf s'il répond à une question de précision (dernier message assistant
+    // marqué) ; une annulation rend caducs les ordres antérieurs (`intentHistory`). Le modèle voit tout l'historique,
+    // mais un ordre ancien n'est jamais repris par le validateur hors de ce cas.
+    const previousUserMessages = intentHistory(history, message);
     const maxActions = plannerMaxActions();
     const toolbox = createPlannerToolbox(this.data, { user: identity.user, pageContext, now });
     const st: LoopState = {
@@ -410,29 +426,54 @@ export class AsstPlannerService implements AsstPlannerPort {
   // Conclusions
   // ---------------------------------------------------------------------------------------------
 
-  private textResult(st: LoopState, reply: string, clarification: AsstClarificationDto | null = null): AsstPlanResult {
+  /**
+   * Résultat texte (aucune action). Une réponse qui n'est PAS une question de précision construite par le code
+   * (`marked`) est privée de tout caractère du marqueur : un texte du modèle ne peut jamais faire apparaître de boutons
+   * ni passer pour une question au rechargement. Une question marquée est vérifiée (relecture identique).
+   */
+  private textResult(
+    st: LoopState,
+    reply: string,
+    clarification: AsstClarificationDto | null = null,
+    marked = false,
+  ): AsstPlanResult {
+    let text = truncateSafe(reply, ASST_ASSISTANT_MESSAGE_MAX_CHARS);
+    let clar = clarification;
+    if (!marked || !isClarificationContent(text)) {
+      text = stripClarificationMarker(text);
+      clar = null;
+    } else if (clar !== null && JSON.stringify(parseClarificationContent(text)) !== JSON.stringify(clar)) {
+      clar = null;
+    }
     return {
-      reply: truncateSafe(reply, ASST_ASSISTANT_MESSAGE_MAX_CHARS),
+      reply: text,
       actions: [],
       summary: null,
-      clarification,
+      clarification: clar,
       usage: { ...st.usage },
       aiDecisionId: st.aiDecisionId,
     };
   }
 
-  /** Texte libre du modèle (réponse ou question) : jamais si un jeton y figure ; averti si la requête est suspecte. */
+  /**
+   * Texte libre du modèle (réponse ou question) : jamais si un jeton y figure ; jamais s'il REVENDIQUE une action
+   * (rien n'est appliqué sans confirmation : phrase fixe du code) ; averti si la requête est suspecte.
+   */
   private modelText(st: LoopState, text: string): string {
     if (st.nonces.some((n) => containsNonce(text, n))) return PLANNER_MSG_LEAK;
-    return st.dataSuspicion ? `${PLANNER_MSG_SUSPICION_WARNING}\n\n${text}` : text;
+    const shown = claimsActionDone(text) ? PLANNER_MSG_ACTION_CLAIM : text;
+    return st.dataSuspicion ? `${PLANNER_MSG_SUSPICION_WARNING}\n\n${shown}` : shown;
   }
 
   private clarifyResult(st: LoopState, question: string, rawChoices: readonly string[]): AsstPlanResult {
-    const text = this.modelText(st, question);
-    if (text === PLANNER_MSG_LEAK || rawChoices.some((c) => st.nonces.some((n) => containsNonce(c, n)))) {
-      return this.textResult(st, PLANNER_MSG_LEAK);
+    if (rawChoices.some((c) => st.nonces.some((n) => containsNonce(c, n)))) return this.textResult(st, PLANNER_MSG_LEAK);
+    if (claimsActionDone(question) || rawChoices.some((c) => claimsActionDone(c))) {
+      return this.textResult(st, this.modelText(st, PLANNER_MSG_ACTION_CLAIM));
     }
-    // Requête suspecte : pas de boutons de choix (un choix dicté par une donnée ne doit pas devenir un ordre d'un clic).
+    const text = this.modelText(st, question);
+    if (text === PLANNER_MSG_LEAK) return this.textResult(st, PLANNER_MSG_LEAK);
+    // Requête suspecte : pas de boutons de choix (un choix dicté par une donnée ne doit pas devenir un ordre d'un clic),
+    // et pas de marqueur : la réponse suivante de l'utilisateur ne fera pas revivre un ordre antérieur.
     if (st.dataSuspicion) return this.textResult(st, text);
     const choices: string[] = [];
     const seen = new Set<string>();
@@ -443,14 +484,15 @@ export class AsstPlannerService implements AsstPlannerPort {
       seen.add(key);
       choices.push(c);
     }
-    if (choices.length < PLANNER_CHOICES_MIN || choices.length > PLANNER_CHOICES_MAX) return this.textResult(st, question);
+    const questionOnly = (): AsstPlanResult => this.textResult(st, formatClarificationQuestion(question), null, true);
+    if (choices.length < PLANNER_CHOICES_MIN || choices.length > PLANNER_CHOICES_MAX) return questionOnly();
     const content = formatClarificationContent(question, choices);
     const parsed = asstClarificationSchema.safeParse({ question, choices });
     const reread = parseClarificationContent(content);
     if (!parsed.success || reread === null || Array.from(content).length > ASST_ASSISTANT_MESSAGE_MAX_CHARS) {
-      return this.textResult(st, question);
+      return questionOnly();
     }
-    return this.textResult(st, content, parsed.data);
+    return this.textResult(st, content, reread, true);
   }
 
   private async proposeResult(
@@ -488,8 +530,12 @@ export class AsstPlannerService implements AsstPlannerPort {
     });
 
     if (!outcome.ok) {
-      const clarification = outcome.kind === 'clarify' ? parseClarificationContent(outcome.message) : null;
-      return this.textResult(st, outcome.message, clarification);
+      if (outcome.kind !== 'clarify') return this.textResult(st, outcome.message);
+      // Question du validateur (texte construit par le code) : avec choix, déjà marquée ; sinon marquée ici comme
+      // question sans choix, pour que la réponse de l'utilisateur soit lue comme la réponse à cette question.
+      const clarification = parseClarificationContent(outcome.message);
+      if (clarification) return this.textResult(st, outcome.message, clarification, true);
+      return this.textResult(st, formatClarificationQuestion(outcome.message), null, true);
     }
 
     // Dernier contrôle : schéma strict des actions de l'assistant et résumé présent.
@@ -497,10 +543,9 @@ export class AsstPlannerService implements AsstPlannerPort {
     const summary = typeof outcome.summary === 'string' ? outcome.summary.trim() : '';
     if (!checked.success || summary.length === 0) return this.textResult(st, PLANNER_MSG_PROPOSAL_INVALID);
     const actions: AsstProposedAction[] = checked.data;
-    // Réponse CONSTRUITE PAR LE CODE : aucun texte du modèle.
-    const reply = truncateSafe(
-      `${PLANNER_PROPOSAL_INTRO}\n${summary}\n${PLANNER_PROPOSAL_OUTRO}`,
-      ASST_ASSISTANT_MESSAGE_MAX_CHARS,
+    // Réponse CONSTRUITE PAR LE CODE : aucun texte du modèle (et jamais de marqueur de question).
+    const reply = stripClarificationMarker(
+      truncateSafe(`${PLANNER_PROPOSAL_INTRO}\n${summary}\n${PLANNER_PROPOSAL_OUTRO}`, ASST_ASSISTANT_MESSAGE_MAX_CHARS),
     );
     return {
       reply,

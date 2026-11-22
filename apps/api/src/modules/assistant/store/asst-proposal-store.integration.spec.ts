@@ -376,11 +376,14 @@ suite(title, () => {
     // P1 : masquée, avec message et proposition « proposée » -> purgée en cascade.
     const p1 = await seed(userId);
     await store.deleteConversation(userId, p1.conv.conversationId, at(1000));
-    // P2 : masquée, proposition CONFIRMÉE (exécution en cours) -> refusée par le déclencheur.
+    // P2 : proposition CONFIRMÉE (exécution en cours) dont l'échéance de purge est échue -> refusée par le déclencheur
+    // (comptée « skipped »). Le masquage par l'utilisateur ne l'abaisse pas : l'échéance est simulée en SQL.
     const p2 = await seed(userId);
     await store.transitionProposal(tr(p2.proposal, AsstProposalStatus.Confirmed, at(1000)));
-    await store.deleteConversation(userId, p2.conv.conversationId, at(1500));
-    // P3 : trace d'exécution (appliquée), masquée -> purgeable (purge_at échue).
+    await prisma.$executeRaw`
+      UPDATE "asst_conversation" SET "deleted_at" = now(), "purge_at" = "created_at"
+      WHERE "asst_conversation_id" = ${BigInt(p2.conv.conversationId)}`;
+    // P3 : trace d'exécution (appliquée), masquée par l'utilisateur -> purge_at conservée, NON purgée.
     const p3 = await seed(userId);
     const c3 = (await store.transitionProposal(tr(p3.proposal, AsstProposalStatus.Confirmed, at(1000)))) as AsstProposalDto;
     await store.transitionProposal(tr(c3, AsstProposalStatus.Applied, at(2000), { result: { effects: [] } }));
@@ -390,7 +393,7 @@ suite(title, () => {
 
     const outcome = await purge.purgeDue(new Date(), 1000);
     // D'autres échanges masqués des tests précédents sont aussi échus : seul le minimum est garanti.
-    expect(outcome.purged).toBeGreaterThanOrEqual(2);
+    expect(outcome.purged).toBeGreaterThanOrEqual(1);
     expect(outcome.skipped).toBe(1);
 
     const exists = async (id: string) =>
@@ -398,8 +401,9 @@ suite(title, () => {
     expect(await exists(p1.conv.conversationId)).toBe(false);
     expect(await prisma.asstMessage.count({ where: { conversationId: BigInt(p1.conv.conversationId) } })).toBe(0);
     expect(await prisma.asstProposal.count({ where: { conversationId: BigInt(p1.conv.conversationId) } })).toBe(0);
-    expect(await exists(p3.conv.conversationId)).toBe(false);
-    expect(await prisma.asstProposal.count({ where: { conversationId: BigInt(p3.conv.conversationId) } })).toBe(0);
+    // P3 : masquée mais conservée jusqu'à son échéance (+90 jours), trace intacte.
+    expect(await exists(p3.conv.conversationId)).toBe(true);
+    expect(await prisma.asstProposal.count({ where: { conversationId: BigInt(p3.conv.conversationId) } })).toBe(1);
     expect(await exists(p2.conv.conversationId)).toBe(true);
     expect(await prisma.asstProposal.count({ where: { conversationId: BigInt(p2.conv.conversationId) } })).toBe(1);
     expect(await exists(p4.conv.conversationId)).toBe(true);
@@ -412,5 +416,135 @@ suite(title, () => {
       WHERE "asst_proposal_id" = ${BigInt(p2.proposal.proposalId)} AND "status" = 1`;
     expect(await purge.purgeDue(new Date(), 1000)).toEqual({ purged: 1, skipped: 0 });
     expect(await exists(p2.conv.conversationId)).toBe(false);
+  });
+
+  const rowOf = (id: string) => prisma.asstConversation.findUnique({ where: { asstConversationId: BigInt(id) } });
+  const existsConv = async (id: string) => (await rowOf(id)) !== null;
+  const DAY = 86_400_000;
+
+  async function applyOrFail(p: AsstProposalDto, to: AsstProposalStatus) {
+    const c = (await store.transitionProposal(tr(p, AsstProposalStatus.Confirmed, at(1000)))) as AsstProposalDto;
+    return to === AsstProposalStatus.Applied
+      ? store.transitionProposal(tr(c, to, at(2000), { result: { effects: [] } }))
+      : store.transitionProposal(tr(c, to, at(2000), { errorCode: 'effect_failed', errorMessage: 'Échec de l’effet.' }));
+  }
+
+  it('masquage sans trace d’exécution (proposée, refusée, expirée) : purge_at = now, purgé par purgeDue', async () => {
+    const userId = nextUser();
+    const proposed = await seed(userId);
+    const refused = await seed(userId);
+    await store.transitionProposal(tr(refused.proposal, AsstProposalStatus.Refused, at(1000)));
+    const expired = await seed(userId, { createdAt: at(-60 * MIN) });
+    await store.transitionProposal(tr(expired.proposal, AsstProposalStatus.Expired, T0));
+
+    for (const s of [proposed, refused, expired]) {
+      expect(await store.deleteConversation(userId, s.conv.conversationId, at(3000))).toBe(true);
+      expect((await rowOf(s.conv.conversationId))?.purgeAt.getTime()).toBe(at(3000).getTime());
+      expect(await store.getConversation(userId, s.conv.conversationId)).toBeNull();
+    }
+    const outcome = await purge.purgeDue(new Date(), 1000);
+    expect(outcome.skipped).toBe(0);
+    for (const s of [proposed, refused, expired]) {
+      expect(await existsConv(s.conv.conversationId)).toBe(false);
+      expect(await prisma.asstMessage.count({ where: { conversationId: BigInt(s.conv.conversationId) } })).toBe(0);
+      expect(await prisma.asstProposal.count({ where: { conversationId: BigInt(s.conv.conversationId) } })).toBe(0);
+    }
+  });
+
+  it.each([
+    ['appliquée (statut 2)', AsstProposalStatus.Applied],
+    ['en échec (statut 5)', AsstProposalStatus.Failed],
+  ] as const)(
+    'trace %s : masquage sans abaisser purge_at, conservée jusqu’à l’échéance puis purgée en cascade',
+    async (_label, finalStatus) => {
+      const userId = nextUser();
+      const { conv, proposal } = await seed(userId);
+      const done = await applyOrFail(proposal, finalStatus);
+      expect(done?.status).toBe(finalStatus);
+      const expectedPurge = T0.getTime() + ASST_RETENTION_DAYS * DAY;
+
+      expect(await store.deleteConversation(userId, conv.conversationId, at(4000))).toBe(true);
+      // Masquée : absente de la liste, introuvable ; mais purge_at inchangée (+90 jours), updated_at renseignée.
+      expect(await store.getConversation(userId, conv.conversationId)).toBeNull();
+      expect((await store.listConversations(userId, { limit: 50, offset: 0 })).items.map((c) => c.conversationId)).not.toContain(
+        conv.conversationId,
+      );
+      const hidden = await rowOf(conv.conversationId);
+      expect(hidden?.deletedAt?.getTime()).toBe(at(4000).getTime());
+      expect(hidden?.updatedAt.getTime()).toBe(at(4000).getTime());
+      expect(hidden?.purgeAt.getTime()).toBe(expectedPurge);
+      // Seconde suppression : refusée (déjà masquée), purge_at toujours inchangée.
+      expect(await store.deleteConversation(userId, conv.conversationId, at(5000))).toBe(false);
+
+      // purgeDue(now) : échéance non atteinte, rien n'est sélectionné ni compté en erreur.
+      const early = await purge.purgeDue(new Date(), 1000);
+      expect(early.skipped).toBe(0);
+      expect(await existsConv(conv.conversationId)).toBe(true);
+      expect(await prisma.asstProposal.count({ where: { conversationId: BigInt(conv.conversationId) } })).toBe(1);
+
+      // Échéance simulée sur l'horloge de la base : purge_at ramenée dans le passé, puis purge.
+      await prisma.$executeRaw`
+        UPDATE "asst_conversation" SET "purge_at" = "created_at"
+        WHERE "asst_conversation_id" = ${BigInt(conv.conversationId)}`;
+      const late = await purge.purgeDue(new Date(Date.now() + 91 * DAY), 1000);
+      expect(late.purged).toBeGreaterThanOrEqual(1);
+      expect(await existsConv(conv.conversationId)).toBe(false);
+      expect(await prisma.asstMessage.count({ where: { conversationId: BigInt(conv.conversationId) } })).toBe(0);
+      expect(await prisma.asstProposal.count({ where: { conversationId: BigInt(conv.conversationId) } })).toBe(0);
+    },
+  );
+
+  it('purgeDue(now + 91 jours) sélectionne une trace non échue mais le déclencheur (horloge base) la refuse : comptée différée, intacte', async () => {
+    const userId = nextUser();
+    const { conv, proposal } = await seed(userId);
+    await applyOrFail(proposal, AsstProposalStatus.Applied);
+    await store.deleteConversation(userId, conv.conversationId, at(4000));
+    const out = await purge.purgeDue(new Date(Date.now() + 91 * DAY), 1000);
+    expect(out.skipped).toBeGreaterThanOrEqual(1);
+    expect(await existsConv(conv.conversationId)).toBe(true);
+    expect((await rowOf(conv.conversationId))?.purgeAt.getTime()).toBe(T0.getTime() + ASST_RETENTION_DAYS * DAY);
+  });
+
+  it('deleteMessage : supprime un message sans proposition ; conserve celui qui en porte ; refuse autrui, échange masqué, id mal formé', async () => {
+    const owner = nextUser();
+    const other = nextUser();
+    const { conv, msg, proposal } = await seed(owner);
+    const free = await store.appendMessage(
+      owner,
+      { conversationId: conv.conversationId, role: AsstMessageRole.Assistant, content: 'Aucune action à proposer.' },
+      at(1000),
+    );
+    if (!free) throw new Error('message attendu');
+    const count = () => prisma.asstMessage.count({ where: { conversationId: BigInt(conv.conversationId) } });
+    expect(await count()).toBe(2);
+
+    // Autre utilisateur, identifiants mal formés, message d'un autre échange : false, rien n'est supprimé.
+    expect(await store.deleteMessage(other, conv.conversationId, free.messageId)).toBe(false);
+    expect(await store.deleteMessage(owner, conv.conversationId, 'abc')).toBe(false);
+    expect(await store.deleteMessage(owner, '99999999999999999999', free.messageId)).toBe(false);
+    const elsewhere = await newConversation(owner);
+    expect(await store.deleteMessage(owner, elsewhere.conversationId, free.messageId)).toBe(false);
+    expect(await count()).toBe(2);
+
+    // Message portant une proposition : conservé, y compris pour une proposition appliquée.
+    expect(await store.deleteMessage(owner, conv.conversationId, msg.messageId)).toBe(false);
+    await applyOrFail(proposal, AsstProposalStatus.Applied);
+    expect(await store.deleteMessage(owner, conv.conversationId, msg.messageId)).toBe(false);
+    expect(await count()).toBe(2);
+
+    // Message sans proposition : supprimé une fois, puis false.
+    expect(await store.deleteMessage(owner, conv.conversationId, free.messageId)).toBe(true);
+    expect(await store.deleteMessage(owner, conv.conversationId, free.messageId)).toBe(false);
+    expect(await count()).toBe(1);
+
+    // Échange masqué : plus de suppression de message.
+    const free2 = await store.appendMessage(
+      owner,
+      { conversationId: elsewhere.conversationId, role: AsstMessageRole.Assistant, content: 'autre' },
+      at(1000),
+    );
+    if (!free2) throw new Error('message attendu');
+    await store.deleteConversation(owner, elsewhere.conversationId, at(2000));
+    expect(await store.deleteMessage(owner, elsewhere.conversationId, free2.messageId)).toBe(false);
   });
 });

@@ -19,6 +19,8 @@ import {
 } from '../../workflow-agent-catalog/catalog.contracts';
 import { makeAsstIdentity } from '../testing/fake-identity';
 import { AsstActionValidatorService } from './action-validator';
+import { parseClarificationContent, stripClarificationMarker } from './clarification-format';
+import { REFUSED_PHRASES } from './planner.injection-corpus';
 import {
   emptyEvidence,
   type ActionValidationInput,
@@ -298,9 +300,11 @@ describe('proposer_imputation_courrier', () => {
   it('DAF ambiguë (deux acteurs) : question construite par le code, numérotée', async () => {
     const o = await validate({ evidence: evidence({ actorSearches: [{ search: 'DAF', actors: [AWA, MOUSSA] }] }) });
     const msg = expectFailure(o, 'clarify', 'actor_ambiguous');
-    expect(msg).toBe(
+    expect(stripClarificationMarker(msg)).toBe(
       'Plusieurs destinataires correspondent à « DAF ». Lequel ? Répondez avec son nom complet.\n\n1. Awa Diallo — DAF\n2. Moussa Keita — DAF',
     );
+    // Question marquée par le code : relue avec ses choix (boutons).
+    expect(parseClarificationContent(msg)?.choices).toEqual(['Awa Diallo — DAF', 'Moussa Keita — DAF']);
   });
 
   it('après la précision « Awa Diallo », l’acteur est désigné sans ambiguïté', async () => {
@@ -855,7 +859,9 @@ describe('preparer_brouillon_reponse', () => {
       'clarify',
       'space_required',
     );
-    expect(msg).toBe("Dans quel espace déposer le brouillon ? Répondez avec le nom de l'espace.\n\n1. Espace Juridique\n2. Espace Finances");
+    expect(stripClarificationMarker(msg)).toBe(
+      "Dans quel espace déposer le brouillon ? Répondez avec le nom de l'espace.\n\n1. Espace Juridique\n2. Espace Finances",
+    );
     expectFailure(await validate(draftInput()), 'clarify', 'space_ambiguous');
     const o = ok(await validate(draftInput({ userMessage: 'rédige une réponse dans Espace Juridique' })));
     expect(o.actions[0]?.args).toMatchObject({ spaceId: 7 });
@@ -941,5 +947,108 @@ describe('propositions combinées', () => {
     expect(o.summary.split('\n')).toHaveLength(4);
     expect(o.summary.startsWith('À confirmer (3 effets) :')).toBe(true);
     for (const a of o.actions) expect(asstProposedActionSchema.safeParse(a).success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tour de correction : refus, hypothèses, exclusions, historique annulé
+// ---------------------------------------------------------------------------
+
+describe('tour de correction — la phrase refuse ou suppose l’action', () => {
+  const rawFor = (tool: string): ActionValidationInput['rawActions'] =>
+    tool === REL
+      ? [{ tool: REL, args: { mailId: 4321, mailInputationId: 55 } }]
+      : tool === BRO
+        ? [{ tool: BRO, args: { templateId: 'accuse-reception', mailId: 4321, spaceId: 7 } }]
+        : [{ tool: IMP, args: { mailId: 4321, recipients: [{ userGroupId: 31 }] } }];
+
+  it.each(REFUSED_PHRASES)('refus d’intention (%s) : « %s » ; aucune lecture, aucune rédaction IA', async (tool, userMessage) => {
+    const o = await validate({
+      userMessage,
+      evidence: evidence({ actorSearches: [{ search: 'DAF', actors: [AWA] }], inputations: new Map([[55, INP_AWA]]) }),
+      rawActions: rawFor(tool),
+    });
+    expectFailure(o, 'refuse', 'intent_not_established');
+    // Le contrôle d'intention précède toute lecture et toute génération : `draftGenerator` n'est jamais appelé.
+    expect(draftGenerator).not.toHaveBeenCalled();
+    expect(data.calls).toEqual([]);
+  });
+
+  it('brouillon refusé dans un message qui demande aussi une imputation : rien, et aucune rédaction IA', async () => {
+    const o = await validate({
+      userMessage: "impute ce courrier à la DAF, mais pas besoin d'un brouillon de réponse",
+      rawActions: [
+        { tool: IMP, args: { mailId: 4321, recipients: [{ userGroupId: 31 }] } },
+        { tool: BRO, args: { templateId: 'accuse-reception', mailId: 4321, spaceId: 7 } },
+      ],
+    });
+    expectFailure(o, 'refuse', 'intent_not_established');
+    expect(draftGenerator).not.toHaveBeenCalled();
+  });
+
+  it('témoins positifs proches : l’ordre positif reste accepté', async () => {
+    ok(await validate({ userMessage: 'impute ce courrier à la DAF sous 3 jours' }));
+    ok(await validate({ userMessage: "n'oublie pas d'imputer ce courrier à la DAF sous 3 jours" }));
+    ok(await validate({ userMessage: "pas de souci, impute ce courrier à la DAF sous 3 jours s'il te plaît" }));
+    ok(
+      await validate({
+        userMessage: 'relance Awa Diallo',
+        evidence: evidence({ inputations: new Map([[55, INP_AWA]]) }),
+        rawActions: rawFor(REL),
+      }),
+    );
+  });
+
+  it('« impute à la DAF mais pas à la DRH » : DAF seule acceptée, jamais la DRH', async () => {
+    const userMessage = 'impute ce courrier à la DAF mais pas à la DRH';
+    const searches = { actorSearches: [{ search: 'DAF', actors: [AWA] }, { search: 'DRH', actors: [FATOU] }] };
+    const o = ok(await validate({ userMessage, evidence: evidence(searches) }));
+    expect(o.actions[0]).toMatchObject({ args: { recipients: [{ userGroupId: 31 }] } });
+    // DRH proposée (seule ou avec la DAF) : refus.
+    expectFailure(
+      await validate({ userMessage, evidence: evidence(searches), rawActions: [{ tool: IMP, args: { mailId: 4321, recipients: [{ userGroupId: 31 }, { userGroupId: 33 }] } }] }),
+      'refuse',
+      'actor_excluded',
+    );
+    expectFailure(
+      await validate({ userMessage, evidence: evidence(searches), rawActions: [{ tool: IMP, args: { mailId: 4321, recipients: [{ userGroupId: 33 }] } }] }),
+      'refuse',
+      'actor_excluded',
+    );
+  });
+
+  it('acteur, cible de relance, espace et courrier écartés par une négation : jamais retenus', async () => {
+    expectFailure(await validate({ userMessage: 'impute ce courrier à la DAF, sauf Awa' }), 'refuse', 'actor_excluded');
+    expectFailure(
+      await validate({
+        userMessage: "relance l'imputé en retard sur ce courrier, pas Awa",
+        evidence: evidence({ inputations: new Map([[55, INP_AWA], [57, INP_FATOU_ON_TIME]]) }),
+        rawActions: rawFor(REL),
+      }),
+      'refuse',
+      'relance_target_excluded',
+    );
+    expectFailure(
+      await validate({ userMessage: "rédige une réponse à ce courrier, pas dans l'Espace Juridique", rawActions: rawFor(BRO) }),
+      'refuse',
+      'space_excluded',
+    );
+    expect(draftGenerator).not.toHaveBeenCalled();
+    // Page 4321 ouverte, mais « pas le courrier 4321 » : non établi.
+    expectFailure(await validate({ userMessage: 'impute à la DAF sous 3 jours, pas le courrier 4321' }), 'clarify', 'mail_not_established');
+  });
+
+  it('délai ou type cités dans un passage nié : question, jamais appliqués', async () => {
+    expectFailure(await validate({ userMessage: 'impute ce courrier à la DAF, pas sous 5 jours' }), 'clarify', 'delay_ambiguous');
+    expectFailure(await validate({ userMessage: 'impute ce courrier à la DAF sous 3 jours, pas en copie' }), 'clarify', 'type_ambiguous');
+  });
+
+  it('ordre précédent annulé : caduc (défense en profondeur, même si l’appelant le transmet)', async () => {
+    const DAF = 'impute ce courrier à la DAF sous 3 jours';
+    expectFailure(await validate({ userMessage: 'annule', previousUserMessages: [DAF] }), 'refuse', 'intent_not_established');
+    expectFailure(await validate({ userMessage: 'Awa Diallo', previousUserMessages: [DAF, 'non, laisse tomber'] }), 'refuse', 'intent_not_established');
+    expectFailure(await validate({ userMessage: 'merci', previousUserMessages: [DAF] }), 'refuse', 'intent_not_established');
+    // Témoin : réponse à une question (l'appelant transmet l'ordre précédent).
+    ok(await validate({ userMessage: 'Awa Diallo', previousUserMessages: [DAF] }));
   });
 });

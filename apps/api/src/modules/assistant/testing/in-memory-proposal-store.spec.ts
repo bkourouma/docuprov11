@@ -155,6 +155,50 @@ describe('InMemoryProposalStore : conversations et messages', () => {
     expect(await store.deleteConversation(1, conv.conversationId, at(7))).toBe(false);
   });
 
+  it('masquage : purge_at ramenée à now sans trace d’exécution, conservée avec une proposition appliquée ou en échec', async () => {
+    const store = new InMemoryProposalStore();
+    const plain = await seed(store, 1);
+    const refused = await seed(store, 1);
+    await store.transitionProposal(transition(refused.proposal, AsstProposalStatus.Refused, at(1)));
+    const applied = await seed(store, 1);
+    const ca = (await store.transitionProposal(transition(applied.proposal, AsstProposalStatus.Confirmed, at(1))))!;
+    await store.transitionProposal(transition(ca, AsstProposalStatus.Applied, at(2), { result: { effects: [] } }));
+    const failed = await seed(store, 1);
+    const cf = (await store.transitionProposal(transition(failed.proposal, AsstProposalStatus.Confirmed, at(1))))!;
+    await store.transitionProposal(transition(cf, AsstProposalStatus.Failed, at(2), { errorCode: 'x', errorMessage: 'y' }));
+    const original = store.peekPurgeAt(applied.conv.conversationId);
+
+    for (const s of [plain, refused, applied, failed]) {
+      expect(await store.deleteConversation(1, s.conv.conversationId, at(10))).toBe(true);
+      expect(await store.getConversation(1, s.conv.conversationId)).toBeNull();
+    }
+    expect(store.peekPurgeAt(plain.conv.conversationId)).toEqual(at(10));
+    expect(store.peekPurgeAt(refused.conv.conversationId)).toEqual(at(10));
+    expect(store.peekPurgeAt(applied.conv.conversationId)).toEqual(original);
+    expect(store.peekPurgeAt(failed.conv.conversationId)).toEqual(original);
+    expect((await store.listConversations(1, { limit: 10, offset: 0 })).total).toBe(0);
+  });
+
+  it('deleteMessage : supprime un message sans proposition ; refuse celui qui en porte, l’autre utilisateur, un échange masqué', async () => {
+    const store = new InMemoryProposalStore();
+    const { conv, msg } = await seed(store, 1);
+    const free = await store.appendMessage(
+      1,
+      { conversationId: conv.conversationId, role: AsstMessageRole.Assistant, content: 'sans proposition' },
+      at(1),
+    );
+    if (!free) throw new Error('message attendu');
+    expect(await store.deleteMessage(1, conv.conversationId, msg.messageId)).toBe(false);
+    expect(await store.deleteMessage(2, conv.conversationId, free.messageId)).toBe(false);
+    expect(await store.deleteMessage(1, conv.conversationId, 'abc')).toBe(false);
+    expect(await store.deleteMessage(1, 'abc', free.messageId)).toBe(false);
+    expect(await store.deleteMessage(1, conv.conversationId, free.messageId)).toBe(true);
+    expect(await store.deleteMessage(1, conv.conversationId, free.messageId)).toBe(false);
+    expect((await store.getConversation(1, conv.conversationId))?.messages.map((m) => m.messageId)).toEqual([msg.messageId]);
+    await store.deleteConversation(1, conv.conversationId, at(5));
+    expect(await store.deleteMessage(1, conv.conversationId, msg.messageId)).toBe(false);
+  });
+
   it('rattache les propositions à leur message dans getConversation', async () => {
     const store = new InMemoryProposalStore();
     const { conv, msg, proposal } = await seed(store);

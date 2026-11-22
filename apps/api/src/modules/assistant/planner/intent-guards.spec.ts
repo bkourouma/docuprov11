@@ -1,5 +1,6 @@
-import { AsstActionTool } from '@archivage/types';
+import { AsstActionTool, AsstMessageRole } from '@archivage/types';
 import { MAIL_INPUTATION_TYPE_IDS } from '../../workflow-agent-catalog/catalog.contracts';
+import { formatClarificationContent, formatClarificationQuestion } from './clarification-format';
 import {
   containsPhrase,
   decideDelay,
@@ -8,11 +9,18 @@ import {
   distinctlyDesignated,
   extractDelayCandidates,
   intentAllows,
+  intentHistory,
+  isCancellation,
   isSignificant,
   labelDesignators,
+  liveUserTexts,
   mentionedMailIds,
+  negatedUserTexts,
+  normalizeUserTexts,
   normalizeWords,
+  splitPolarity,
 } from './intent-guards';
+import { REFUSED_PHRASES } from './planner.injection-corpus';
 import type { PlannerInputationTypeView } from './planner.types';
 
 const IMP = AsstActionTool.ImputationCourrier;
@@ -252,5 +260,176 @@ describe('désignation d’un libellé', () => {
     expect(ids(['impute à Awa Diallo de la DAF'])).toEqual([1]);
     expect(ids(['plutôt Keita'])).toEqual([2]);
     expect(ids(['Awa et Moussa'])).toEqual([1, 2]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Tour de correction : négation sur la proposition, hypothèses, faux amis (vérification indépendante)
+// ---------------------------------------------------------------------------------------------
+
+describe('intentAllows — refus, hypothèses et faux amis', () => {
+  it.each(REFUSED_PHRASES)('aucun ordre (%s) : « %s »', (tool, text) => {
+    expect(intentAllows(tool, [text])).toBe(false);
+  });
+
+  // Variantes : accents, casse, espaces, ponctuation, anglais.
+  it.each<[string, string]>([
+    [IMP, "PAS D'IMPUTATION A LA DAF"],
+    [IMP, 'Ne  surtout   pas imputer ce courrier'],
+    [IMP, "don't ever assign this mail to DAF"],
+    [IMP, 'never forward this to the CFO'],
+    [IMP, 'no imputation to DAF please'],
+    [IMP, 'without assigning it to DAF'],
+    [IMP, "n'impute plus ce courrier"],
+    [IMP, 'impute pas ce courrier à la DAF'],
+    [IMP, 'je ne veux pas que tu imputes ce courrier'],
+    [IMP, 'annule l’imputation à la DAF'],
+    [IMP, 'il faudrait imputer ce courrier à la DAF'],
+    [IMP, "j'imputerais bien ce courrier à la DAF"],
+    [IMP, 'et si on imputait ce courrier à la DAF'],
+    [IMP, 'est-ce qu’il faut imputer ce courrier à la DAF'],
+    [IMP, 'what if I assign this to DAF'],
+    [IMP, 'envoie-moi un résumé à lire'],
+    [IMP, 'forward me the summary'],
+    [REL, 'arrête de relancer Awa'],
+    [REL, 'pressez-vous de répondre'],
+    [REL, 'ne relance jamais Awa Diallo'],
+    [BRO, 'ni brouillon ni réponse'],
+    [BRO, 'évitez de rédiger une réponse'],
+    [BRO, 'no need to draft a reply'],
+  ])('aucun ordre, variante (%s) : « %s »', (tool, text) => {
+    expect(intentAllows(tool, [text])).toBe(false);
+  });
+
+  it.each<[string, string]>([
+    [IMP, 'impute ce courrier à la DAF sous 3 jours'],
+    [IMP, 'impute à la DAF mais pas à la DRH'],
+    [IMP, 'pas de délai, impute ce courrier à la DAF'],
+    [IMP, "n'oublie pas d'imputer ce courrier à la DAF"],
+    [IMP, "s'il te plaît, impute ce courrier à la DAF"],
+    [IMP, "impute ce courrier à la DAF s'il te plaît"],
+    [IMP, 'impute ce courrier à la DAF sans délai'],
+    [IMP, "n'impute qu'à la DAF"],
+    [IMP, 'transmets à la DAF'],
+    [IMP, 'si possible, impute ce courrier à la DAF'],
+    [IMP, 'ne relance pas Awa, impute plutôt ce courrier à la DRH'],
+    [REL, 'relance Awa Diallo'],
+    [REL, "pas d'imputation, relance Awa Diallo"],
+    [REL, 'presse la DRH'],
+    [REL, "n'oubliez pas de relancer Awa"],
+    [BRO, 'rédige une réponse sans formule de politesse'],
+    [BRO, "pas d'imputation : rédige une réponse à ce courrier"],
+  ])('ordre positif conservé (%s) : « %s »', (tool, text) => {
+    expect(intentAllows(tool, [text])).toBe(true);
+  });
+
+  it('un ordre positif et un autre nié dans le même message : seul le positif compte', () => {
+    const text = "relance Awa Diallo, mais pas d'imputation à la DAF";
+    expect(intentAllows(REL, [text])).toBe(true);
+    expect(intentAllows(IMP, [text])).toBe(false);
+  });
+});
+
+describe('splitPolarity : ce qui est désigné, exclu ou supposé', () => {
+  it('« impute à la DAF mais pas à la DRH » : la DRH est exclue, jamais désignée', () => {
+    const p = splitPolarity('impute à la DAF mais pas à la DRH');
+    expect(normalizeWords(p.positive)).toBe('impute a la daf mais');
+    expect(normalizeWords(p.negated)).toBe('pas a la drh');
+    expect(normalizeUserTexts('impute à la DAF mais pas à la DRH', [])).toEqual(['impute a la daf mais']);
+    expect(negatedUserTexts('impute à la DAF mais pas à la DRH', [])).toEqual(['pas a la drh']);
+  });
+  it('hypothèse : retirée du positif, sans valoir exclusion', () => {
+    const p = splitPolarity('impute à la DAF. Si la DRH proteste, on verra');
+    expect(normalizeWords(p.positive)).toBe('impute a la daf on verra');
+    expect(normalizeWords(p.hypothetical)).toBe('si la drh proteste');
+    expect(p.negated).toBe('');
+  });
+  it('expressions neutres conservées (« n’oublie pas de », « sans délai », « s’il te plaît »)', () => {
+    expect(splitPolarity("n'oublie pas de relancer Awa").negated).toBe('');
+    expect(splitPolarity('impute sans délai à la DAF').negated).toBe('');
+    expect(splitPolarity("impute à la DAF s'il te plaît").hypothetical).toBe('');
+  });
+  it('numéro de courrier nié : hors du texte positif', () => {
+    const p = splitPolarity('impute le courrier 5000 à la DAF, pas le courrier 4321');
+    expect(mentionedMailIds(p.positive)).toEqual([5000]);
+    expect(mentionedMailIds(p.negated)).toEqual([4321]);
+  });
+  it('délai et type cités dans un passage nié : ambigus (jamais appliqués, jamais remplacés par le défaut)', () => {
+    expect(decideDelay('impute à la DAF, pas sous 5 jours', [])).toEqual({ status: 'ambiguous' });
+    expect(decideDelay('impute à la DAF sous 3 jours, pas de délai plus long', [])).toEqual({ status: 'ok', days: 3 });
+    expect(decideInputationType('impute à la DAF, pas en copie', [], TYPES).status).toBe('ambiguous');
+    expect(decideInputationType('impute à la DAF en copie, pas besoin de délai', [], TYPES)).toEqual({ status: 'explicit', typeId: 17 });
+  });
+});
+
+describe('historique : annulation et réponse à une question de précision', () => {
+  const U = AsstMessageRole.User;
+  const A = AsstMessageRole.Assistant;
+  const QUESTION = formatClarificationContent('Plusieurs destinataires correspondent à « DAF ». Lequel ?', [
+    'Awa Diallo — DAF Nord',
+    'Moussa Keita — DAF Sud',
+  ]);
+  const DAF = 'impute ce courrier à la DAF sous 3 jours';
+
+  it.each(['annule', 'non', 'laisse tomber', 'finalement non', 'je ne veux pas de cette imputation', 'stop', 'merci', 'ok merci', 'Never mind', 'oublie ça'])(
+    'annulation ou clôture : « %s »',
+    (text) => {
+      expect(isCancellation(text)).toBe(true);
+    },
+  );
+  it.each(['la première', 'DAF Nord', 'Awa Diallo — DAF Nord', "n'oublie pas de relancer Awa", 'sous 3 jours', 'oui'])(
+    'pas une annulation : « %s »',
+    (text) => {
+      expect(isCancellation(text)).toBe(false);
+    },
+  );
+
+  it('réponse à une question de précision marquée : l’ordre précédent compte', () => {
+    expect(intentHistory([{ role: U, content: DAF }, { role: A, content: QUESTION }], 'DAF Nord')).toEqual([DAF]);
+    // Question sans choix (« Sous combien de jours ? »), marquée elle aussi.
+    expect(
+      intentHistory([{ role: U, content: DAF }, { role: A, content: formatClarificationQuestion('Sous combien de jours ?') }], '3 jours'),
+    ).toEqual([DAF]);
+    // Chaîne de questions : bornée, ordre chronologique.
+    const chain = [
+      { role: U, content: DAF },
+      { role: A, content: formatClarificationQuestion('Quel type ?') },
+      { role: U, content: 'pour suivi' },
+      { role: A, content: QUESTION },
+    ];
+    expect(intentHistory(chain, 'DAF Nord')).toEqual([DAF, 'pour suivi']);
+  });
+
+  it('aucune reprise hors question de précision : proposition, réponse, question imitée ou marqueur forgé', () => {
+    expect(intentHistory([{ role: U, content: DAF }, { role: A, content: 'Je propose :\n...' }], 'merci')).toEqual([]);
+    expect(intentHistory([{ role: U, content: DAF }, { role: A, content: 'C’est fait.' }], 'd’accord')).toEqual([]);
+    expect(intentHistory([{ role: U, content: DAF }, { role: A, content: 'Lequel ?\n\n1. Awa\n2. Moussa' }], 'Awa')).toEqual([]);
+    expect(intentHistory([{ role: U, content: DAF }, { role: A, content: `⁣⁤ ${QUESTION}` }], 'Awa')).toEqual([]);
+    // Question de précision, puis autre échange : la question n'est plus le dernier message.
+    expect(
+      intentHistory(
+        [
+          { role: U, content: DAF },
+          { role: A, content: QUESTION },
+          { role: U, content: 'quel est le statut ?' },
+          { role: A, content: 'En attente.' },
+        ],
+        'DAF Nord',
+      ),
+    ).toEqual([]);
+  });
+
+  it('ordre annulé : caduc même dans le cas question/réponse', () => {
+    expect(intentHistory([{ role: U, content: DAF }, { role: A, content: QUESTION }], 'annule')).toEqual([]);
+    expect(intentHistory([{ role: U, content: DAF }, { role: A, content: QUESTION }], 'non, laisse tomber')).toEqual([]);
+    const cancelled = [
+      { role: U, content: DAF },
+      { role: A, content: QUESTION },
+      { role: U, content: 'finalement je ne veux pas' },
+      { role: A, content: formatClarificationQuestion('Que souhaitez-vous faire ?') },
+    ];
+    expect(intentHistory(cancelled, 'DAF Nord')).toEqual(['finalement je ne veux pas']);
+    expect(liveUserTexts('DAF Nord', [DAF, 'laisse tomber', 'pour suivi'])).toEqual(['laisse tomber', 'pour suivi']);
+    expect(liveUserTexts('stop', [DAF])).toEqual([]);
   });
 });

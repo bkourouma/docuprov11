@@ -51,6 +51,7 @@ function makePrisma() {
     asstConversation: { update: jest.fn().mockResolvedValue({}) },
   };
   const prisma = {
+    $executeRaw: jest.fn().mockResolvedValue(1),
     $transaction: jest.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
     asstConversation: {
       create: jest.fn(),
@@ -129,15 +130,34 @@ describe('AsstProposalStoreService — identifiants et visibilité', () => {
     });
   });
 
-  it('deleteConversation : un seul UPDATE conditionnel ; false si aucune ligne', async () => {
+  it('deleteConversation : un seul UPDATE conditionnel (purge_at conservée si trace d’exécution) ; false si aucune ligne', async () => {
     const { store, prisma } = makePrisma();
     await expect(store.deleteConversation(10, '7', NOW)).resolves.toBe(true);
-    expect(prisma.asstConversation.updateMany).toHaveBeenCalledWith({
-      where: { asstConversationId: 7n, userId: 10, deletedAt: null },
-      data: { deletedAt: NOW, purgeAt: NOW, updatedAt: NOW },
-    });
-    prisma.asstConversation.updateMany.mockResolvedValue({ count: 0 });
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    const [strings, ...values] = prisma.$executeRaw.mock.calls[0] as [string[], ...unknown[]];
+    const sql = strings.join('?');
+    expect(sql).toMatch(/UPDATE "asst_conversation"/);
+    expect(sql).toMatch(/"status" IN \(1, 2, 5\)/);
+    expect(sql).toMatch(/"deleted_at" IS NULL/);
+    expect(values).toEqual([NOW, NOW, NOW, 7n, 10]);
+    prisma.$executeRaw.mockResolvedValue(0);
     await expect(store.deleteConversation(10, '7', NOW)).resolves.toBe(false);
+  });
+
+  it('deleteMessage : un seul DELETE conditionnel ; identifiants mal formés -> false sans appel base', async () => {
+    const { store, prisma } = makePrisma();
+    await expect(store.deleteMessage(10, 'abc', '3')).resolves.toBe(false);
+    await expect(store.deleteMessage(10, '7', '')).resolves.toBe(false);
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    await expect(store.deleteMessage(10, '7', '3')).resolves.toBe(true);
+    const [strings, ...values] = prisma.$executeRaw.mock.calls[0] as [string[], ...unknown[]];
+    const sql = strings.join('?');
+    expect(sql).toMatch(/DELETE FROM "asst_message"/);
+    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM "asst_proposal"/);
+    expect(sql).toMatch(/"deleted_at" IS NULL/);
+    expect(values).toEqual([3n, 7n, 10]);
+    prisma.$executeRaw.mockResolvedValue(0);
+    await expect(store.deleteMessage(10, '7', '3')).resolves.toBe(false);
   });
 
   it('listConversations filtre les échanges masqués et trie par mise à jour décroissante', async () => {

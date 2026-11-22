@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   ASST_ASSISTANT_MESSAGE_MAX_CHARS,
   AsstMessageRole,
@@ -23,6 +23,14 @@ import { PLANNER_HISTORY_MAX_MESSAGES } from '../planner/planner.types';
 import { asstArgsHash, asstProposalExpiresAt } from '../store/asst-proposal-hash';
 import { AsstMessageRateLimiter } from './asst-message-rate-limiter';
 
+/**
+ * Atomicité de la persistance d'un message (étape 5 de `postMessage`) : les trois écritures (message utilisateur,
+ * message assistant, proposition) ne sont PAS dans une même transaction (le port `AsstProposalStore` n'en expose pas).
+ * Si `createProposal` échoue après l'écriture du message assistant « Je propose : ... », ce message est retiré
+ * (`store.deleteMessage`) puis l'erreur d'origine est relancée ; le message utilisateur reste (trace de la demande).
+ * Pire cas restant : message utilisateur seul sans réponse ; ou, si la suppression échoue aussi (journalisée, sans
+ * contenu), message assistant sans proposition. Jamais une carte de confirmation sans proposition.
+ */
 const notFound = (): AsstError => new AsstError('not_found', 'Échange introuvable.');
 
 /**
@@ -35,6 +43,7 @@ export class AsstConversationsService implements AsstConversationsPort {
   /** Horloge surchargeable (tests). */
   now: () => Date = () => new Date();
   private readonly limiter: AsstMessageRateLimiter;
+  private readonly logger = new Logger('AssistantConversations');
 
   constructor(
     @Inject(ASST_PROPOSAL_STORE) private readonly store: AsstProposalStore,
@@ -145,20 +154,26 @@ export class AsstConversationsService implements AsstConversationsPort {
 
     let proposals: AsstProposalDto[] = [];
     if (plan.actions.length > 0 && summary !== null) {
-      const proposal = await this.store.createProposal(
-        {
-          conversationId,
-          messageId: assistantMessage.messageId,
-          userId,
-          userGroupId: identity.principal.userGroupId,
-          actions: plan.actions,
-          summary,
-          argsHash: asstArgsHash(plan.actions),
-          expiresAt: asstProposalExpiresAt(now),
-        },
-        now,
-      );
-      proposals = [proposal];
+      try {
+        const proposal = await this.store.createProposal(
+          {
+            conversationId,
+            messageId: assistantMessage.messageId,
+            userId,
+            userGroupId: identity.principal.userGroupId,
+            actions: plan.actions,
+            summary,
+            argsHash: asstArgsHash(plan.actions),
+            expiresAt: asstProposalExpiresAt(now),
+          },
+          now,
+        );
+        proposals = [proposal];
+      } catch (error) {
+        await this.discardPhantomMessage(userId, conversationId, assistantMessage.messageId);
+        if (error instanceof AsstError) throw error;
+        throw new AsstError('assistant_unavailable', 'L’assistant n’a pas pu enregistrer la proposition : réessayez dans un instant.');
+      }
     }
 
     // (6) Réponse : échange relu du magasin.
@@ -167,5 +182,17 @@ export class AsstConversationsService implements AsstConversationsPort {
     const out: AsstMessageDto = { ...assistantMessage, proposals };
     if (plan.clarification) out.clarification = plan.clarification;
     return { conversation: fresh.conversation, userMessage, assistantMessage: out };
+  }
+
+  /** Retire le message assistant sans proposition ; un échec est journalisé (sans contenu) et ne masque pas l'erreur d'origine. */
+  private async discardPhantomMessage(userId: number, conversationId: string, messageId: string): Promise<void> {
+    try {
+      const removed = await this.store.deleteMessage(userId, conversationId, messageId);
+      if (!removed) {
+        this.logger.error(`Message assistant sans proposition non retiré (échange ${conversationId}, message ${messageId}).`);
+      }
+    } catch {
+      this.logger.error(`Retrait du message assistant sans proposition en échec (échange ${conversationId}, message ${messageId}).`);
+    }
   }
 }

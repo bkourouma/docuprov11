@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import {
   ASST_ASSISTANT_MESSAGE_MAX_CHARS,
   ASST_PROPOSAL_TTL_MINUTES,
@@ -295,7 +296,7 @@ describe('AsstConversationsService : postMessage', () => {
     const res = await service.postMessage(alice, conv.conversationId, { content: 'Impute vite' });
     expect(res.assistantMessage.clarification).toEqual(clarification);
     expect(res.assistantMessage.proposals).toEqual([]);
-    expect(res.assistantMessage.content).toBe('Quel délai ?\n\n1. 3 jours\n2. 5 jours');
+    expect(res.assistantMessage.content).toBe(formatClarificationContent('Quel délai ?', clarification.choices));
   });
 
   it('un message ne crée jamais de proposition confirmée (toujours statut 0, version 0)', async () => {
@@ -446,3 +447,66 @@ describe('AsstConversationsService : postMessage', () => {
     await expect(service.postMessage(alice, conv.conversationId, { content: 'x' })).resolves.toBeDefined();
   });
 });
+
+describe('AsstConversationsService : échec de createProposal', () => {
+  const failing = (store: InMemoryProposalStore, error: Error) => {
+    jest.spyOn(store, 'createProposal').mockRejectedValue(error);
+  };
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('retire le message assistant fantôme, garde le message utilisateur, relaye l’erreur typée', async () => {
+    const { service, planner, store, alice } = setup();
+    const conv = await service.create(alice, {});
+    planner.script(withAction());
+    failing(store, new AsstError('conflict', 'Conflit.'));
+    await expectCode(service.postMessage(alice, conv.conversationId, { content: 'Relance' }), 'conflict');
+    const d = await service.detail(alice, conv.conversationId);
+    expect(d.messages.map((m) => m.role)).toEqual([AsstMessageRole.User]);
+    expect(d.messages.every((m) => m.proposals.length === 0)).toBe(true);
+  });
+
+  it('erreur non typée : assistant_unavailable en français, message fantôme retiré', async () => {
+    const { service, planner, store, alice } = setup();
+    const conv = await service.create(alice, {});
+    planner.script(withAction());
+    failing(store, new Error('SQL secret'));
+    const err = await expectCode(service.postMessage(alice, conv.conversationId, { content: 'Relance' }), 'assistant_unavailable');
+    expect(err.message).not.toContain('SQL');
+    const d = await service.detail(alice, conv.conversationId);
+    expect(d.messages).toHaveLength(1);
+  });
+
+  it('si deleteMessage échoue aussi : erreur d’origine relancée, échec journalisé sans contenu', async () => {
+    const { service, planner, store, alice } = setup();
+    const conv = await service.create(alice, {});
+    planner.script(withAction());
+    failing(store, new AsstError('conflict', 'Conflit.'));
+    jest.spyOn(store, 'deleteMessage').mockRejectedValue(new Error('panne'));
+    const logSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    await expectCode(service.postMessage(alice, conv.conversationId, { content: 'Texte confidentiel' }), 'conflict');
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(String(logSpy.mock.calls[0]?.[0])).not.toContain('confidentiel');
+    expect(String(logSpy.mock.calls[0]?.[0])).not.toContain('Je propose');
+    const d = await service.detail(alice, conv.conversationId);
+    expect(d.messages).toHaveLength(2);
+  });
+});
+
+describe('AsstConversationsService : marqueur de précision au rechargement', () => {
+  it('une réponse libre « Que faire ? 1. A 2. B » sans marqueur ne produit aucune clarification ; le format officiel, si', async () => {
+    const { service, planner, alice } = setup();
+    const conv = await service.create(alice, {});
+    planner.script(plain('Que faire ?\n\n1. A\n2. B'));
+    await service.postMessage(alice, conv.conversationId, { content: 'Aide' });
+    const d1 = await service.detail(alice, conv.conversationId);
+    expect(d1.messages[1]?.clarification).toBeUndefined();
+
+    const conv2 = await service.create(alice, {});
+    planner.script(plain(formatClarificationContent('Que faire ?', ['A', 'B'])));
+    await service.postMessage(alice, conv2.conversationId, { content: 'Aide' });
+    const d2 = await service.detail(alice, conv2.conversationId);
+    expect(d2.messages[1]?.clarification).toEqual({ question: 'Que faire ?', choices: ['A', 'B'] });
+  });
+});
+

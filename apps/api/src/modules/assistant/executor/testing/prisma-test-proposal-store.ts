@@ -204,6 +204,10 @@ export class PrismaTestProposalStore implements AsstProposalStore {
     return Promise.reject(new Error(`deleteConversation : ${NOT_USED}`));
   }
 
+  deleteMessage(_userId: number, _conversationId: string, _messageId: string): Promise<boolean> {
+    return Promise.reject(new Error(`deleteMessage : ${NOT_USED}`));
+  }
+
   // ---------------------------------------------------------------------------
   // Internes
   // ---------------------------------------------------------------------------

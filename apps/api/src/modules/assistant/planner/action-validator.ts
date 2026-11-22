@@ -23,10 +23,13 @@ import {
   distinctlyDesignated,
   intentAllows,
   isSignificant,
+  liveUserTexts,
   mentionedMailIds,
+  negatedUserTexts,
   normalizeUserTexts,
   normalizeWords,
   phraseInAny,
+  splitPolarity,
 } from './intent-guards';
 import {
   ASST_PLANNER_DATA,
@@ -140,11 +143,16 @@ interface Ctx {
   input: ActionValidationInput;
   user: AuthUser;
   userTexts: string[];
+  /** Textes de l'utilisateur normalisés, passages niés ou hypothétiques retirés (désignations). */
   userNorms: string[];
-  /** Message COURANT normalisé (peut être vide). */
+  /** Passages NIÉS des textes de l'utilisateur, normalisés : ce qu'ils désignent est exclu. */
+  negatedNorms: string[];
+  /** Message COURANT normalisé, passages positifs (peut être vide). */
   currentNorm: string;
   currentMentions: number[];
   historyMentions: number[];
+  /** Numéros de courrier cités dans un passage nié (« pas le courrier 4321 ») : jamais établis. */
+  negatedMentions: number[];
   cache: {
     canImpute?: Promise<boolean>;
     types?: Promise<PlannerInputationTypeView[]>;
@@ -221,24 +229,34 @@ export class AsstActionValidatorService implements AsstActionValidator {
       if (!this.registry.get(a.tool)) refuse('applier_missing', "Action non prise en charge par l'assistant.");
     }
 
-    const previous = (Array.isArray(input.previousUserMessages) ? input.previousUserMessages : [])
-      .filter((t): t is string => typeof t === 'string')
-      .slice(-HISTORY_MAX);
+    // Historique : l'appelant (planificateur) ne transmet que les messages qui portent encore l'intention (réponse à
+    // une question de précision) ; défense en profondeur, une annulation rend caducs les ordres qui la précèdent.
     const current = typeof input.userMessage === 'string' ? input.userMessage : '';
+    const previous = liveUserTexts(
+      current,
+      (Array.isArray(input.previousUserMessages) ? input.previousUserMessages : [])
+        .filter((t): t is string => typeof t === 'string')
+        .slice(-HISTORY_MAX),
+    );
     const userTexts = [current, ...previous];
+    const positive = (t: string): string => splitPolarity(t).positive;
     const ctx: Ctx = {
       input,
       user: input.identity.user,
       userTexts,
+      // Désignations : passages POSITIFS seulement (« impute à la DAF mais pas à la DRH » ne désigne pas la DRH).
       userNorms: normalizeUserTexts(current, previous),
-      currentNorm: normalizeWords(current),
-      currentMentions: mentionedMailIds(current),
-      historyMentions: previous.flatMap((t) => mentionedMailIds(t)),
+      negatedNorms: negatedUserTexts(current, previous),
+      currentNorm: normalizeWords(positive(current)),
+      currentMentions: mentionedMailIds(positive(current)),
+      historyMentions: previous.flatMap((t) => mentionedMailIds(positive(t))),
+      negatedMentions: userTexts.flatMap((t) => mentionedMailIds(splitPolarity(t).negated)),
       cache: { mails: new Map() },
       relanceTargets: new Map(),
     };
 
-    // 1. Intention : un ordre de l'utilisateur pour CHAQUE outil proposé.
+    // 1. Intention : un ordre de l'utilisateur pour CHAQUE outil proposé. Ce contrôle précède toute lecture et
+    // toute génération (aucun brouillon n'est rédigé pour une demande qui le refuse).
     for (const a of raw) {
       if (!intentAllows(a.tool, userTexts)) {
         refuse(
@@ -328,6 +346,8 @@ export class AsstActionValidatorService implements AsstActionValidator {
 
   /** Le courrier est-il désigné par l'utilisateur (citation, page ouverte, recherche demandée, référence citée) ? */
   private isMailEstablished(ctx: Ctx, mailId: number): boolean {
+    // Un courrier écarté par l'utilisateur (« pas le courrier 4321 ») n'est jamais établi, même ouvert en page.
+    if (ctx.negatedMentions.includes(mailId)) return false;
     // Un numéro cité dans le message COURANT l'emporte sur la page ouverte et sur l'historique.
     if (ctx.currentMentions.length > 0) return ctx.currentMentions.includes(mailId);
     const page = ctx.input.pageContext;
@@ -430,6 +450,12 @@ export class AsstActionValidatorService implements AsstActionValidator {
     const resolved: Array<{ userGroupId: number; label: string }> = [];
     for (const id of recipientIds) {
       const origin = this.actorOrigin(ctx, id);
+      if (origin.status === 'excluded') {
+        refuse(
+          'actor_excluded',
+          `Le destinataire « ${cleanLabel(origin.label, 80)} » est écarté par votre demande : rien n'est proposé.`,
+        );
+      }
       if (origin.status === 'unknown') {
         refuse(
           'actor_not_established',
@@ -545,7 +571,8 @@ export class AsstActionValidatorService implements AsstActionValidator {
   /**
    * Origine d'un acteur proposé : il doit sortir d'un appel `acteurs_imputables` dont le filtre figure dans les
    * textes de l'utilisateur (et explique le résultat), ou être désigné par l'utilisateur (libellé complet ou partie
-   * distinctive). Un nom d'acteur ne vient JAMAIS d'un courrier.
+   * distinctive). Un nom d'acteur ne vient JAMAIS d'un courrier. Un acteur désigné par un passage NIÉ de la demande
+   * (« pas à Awa », « sauf la DRH ») est exclu, quelle que soit la recherche.
    */
   private actorOrigin(
     ctx: Ctx,
@@ -553,11 +580,15 @@ export class AsstActionValidatorService implements AsstActionValidator {
   ):
     | { status: 'ok'; label: string }
     | { status: 'ambiguous'; search: string; actors: PlannerActorView[] }
+    | { status: 'excluded'; label: string }
     | { status: 'unknown' } {
     let ambiguous: { search: string; actors: PlannerActorView[] } | null = null;
     for (const s of ctx.input.evidence.actorSearches) {
       const actor = s.actors.find((a) => a.userGroupId === id);
       if (!actor) continue;
+      if (distinctlyDesignated(s.actors, (a) => a.label, ctx.negatedNorms).some((a) => a.userGroupId === id)) {
+        return { status: 'excluded', label: actor.label };
+      }
       const searchOk = s.search !== null && this.searchQualifies(ctx, s.search, actor);
       const designated = distinctlyDesignated(s.actors, (a) => a.label, ctx.userNorms).some((a) => a.userGroupId === id);
       if ((searchOk && s.actors.length === 1) || designated) return { status: 'ok', label: actor.label };
@@ -625,6 +656,10 @@ export class AsstActionValidatorService implements AsstActionValidator {
     const forMail = this.uniqueActors(
       [...ctx.input.evidence.inputations.values(), view].filter((i) => i.mailId === mail.mailId && !i.treated),
     );
+    const excluded = distinctlyDesignated(forMail, (i) => i.actorLabel, ctx.negatedNorms).map((i) => i.actorUserGroupId);
+    if (excluded.includes(view.actorUserGroupId)) {
+      refuse('relance_target_excluded', `Relance refusée : « ${who} » est écarté par votre demande.`);
+    }
     const designated = distinctlyDesignated(forMail, (i) => i.actorLabel, ctx.userNorms).map((i) => i.actorUserGroupId);
     const late = forMail.filter((i) => i.late && i.deadline !== null && i.deadline.getTime() < now);
     const lateLabels = late.map((i) => i.actorLabel);
@@ -727,6 +762,9 @@ export class AsstActionValidatorService implements AsstActionValidator {
     if (spaceId === undefined) return spaceQuestion('space_required');
     const space = spaces.find((s) => s.spaceId === spaceId);
     if (!space) return spaceQuestion('space_unknown');
+    if (distinctlyDesignated(spaces, (s) => s.label, ctx.negatedNorms).some((s) => s.spaceId === space.spaceId)) {
+      refuse('space_excluded', `L'espace « ${cleanLabel(space.label, 80)} » est écarté par votre demande : rien n'est proposé.`);
+    }
     // Plusieurs espaces : le choix doit venir de l'utilisateur (jamais un choix du modèle au hasard).
     if (spaces.length > 1) {
       const designated = distinctlyDesignated(spaces, (s) => s.label, ctx.userNorms);

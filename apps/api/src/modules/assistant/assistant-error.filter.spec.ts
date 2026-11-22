@@ -8,9 +8,10 @@ import { AsstError } from './assistant.contracts';
 function run(exception: unknown) {
   const json = jest.fn();
   const status = jest.fn().mockReturnValue({ json });
-  const host = { switchToHttp: () => ({ getResponse: () => ({ status }) }) } as unknown as ArgumentsHost;
+  const setHeader = jest.fn();
+  const host = { switchToHttp: () => ({ getResponse: () => ({ status, setHeader }) }) } as unknown as ArgumentsHost;
   new AssistantErrorFilter().catch(exception, host);
-  return { status, json, code: status.mock.calls[0]?.[0] as number, body: json.mock.calls[0]?.[0] as unknown };
+  return { status, json, setHeader, code: status.mock.calls[0]?.[0] as number, body: json.mock.calls[0]?.[0] as unknown };
 }
 
 describe('AssistantErrorFilter', () => {
@@ -38,6 +39,27 @@ describe('AssistantErrorFilter', () => {
     const bare = run(new AsstError('not_found', 'Introuvable.')).body as Record<string, unknown>;
     expect('details' in bare).toBe(false);
     expect('proposal' in bare).toBe(false);
+  });
+
+  it('429 avec retryAfterSeconds entier >= 1 : en-tête Retry-After, corps inchangé', () => {
+    const r = run(new AsstError('budget_exceeded', 'Trop.', { retryAfterSeconds: 42 }));
+    expect(r.code).toBe(429);
+    expect(r.setHeader).toHaveBeenCalledWith('Retry-After', '42');
+    expect(r.body).toEqual({ statusCode: 429, errorCode: 'budget_exceeded', message: 'Trop.', details: { retryAfterSeconds: 42 } });
+  });
+
+  it.each([[undefined], [{}], [{ retryAfterSeconds: 0 }], [{ retryAfterSeconds: 1.5 }], [{ retryAfterSeconds: '5' }], [{ retryAfterSeconds: -3 }], [[1]]])(
+    '429 sans retryAfterSeconds valide (%j) : pas d’en-tête Retry-After',
+    (details) => {
+      const r = run(new AsstError('budget_exceeded', 'Plafond.', details));
+      expect(r.code).toBe(429);
+      expect(r.setHeader).not.toHaveBeenCalled();
+    },
+  );
+
+  it('Retry-After uniquement sur 429', () => {
+    const r = run(new AsstError('not_found', 'Non.', { retryAfterSeconds: 5 }));
+    expect(r.setHeader).not.toHaveBeenCalled();
   });
 
   it('ZodError : 422 invalid_input avec le détail des champs', () => {

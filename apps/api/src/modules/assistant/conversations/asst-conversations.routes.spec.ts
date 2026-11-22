@@ -1,3 +1,4 @@
+import { formatClarificationContent } from '../planner/clarification-format';
 import 'reflect-metadata';
 import { type ExecutionContext, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -191,7 +192,7 @@ describe('routes de conversation (AssistantController réel + AsstConversationsS
     const id = await createConversation();
     const clarification = { question: 'Quel délai ?', choices: ['3 jours', '5 jours'] };
     planner.next = {
-      reply: 'Quel délai ?\n\n1. 3 jours\n2. 5 jours',
+      reply: formatClarificationContent('Quel délai ?', clarification.choices),
       actions: [],
       summary: null,
       clarification,
@@ -248,6 +249,20 @@ describe('routes de conversation (AssistantController réel + AsstConversationsS
       details: { retryAfterSeconds: expect.any(Number) },
     });
     expect(planner.calls).toHaveLength(3);
+    expect(res.headers['retry-after']).toBe(String(res.body.details.retryAfterSeconds));
+    expect(Number(res.headers['retry-after'])).toBeGreaterThanOrEqual(1);
+  });
+
+  it('content avec NUL : 422 invalid_input, planificateur non appelé', async () => {
+    const id = await createConversation();
+    planner.next = { reply: 'Ok.', actions: [], summary: null, usage: { promptTokens: 1, completionTokens: 1, cost: 0 } };
+    const res = await http().post(`/assistant/conversations/${id}/messages`).send({ content: 'abc\u0000def' });
+    expect(res.status).toBe(422);
+    expect(res.body.errorCode).toBe('invalid_input');
+    expect(planner.calls).toHaveLength(0);
+    expect((await store.getConversation(1, id))?.messages).toEqual([]);
+    // Retour à la ligne et tabulation restent acceptés.
+    expect((await http().post(`/assistant/conversations/${id}/messages`).send({ content: 'a\n\tb' })).status).toBe(201);
   });
 
   it('échec du planificateur : statut de l’erreur, rien de persisté', async () => {

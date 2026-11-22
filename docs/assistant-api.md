@@ -51,12 +51,16 @@ soigneuse dans la carte.
 | --- | --- | --- |
 | Validité d'une proposition | 15 minutes, à partir de `createdAt` (`expiresAt` = `createdAt` + 15 min). À `now >= expiresAt`, elle est expirée. | `ASST_PROPOSAL_TTL_MINUTES` |
 | Conservation d'un échange | 90 jours (`purgeAt` = création + 90 jours) | `ASST_RETENTION_DAYS` |
-| Suppression par l'utilisateur | Masquage immédiat (`DELETE`) ; la purge physique est faite plus tard par un job | `docs/assistant-donnees.md`, §5 |
+| Suppression par l'utilisateur | Masquage immédiat (`DELETE`) ; la purge physique est faite plus tard par un job, et, si l'échange porte une trace d'exécution, seulement à l'échéance d'origine (voir `DELETE` ci-dessous) | `docs/assistant-donnees.md`, §5 |
 | Actions par proposition | 1 à 5 | `ASST_PROPOSAL_ACTIONS_MAX` |
-| Message utilisateur (`content`) | 1 à 4 000 caractères après trim | `ASST_MESSAGE_MAX_CHARS` |
+| Message utilisateur (`content`) | 1 à 4 000 caractères après trim ; NUL et caractères de contrôle refusés (voir ci-dessous) | `ASST_MESSAGE_MAX_CHARS` |
 | Message de l'assistant | au plus 8 000 caractères | `ASST_ASSISTANT_MESSAGE_MAX_CHARS` |
-| Titre d'échange | 1 à 200 caractères après trim | `ASST_TITLE_MAX_CHARS` |
+| Titre d'échange | 1 à 200 caractères après trim ; aucun caractère de contrôle ni retour à la ligne | `ASST_TITLE_MAX_CHARS` |
 | Résumé d'une proposition | au plus 2 000 caractères (constante côté planificateur) | `ASST_SUMMARY_MAX_CHARS` |
+
+**Caractères de contrôle.** Le NUL (`U+0000`), les contrôles C0 (`U+0001` à `U+0008`, `U+000B`, `U+000C`, `U+000E` à `U+001F`), `DEL` (`U+007F`) et les contrôles C1 (`U+0080` à `U+009F`) sont refusés dans `content` et dans `title` : `422 invalid_input` (message « Le texte contient des caractères de contrôle interdits. » ou, pour le titre, « Le titre ne doit contenir ni retour à la ligne ni caractère de contrôle. »), AVANT toute planification. Le retour à la ligne (`
+`, `
+`) et la tabulation restent autorisés dans `content` ; ils sont refusés dans `title`. Accents et emoji sont acceptés.
 
 ## 2. Routes
 
@@ -179,7 +183,7 @@ Corps (`postMessageBody`, strict) :
 
 | Champ | Type | Contrainte |
 | --- | --- | --- |
-| `content` | chaîne | Obligatoire ; 1 à 4 000 caractères après trim |
+| `content` | chaîne | Obligatoire ; 1 à 4 000 caractères après trim ; sans NUL ni caractère de contrôle (retour à la ligne et tabulation autorisés), sinon 422 `invalid_input` |
 | `pageContext` | objet | Optionnel ; voir le format ci-dessus |
 
 **Exemple : « impute ce courrier à la DAF sous 3 jours »**
@@ -265,11 +269,14 @@ identifié, délai non chiffré en jours, type d'imputation incertain), l'assist
 renvoyé tel quel comme `content` d'un nouveau message utilisateur. `assistantMessage.content` contient toujours la question et
 la liste numérotée des choix (affichage de repli). Schéma : `asstClarificationSchema` (`packages/types/src/asst-dto.ts`).
 Au rechargement d'un échange (`GET /assistant/conversations/:id`), `clarification` n'est restituée que sur le DERNIER message
-de l'échange, s'il est de l'assistant et sans proposition (aucune table ne la stocke : elle est relue depuis `content`).
+de l'échange, s'il est de l'assistant et sans proposition (aucune table ne la stocke : elle est relue depuis `content`, et seul
+un texte portant le marqueur de question de précision donne des choix : une liste numérotée libre n'en donne aucun).
 
 **Erreurs** : `invalid_input` (422), `not_found` (404), `identity_refused` (403), `budget_exceeded` (429, plafond de coût
-de l'utilisateur ou global atteint), `assistant_unavailable` (503, IA désactivée ou arrêt d'urgence), `not_implemented`
+de l'utilisateur ou global atteint, ou limite de débit des messages : voir ci-dessous), `assistant_unavailable` (503, IA désactivée ou arrêt d'urgence), `not_implemented`
 (501, voir section 6).
+
+**Limite de débit** : un 429 `budget_exceeded` dû à la limite de messages par utilisateur porte `details.retryAfterSeconds` (entier >= 1) et l'en-tête HTTP `Retry-After: <secondes>` de même valeur ; le corps n'est pas modifié. Un 429 sans `retryAfterSeconds` valide (plafond de coût) n'a pas cet en-tête.
 
 ### `POST /assistant/proposals/:id/confirm`
 
@@ -402,6 +409,10 @@ Réponse `200` : même forme que les réponses ci-dessus (exemple : la propositi
 
 **Rôle** : masque un échange. Le masquage est immédiat : l'échange disparaît des listes. La purge physique (messages et
 propositions compris) est faite plus tard, à l'échéance de conservation.
+Si l'échange porte une **trace d'exécution** (proposition appliquée, en échec, ou confirmée en cours), il est seulement
+masqué : son échéance `purgeAt` n'est pas avancée, et la trace reste en base jusqu'à la purge à l'échéance d'origine (90 jours
+après la création). Sans trace, `purgeAt` passe à maintenant et la purge a lieu au passage suivant du job. Détail :
+`docs/assistant-donnees.md`, §5.
 **Succès** : `204`, **sans corps**.
 
 Paramètre de chemin `:id` : identifiant de conversation, 1 à 18 chiffres.
@@ -506,7 +517,7 @@ Statuts issus de `ASST_ERROR_HTTP_STATUS`.
 | `conflict` | 409 | `argsHash` ne correspond plus au contenu, ou verrou concurrent (`rowVersion`). | Relire, réafficher la carte modifiée, exiger une nouvelle confirmation. |
 | `effect_forbidden` | 403 | Droits insuffisants pour l'effet (menu, périmètre, imputabilité). | Afficher le message ; afficher `proposal` s'il est présent. Pas de réessai. |
 | `effect_failed` | 422 | L'applicateur a refusé l'effet (refus métier). La proposition est au statut 5. | Afficher « Échec » et `proposal.errorMessage`. Pas de réessai ; nouvelle demande pour recommencer. |
-| `budget_exceeded` | 429 | Plafond de coût atteint (utilisateur du jour ou global). | Afficher « plafond atteint, réessayez plus tard ». Ne pas réessayer en boucle. |
+| `budget_exceeded` | 429 | Plafond de coût atteint (utilisateur du jour ou global), ou limite de débit (messages, confirmations). | Afficher « plafond atteint, réessayez plus tard ». Si l'en-tête `Retry-After` est présent, attendre ce délai. Ne pas réessayer en boucle. |
 | `assistant_unavailable` | 503 | IA désactivée ou arrêt d'urgence. | Afficher « assistant indisponible » ; désactiver la saisie. |
 | `invalid_input` | 422 | Corps, paramètres ou query invalides (y compris clé inconnue). `message` vaut « Requête invalide. » et `details` est la liste `{ path, message }` des anomalies. | Erreur de saisie hors bornes ou erreur du client : afficher les anomalies ou un message générique, corriger le client. |
 

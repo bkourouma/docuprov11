@@ -23,6 +23,13 @@ describe('AsstPurgeService.purgeDue', () => {
     expect(prisma.asstConversation.deleteMany).toHaveBeenCalledTimes(3);
   });
 
+  it('ne sélectionne que les échanges dont purge_at est échue (une trace masquée non échue n’est ni purgée ni différée)', async () => {
+    const { prisma, service } = make([]);
+    await expect(service.purgeDue(NOW)).resolves.toEqual({ purged: 0, skipped: 0 });
+    expect(prisma.asstConversation.findMany.mock.calls[0][0].where).toEqual({ purgeAt: { lte: NOW } });
+    expect(prisma.asstConversation.deleteMany).not.toHaveBeenCalled();
+  });
+
   it('compte « skipped » quand un déclencheur refuse, sans lever, et continue', async () => {
     const { prisma, service } = make([1n, 2n, 3n]);
     prisma.asstConversation.deleteMany

@@ -146,6 +146,12 @@ export interface AsstProposalStore {
 
   // Messages
   appendMessage(userId: number, input: AsstNewMessage, now: Date): Promise<AsstMessageDto | null>;
+  /**
+   * AJOUT A1 (additif) : retire un message de l'utilisateur, SEULEMENT s'il ne porte aucune proposition (annulation
+   * d'un message assistant écrit juste avant l'échec de la création de sa proposition : pas de texte fantôme).
+   * `false` si introuvable, échange masqué/d'un autre utilisateur, ou message portant une proposition.
+   */
+  deleteMessage(userId: number, conversationId: string, messageId: string): Promise<boolean>;
 
   // Propositions
   createProposal(input: AsstNewProposal, now: Date): Promise<AsstProposalDto>;

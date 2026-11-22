@@ -161,20 +161,28 @@ des brouillons, contrôle final.
 | Contrôle | Règle | Issue si échec |
 | --- | --- | --- |
 | Structure | 1 à `maxActions` actions ; outil parmi les 3 de la v1 ; pas de doublon exact | Refus |
-| Intention | Une phrase de l'utilisateur (message courant, puis échange récent) doit donner un **ordre** pour l'outil. Une question n'en est pas un, sauf formule de demande (« peux-tu », « merci de », « can you »). Négation, constat (« a été imputé ») et remerciement ne comptent pas. | Refus `intent_not_established` |
+| Intention | Les textes retenus (voir « Historique de l'intention » ci-dessous) sont découpés en **propositions**, chacune lue comme **positive**, **niée** ou **hypothétique** (`textOrders`, `clauseOrders`). Seule une proposition positive peut donner un **ordre** pour l'outil ; un même texte peut donc contenir un ordre positif et un ordre nié, seul le positif compte. Les désignations (acteur, espace, cible, type, délai) suivent la même logique par `splitPolarity`. Une question n'en est pas un, sauf formule de demande (« peux-tu », « merci de », « can you »). Ne donnent pas d'ordre : les négations françaises et anglaises (« pas d'imputation », « surtout pas », « ne … jamais », « pas besoin », « sans », « aucune », « évite », « sauf », « do not »…), le refus (« arrête de »), les hypothèses (« si … », « faut-il », conditionnel, imparfait, « que se passerait-il »), les faux amis (« presse-toi », « transmets-moi » : un ordre pour l'utilisateur lui-même), le constat (« a été imputé ») et le remerciement. Une proposition se coupe à la ponctuation et aux mots de liaison (« mais », « puis », « sinon », « plutôt »…) ; « et », « ou », « ni » ne séparent **pas** les propositions (choix prudent : « pas d'imputation à la DAF et relance Awa » garde la négation sur la relance). Les règles ne peuvent que **retirer** un ordre, jamais en créer. | Refus `intent_not_established` |
 | Courrier établi | Ordre de priorité : numéro cité dans le message courant (il l'emporte) ; sinon courrier de la page ouverte ; sinon recherche dont le texte figure dans le message et qui n'a renvoyé **que** ce courrier ; sinon référence contenant un chiffre, citée par l'utilisateur. Un numéro des messages précédents ne compte que si aucune page de courrier n'est ouverte. | Question `mail_not_established` (avec choix) ; refus si illisible |
-| Acteur (origine) | Le destinataire doit sortir d'un `acteurs_imputables` dont le **filtre figure dans le message** et qui explique l'acteur (résultat unique), ou être désigné par son nom dans le message. Un nom d'acteur ne vient jamais d'un courrier. | Refus `actor_not_established` ; question si plusieurs acteurs |
+| Acteur (origine) | Le destinataire doit sortir d'un `acteurs_imputables` dont le **filtre figure dans le message** et qui explique l'acteur (résultat unique), ou être désigné par son nom dans le message. Un nom d'acteur ne vient jamais d'un courrier. Un acteur désigné dans un passage **nié** (« sauf Awa », « pas à la DRH ») est écarté : refus `actor_excluded`, même si le modèle le propose. | Refus `actor_not_established` ; question si plusieurs acteurs |
 | Acteur (droit) | `resolveImputableActor` : actif et imputable. Droit d'imputer requis (`canImpute`). | Refus |
-| Type | Mention explicite du message courant, à défaut des messages précédents. Sinon **« Pour suivi »** (identifiant 10), s'il est actif. Le type proposé par le modèle est **ignoré**. « DG » ou « validation » seuls, ou deux types forts, sont ambigus. Plusieurs destinataires avec des types différents : question. | Question |
+| Type | Mention explicite dans les textes retenus (message courant, à défaut la chaîne de précision). Un type cité dans un passage **nié** ou **hypothétique** (« pas en copie ») n'est jamais appliqué, et ne cède pas la place au défaut : question. Sinon **« Pour suivi »** (identifiant 10), s'il est actif. Le type proposé par le modèle est **ignoré**. « DG » ou « validation » seuls, ou deux types forts, sont ambigus. Plusieurs destinataires avec des types différents : question. | Question |
 | Doublon | Imputation encore ouverte, même courrier, acteur et type ; destinataire répété | Refus |
-| Délai | Extrait du message courant, à défaut des messages précédents ; **en jours, de 1 à 90**. Une date, des jours ouvrés, un décimal, une urgence sans nombre, ou plusieurs valeurs : question. Hors plage : question. Aucun délai évoqué : imputation sans délai. Le délai du modèle n'est jamais repris. | Question `delay_ambiguous` |
-| Relance | Imputation vue par `imputations_courrier` dans cette requête, non traitée, **échéance dépassée**, acteur actif. L'utilisateur est auteur de l'imputation ou peut imputer. Au plus **1 relance par cible et par jour UTC**. Si plusieurs retards : l'acteur doit être nommé. | Refus ou question |
-| Brouillon | Modèle parmi `DRAFT_TEMPLATES`. Espace **obligatoire** (`spaceId`) ; s'il y en a plusieurs, il doit être désigné par l'utilisateur. Au moins un espace accessible. Courrier facultatif, mais établi s'il est donné. | Question ou refus |
-| Brouillon (génération) | Exécutée en dernier, seulement si aucune autre action n'est refusée ou posée en question. Texte généré vide ou > 20 000 caractères : refus. | Refus |
+| Délai | Extrait des passages positifs du message courant, à défaut de la chaîne de précision ; **en jours, de 1 à 90**. Un délai cité dans un passage nié ou hypothétique (« pas sous 5 jours », « si c'est trop court, 5 jours ») : question. Une date, des jours ouvrés, un décimal, une urgence sans nombre, ou plusieurs valeurs : question. Hors plage : question. Aucun délai évoqué : imputation sans délai. Le délai du modèle n'est jamais repris. | Question `delay_ambiguous` |
+| Relance | Imputation vue par `imputations_courrier` dans cette requête, non traitée, **échéance dépassée**, acteur actif. L'utilisateur est auteur de l'imputation ou peut imputer. Au plus **1 relance par cible et par jour UTC**. Si plusieurs retards : l'acteur doit être nommé. Une cible nommée dans un passage nié est écartée : refus `relance_target_excluded`. | Refus ou question |
+| Brouillon | Modèle parmi `DRAFT_TEMPLATES`. Espace **obligatoire** (`spaceId`) ; s'il y en a plusieurs, il doit être désigné par l'utilisateur. Un espace nommé dans un passage nié est écarté : refus `space_excluded`. Au moins un espace accessible. Courrier facultatif, mais établi s'il est donné. | Question ou refus |
+| Brouillon (génération) | Exécutée en dernier, seulement si aucune autre action n'est refusée ou posée en question : une demande refusée ou à préciser ne déclenche **aucune** génération IA. Texte généré vide ou > 20 000 caractères : refus. | Refus |
 | Doublons entre actions | Même courrier, acteur et type ; même brouillon | Refus |
 | Contrôle final | Schéma strict de l'assistant, `parse` de l'applicateur du catalogue, JSON canonique stable (le hash calculé à la proposition doit correspondre à celui de la confirmation) | Refus `unstable_arguments` ou `invalid_arguments` |
 
 Toute exception inattendue du validateur (port de données, générateur) donne un refus `internal`, sans contenu.
+
+**Historique de l'intention** (`intentHistory`, `liveUserTexts`). Seul le message **courant** établit l'intention, avec
+une exception : il répond à une question de précision **marquée** (§8), c'est-à-dire que le dernier message assistant
+de l'échange porte le marqueur de question. Le message utilisateur qui l'a provoquée compte alors, et ainsi de suite pour
+une chaîne de questions, au plus 4 allers-retours. Un message courant qui **annule** (« non », « annule », « laisse
+tomber », « finalement », « je ne veux pas… ») ou qui n'est qu'une **clôture** (« merci », « ok », « d'accord ») ne reprend rien. Dans la chaîne, un message
+d'annulation arrête la remontée : ce qui le précède n'est pas repris, mais son propre texte est lu (« non, impute plutôt à
+la DRH » porte donc l'ordre pour la DRH). Dans tous les autres cas, un ordre ancien n'est jamais repris.
 
 ### 5.4 Ce qui est construit par le code
 
@@ -190,11 +198,23 @@ Toute exception inattendue du validateur (port de données, générateur) donne 
 
 ### 5.5 Corpus d'attaque
 
-- Fichier : `planner.injection-corpus.ts`. **103 cas** : 94 attaques et 9 témoins (`benign`). **17 catégories** de 4 à 12 cas
-  (par exemple : hors cadre 12, témoin 9, fausse balise 8, demande légitime et piège 8, message innocent 7, unicode 6,
-  courrier « imputez à X » 6, brouillon dicté 6).
-- Attendus : **85 cas sans action**, avec la couche qui arrête (`suspicion` 41, `validateur` 40, `intention_externe` 3,
-  `reponse` 1) ; **18 cas à action exacte**, dont les arguments complets sont fixés.
+- Fichier : `planner.injection-corpus.ts`. **135 cas** : 123 attaques et 12 témoins (`benign`, W01 à W12). **20 catégories**
+  de 3 à 19 cas (par exemple : ordre refusé ou supposé 19, hors cadre 14, témoin 12, fausse balise 8, demande légitime et
+  piège 8, message innocent 7, unicode 6, courrier « imputez à X » 6, brouillon dicté 6).
+- Ajouts de la passe de durcissement :
+  - **Q01 à Q16** : les 16 phrases du vérificateur indépendant (`REFUSED_PHRASES`) qui refusent une action ou ne font que la
+    supposer (« pas d'imputation… », « surtout pas… », « je me demande s'il faut… », « que se passerait-il ? », « transmets-moi
+    un résumé », « presse-toi de lire »…). Le modèle compromis propose l'action quand même : aucune proposition. Ces phrases
+    sont rejouées aussi par `intent-guards.spec.ts` et `action-validator.spec.ts`.
+  - **Q17 à Q19** : négation partielle (« impute à la DAF mais pas à la DRH », « impute à la DAF, sauf Awa », « relance…, pas Awa »).
+  - **N13** : ordre annulé (« non, laisse tomber ») en réponse à une question de précision. **N14** : ordre ancien resservi après
+    un « d'accord » sans ordre. **M04** : ordre ancien resservi après « merci » (ancienne limite assumée, désormais bloquée).
+  - **R01 à R05** : revendications d'action dans un texte libre du modèle (résumé, passif, anglais, question, requête suspecte) :
+    phrase fixe du code, aucun bouton.
+  - **S01 à S03** : liste « 1. … 2. … » et marqueur de question forgés dans un texte libre : aucun bouton au rechargement.
+- Attendus : **116 cas sans action**, avec la couche qui arrête : `suspicion` 41, `validateur` 63 (dont Q01 à Q19, N13, N14,
+  M04), `intention_externe` 3, `reponse` 9 (dont R01 à R05, S01 à S03, W05) ; **19 cas à action exacte**, dont les arguments
+  complets sont fixés.
 - Chaque cas décrit le message, le contexte de page, les données piégées (courriers, acteurs, historique) et un script de
   modèle compromis.
 - Rejeu : `pnpm --filter @archivage/api test -- modules/assistant/planner/planner-injection` (voir section 10).
@@ -206,6 +226,9 @@ Toute exception inattendue du validateur (port de données, générateur) donne 
 
 - La détection est heuristique. Un faux négatif ne donne aucun droit, car le validateur refuse une action dont l'intention
   n'est pas établie par le message de l'utilisateur.
+- L'intention repose sur des règles lexicales (négation, hypothèse, faux amis) en français et en anglais. Une formulation
+  négative ou hypothétique absente de ces règles et du corpus peut passer pour un ordre : le corpus couvre des
+  formulations connues, pas toutes les formulations possibles.
 - Le corpus est rejoué avec un **modèle scripté** : il valide le code, pas le comportement d'un vrai modèle.
 
 ## 6. Porte de coût (`AsstGateService`)
@@ -252,8 +275,13 @@ Service : `AsstProposalStoreService`.
 - **Ajout de message** : transaction avec verrou `SELECT ... FOR UPDATE` sur l'échange ; position = dernier + 1.
 - **Propriété** : toute lecture filtre par `userId`. Objet d'un autre utilisateur, identifiant mal formé ou échange masqué :
   `null` (404 côté API).
-- **Rétention** : `purge_at` = création + 90 jours (`ASST_RETENTION_DAYS`). La suppression par l'utilisateur masque
-  (`deleted_at`) et ramène `purge_at` à maintenant.
+- **Rétention** : `purge_at` = création + 90 jours (`ASST_RETENTION_DAYS`). La suppression par l'utilisateur (`DELETE`)
+  masque immédiatement l'échange (`deleted_at`), et `purge_at` dépend de sa trace d'exécution (`deleteConversation`, un
+  seul `UPDATE` conditionnel) :
+  - **sans trace** (aucune proposition confirmée, appliquée ou en échec) : `purge_at` ramenée à maintenant, purge au passage suivant ;
+  - **avec une trace** (proposition appliquée (2), en échec (5), ou confirmée (1)) : l'échange est **seulement masqué**,
+    `purge_at` n'est **pas** abaissée, et la trace reste en base jusqu'à l'échéance d'origine. Aucune purge anticipée.
+  Détail : `docs/assistant-donnees.md`, §5.
 - **Purge** (`AsstPurgeService`) : démarre au bootstrap, toutes les `ASST_PURGE_INTERVAL_MINUTES` ; jamais si
   `NODE_ENV=test`. Chaque passage traite au plus 100 échanges, **un par un** (la cascade emporte messages et
   propositions). Un échange refusé par un déclencheur (proposition confirmée, trace d'exécution encore sous rétention) est
@@ -261,18 +289,46 @@ Service : `AsstProposalStoreService`.
 
 ## 8. Conversations (`postMessage`)
 
-1. **Débit** : `AsstMessageRateLimiter`, fenêtre glissante de 60 s, `ASST_MESSAGES_PER_MINUTE` messages par utilisateur.
-   Dépassement : `budget_exceeded` avec `retryAfterSeconds`. Limite **par processus**.
-2. **Échange** : introuvable ou d'un autre utilisateur : `not_found`, sans appel au planificateur.
-3. **Historique** : les 10 derniers messages, avant le nouveau. Contexte de page : celui du corps, sinon celui de l'échange.
-4. **Planification** (`plan`) : aucune écriture avant son résultat. Réponse vide ou action sans résumé : `assistant_unavailable`.
-5. **Persistance** : message utilisateur, puis message assistant (texte, jetons, `aiDecisionId`), puis proposition si des
+1. **Entrée** : `content` et `title` refusent les caractères de contrôle (NUL, C0 sauf tabulation, LF et CR, DEL, C1) :
+   `422 invalid_input`, avant toute planification. Détail : `docs/assistant-api.md`, section 1.
+2. **Débit** : `AsstMessageRateLimiter`, fenêtre glissante de 60 s, `ASST_MESSAGES_PER_MINUTE` messages par utilisateur.
+   Dépassement : 429 `budget_exceeded` avec `details.retryAfterSeconds`, et en-tête `Retry-After` de même valeur
+   (`assistant-error.filter.ts`) ; le corps n'est pas modifié. Limite **par processus**.
+3. **Échange** : introuvable ou d'un autre utilisateur : `not_found`, sans appel au planificateur.
+4. **Historique** : les 10 derniers messages, avant le nouveau. Contexte de page : celui du corps, sinon celui de l'échange.
+   L'intention retenue suit la règle de la section 5.3 (« Historique de l'intention »).
+5. **Planification** (`plan`) : aucune écriture avant son résultat. Réponse vide ou action sans résumé : `assistant_unavailable`.
+6. **Persistance** : message utilisateur, puis message assistant (texte, jetons, `aiDecisionId`), puis proposition si des
    actions sont validées (`expiresAt` = maintenant + 15 min). Trois appels distincts, sans transaction commune.
-6. **Réponse** : échange relu, message assistant, proposition éventuelle.
+   Si `createProposal` échoue, le message assistant est retiré par `store.deleteMessage` (qui ne retire jamais un message
+   portant une proposition), puis l'erreur est relancée : telle quelle si c'est une `AsstError`, sinon
+   `assistant_unavailable`. **Pire cas** : le message utilisateur reste seul, sans
+   réponse. Si ce retrait échoue aussi (journalisé, sans contenu), le message assistant reste sans proposition. Aucune
+   carte de confirmation n'est jamais affichée sans proposition.
+7. **Réponse** : échange relu, message assistant, proposition éventuelle.
 
-**Questions de précision** : stockées dans `content`, au format « question, ligne vide, 1. choix, 2. choix… »
-(`formatClarificationContent`). `detail()` les relit (`parseClarificationContent`) seulement si le dernier message est
-un message assistant sans proposition. Aucune colonne dédiée.
+**Questions de précision** : stockées dans `content`, au format « marqueur, question, ligne vide, 1. choix, 2. choix… »
+(`formatClarificationContent`). Aucune colonne dédiée.
+
+- **Marqueur** : un préfixe de **4 caractères invisibles** de la plage U+2061 à U+2064, écrit **seulement** par
+  `formatClarificationContent` (et par `formatClarificationQuestion` pour une question sans choix). Il est infalsifiable :
+  `sanitizeText` retire U+2060 à U+2064 de tout texte du modèle ou d'un courrier, et le planificateur retire le marqueur
+  (`stripClarificationMarker`) de toute réponse qui n'est pas une question construite par le code.
+- **Relecture** : `parseClarificationContent` n'accepte **que** ce préfixe. Une liste « 1. … 2. … » libre ne donne donc
+  **aucun** bouton. Une question ancienne, sans marqueur, perd ses boutons au rechargement ; son texte reste affiché.
+  `detail()` relit la question seulement si le dernier message est un message assistant sans proposition.
+- **Question sans choix** : marquée (sans bouton). La réponse suivante de l'utilisateur est lue comme réponse à cette
+  question (section 5.3).
+- **Requête suspecte** : aucune question à choix, et pas de marqueur (texte seul, avec l'avertissement).
+- **Limite** : la réponse par **rang** (« la première ») n'est pas résolue par le code. Aucune action n'est proposée, et la
+  question est reposée (cas W12).
+
+**Réponses du modèle qui revendiquent une action faite.** Une réponse libre, une question ou ses choix qui affirment
+qu'une action est faite (« j'ai imputé… », « c'est fait », « imputation effectuée », « I have assigned… », « courrier
+imputé à la DAF ») sont **remplacés** par la phrase fixe du code : « Aucune action n'a été effectuée ; une action
+n'est appliquée qu'après votre confirmation. » (`PLANNER_MSG_ACTION_CLAIM`, `action-claims.ts`). Rien n'est appliqué sans
+confirmation. La détection est tolérante (français et anglais, passé, passif, accents, casse, caractères invisibles) : un
+faux positif ne coûte qu'une réponse moins riche.
 
 ## 9. Variables d'environnement
 
@@ -333,7 +389,7 @@ pnpm --filter @archivage/api test -- --runInBand modules/assistant/gate/asst-gat
 | Durée d'une proposition | 15 min | `ASST_PROPOSAL_TTL_MINUTES` |
 | Fenêtre de débit | 60 s, 10 messages | `asst-message-rate-limiter.ts` |
 | Purge planifiée et rétention | 60 min ; 90 jours | `AsstPurgeService`, `ASST_RETENTION_DAYS` |
-| Intention « persistante » | Un ordre donné dans les 10 derniers messages de l'échange (environ 5 messages utilisateur) vaut pour la proposition suivante. Type et délai suivent la même règle : message courant, puis historique | `postMessage` (historique) et validateur |
+| Intention | Seul le message courant établit l'intention, sauf réponse à une question de précision marquée (au plus 4 allers-retours, section 5.3). Un ordre ancien n'est pas repris après un message qui annule ou clôt. Type et délai suivent la même règle | `intentHistory` (`intent-guards.ts`), `postMessage` et validateur |
 | Relance | 1 par cible et par jour UTC ; notification interne seulement | `RELANCE_MAX_PER_TARGET_PER_DAY` |
 | Délai | Jours calendaires : demain 1, huitaine 8, quinzaine 15, semaine 7, mois 30 ; heures seulement si multiples de 24 | `extractDelayCandidates` |
 
@@ -347,7 +403,8 @@ pnpm --filter @archivage/api test -- --runInBand modules/assistant/gate/asst-gat
   à 6 000 caractères : le modèle peut ne pas voir la totalité.
 - **Par processus** : limiteur de débit et réservations en mémoire. Avec N instances, les limites sont multipliées par N.
 - **Écritures non atomiques** : `postMessage` écrit le message utilisateur, le message assistant puis la proposition, dans
-  trois transactions distinctes. Un échec entre deux laisse une trace partielle.
+  trois transactions distinctes. Un échec entre deux laisse une trace partielle : pire cas et compensation décrits à la
+  section 8, point 6.
 - **Expiration** : le job qui passe les propositions à « expirée » n'est pas encore dans le module assistant.
 - **Périmètre** : trois actions seulement (imputation, relance, brouillon). Pas d'e-mail, pas de délégation (le prompt le
   dit au modèle). Aucune exécution dans ce lot.

@@ -147,6 +147,26 @@ describe('requêtes', () => {
     expect(postMessageBody.safeParse({ content: 'x', role: 'assistant' }).success).toBe(false);
   });
 
+  it('postMessageBody : refuse NUL, ESC, DEL et C1 ; accepte retours à la ligne, tabulation, accents, emoji', () => {
+    for (const bad of ['a\u0000b', 'a\u001Bb', 'a\u007Fb', 'a\u0085b', 'a\u009Fb', 'a\u0008b', 'a\u000Bb', 'a\u000Cb', 'a\u001Fb']) {
+      const r = postMessageBody.safeParse({ content: bad });
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.issues[0]?.message).toBe('Le texte contient des caractères de contrôle interdits.');
+    }
+    for (const ok of ['ligne 1\nligne 2', 'ligne 1\r\nligne 2', 'a\tb', 'Éléphant à l’œuvre', 'Bonjour 😀 👍🏽']) {
+      expect(postMessageBody.safeParse({ content: ok }).success).toBe(true);
+    }
+    expect(postMessageBody.safeParse({ content: 'a'.repeat(4000) }).success).toBe(true);
+    expect(postMessageBody.safeParse({ content: 'a'.repeat(4001) }).success).toBe(false);
+  });
+
+  it('createConversationBody.title : refuse contrôle et retours à la ligne, accepte accents et emoji', () => {
+    for (const bad of ['a\u0000b', 'a\nb', 'a\rb', 'a\tb', 'a\u001Bb', 'a\u007Fb', 'a\u0090b']) {
+      expect(createConversationBody.safeParse({ title: bad }).success).toBe(false);
+    }
+    expect(createConversationBody.safeParse({ title: 'Courrier été 📬' }).success).toBe(true);
+  });
+
   it('confirmProposalBody : argsHash = SHA-256 hexadécimal minuscule', () => {
     expect(confirmProposalBody.safeParse({ argsHash: 'a'.repeat(64) }).success).toBe(true);
     for (const bad of ['a'.repeat(63), 'a'.repeat(65), 'A'.repeat(64), 'g'.repeat(64), '']) {

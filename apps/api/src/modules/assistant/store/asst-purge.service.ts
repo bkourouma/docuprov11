@@ -12,8 +12,10 @@ export function asstPurgeIntervalMinutes(raw: string | undefined): number {
 }
 
 /**
- * Purge physique des échanges de l'assistant dont `purge_at` est échue (échanges masqués par l'utilisateur ou
- * arrivés au terme de la rétention). Chaque conversation est supprimée SEULE (la cascade emporte messages et
+ * Purge physique des échanges de l'assistant dont `purge_at` est échue (échanges masqués sans trace d'exécution, dont
+ * le masquage a ramené `purge_at` à l'instant du masquage, ou arrivés au terme de la rétention). Un échange masqué qui
+ * porte une trace d'exécution (proposition appliquée ou en échec) garde sa `purge_at` d'origine : il n'est pas
+ * sélectionné avant l'échéance, donc jamais compté en erreur. Chaque conversation est supprimée SEULE (la cascade emporte messages et
  * propositions) : si les déclencheurs refusent (proposition confirmée en cours d'exécution, trace d'exécution encore
  * sous rétention), elle est comptée « skipped » et retentée au passage suivant. Rien du contenu n'est journalisé.
  */
