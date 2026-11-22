@@ -3,7 +3,7 @@
 import { validateWorkflowGraph, wfEscalationConfigSchema, type WfGraph } from '@archivage/types';
 import type { WfDefinitionIssue, WfDefinitionIssueCode } from '../../lib/workflows-api';
 
-/** Les 16 codes : les 14 du graphe + l'escalade invalide + l'exécuteur d'agent manquant. */
+/** Les 17 codes : les 14 du graphe + l'escalade invalide + l'exécuteur d'agent manquant + l'affectation à compléter (W5). */
 export const ALL_ISSUE_CODES: readonly WfDefinitionIssueCode[] = [
   'SCHEMA_INVALID',
   'DUPLICATE_STEP_KEY',
@@ -21,6 +21,7 @@ export const ALL_ISSUE_CODES: readonly WfDefinitionIssueCode[] = [
   'DECISION_NEEDS_BRANCHES',
   'ESCALATION_INVALID',
   'EXECUTOR_MISSING',
+  'AUTHORING_TO_COMPLETE',
 ];
 
 export interface IssueExplanation {
@@ -291,6 +292,12 @@ export function explainIssue(issue: WfDefinitionIssue, graph?: WfGraph): IssueEx
         "Agent indisponible sur le serveur",
         `L'étape ${ref} utilise un agent, mais le serveur n'a pas de moteur d'exécution d'agent disponible pour l'instant.`,
         "Contactez l'administrateur, ou remplacez cette étape par une étape humaine (validation, formulaire…).",
+      );
+    case 'AUTHORING_TO_COMPLETE':
+      return make(
+        'Affectation à compléter',
+        `L'étape ${ref} a été proposée par l'IA sans responsable : « Affectation à compléter ». Le workflow ne peut pas être publié tant que personne n'est désigné.`,
+        "Ouvrez l'étape, section « Affectation », et choisissez un utilisateur, un groupe, un rôle, le lanceur ou le propriétaire de l'objet.",
       );
     default:
       return make(

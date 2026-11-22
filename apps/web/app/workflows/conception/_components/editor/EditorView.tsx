@@ -69,6 +69,7 @@ import {
 import { mergeIssues, summarizeIssues, validateLive } from '../../../_lib/graph-issues';
 import { useWorkflowAccess } from '../../../_lib/useWorkflowAccess';
 import { AccessDenied } from '../../../instances/_components/AccessDenied';
+import { AuthoringBanner } from '../authoring/AuthoringBanner';
 import { IssuesPanel } from '../canvas/IssuesPanel';
 import { StepOutline } from '../canvas/StepOutline';
 import { StepPalette } from '../canvas/StepPalette';
@@ -81,6 +82,7 @@ import { useLeaveGuard } from './useLeaveGuard';
 import { DESCRIPTION_MAX, NAME_MAX } from './WorkflowInfoPanel';
 import '../../../workflows.css';
 import '../panels/panels.css';
+import '../authoring/authoring.css';
 import './editeur.css';
 
 // Le canevas (React Flow) mesure le DOM : on ne le rend pas côté serveur.
@@ -925,6 +927,12 @@ export function EditorView() {
           }
         />
       )}
+
+      <AuthoringBanner
+        definitionId={definition.wfDefinitionId}
+        graph={editor.graph}
+        onSelectStep={(key) => handleSelect({ kind: 'step', key })}
+      />
 
       <EditorToolbar
         compact={isMobile}
