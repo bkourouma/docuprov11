@@ -20,9 +20,8 @@ import {
   type AsstPlanResult,
   type AsstPlannerPort,
 } from '../assistant.contracts';
-import { NotImplementedExecutor } from '../not-implemented';
 import { asstArgsHash } from '../store/asst-proposal-hash';
-import { FakeAsstIdentity, InMemoryProposalStore, makeAsstIdentity } from '../testing';
+import { FakeAsstIdentity, InMemoryProposalStore, makeAsstIdentity, UnavailableExecutor } from '../testing';
 import { AsstConversationsService } from './asst-conversations.service';
 import { AsstMessageRateLimiter } from './asst-message-rate-limiter';
 
@@ -69,7 +68,7 @@ async function boot(limit: number) {
       { provide: PrismaService, useValue: {} },
       { provide: ASST_IDENTITY, useValue: identity },
       { provide: ASST_CONVERSATIONS, useValue: service },
-      { provide: ASST_EXECUTOR, useValue: new NotImplementedExecutor() },
+      { provide: ASST_EXECUTOR, useValue: new UnavailableExecutor() },
       { provide: ASST_PROPOSAL_STORE, useValue: store },
       { provide: ASST_PLANNER, useValue: planner },
       { provide: ASST_GATE, useValue: gate },

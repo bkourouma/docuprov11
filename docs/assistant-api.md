@@ -276,7 +276,7 @@ un texte portant le marqueur de question de précision donne des choix : une lis
 de l'utilisateur ou global atteint, ou limite de débit des messages : voir ci-dessous), `assistant_unavailable` (503, IA désactivée ou arrêt d'urgence), `not_implemented`
 (501, voir section 6).
 
-**Limite de débit** : un 429 `budget_exceeded` dû à la limite de messages par utilisateur porte `details.retryAfterSeconds` (entier >= 1) et l'en-tête HTTP `Retry-After: <secondes>` de même valeur ; le corps n'est pas modifié. Un 429 sans `retryAfterSeconds` valide (plafond de coût) n'a pas cet en-tête.
+**Limite de débit** : un 429 `budget_exceeded` dû à la limite de messages par utilisateur porte `details.retryAfterSeconds` (entier >= 1) et l'en-tête HTTP `Retry-After: <secondes>` de même valeur ; le corps n'est pas modifié. Un 429 sans `retryAfterSeconds` valide (plafond de coût, limite de confirmations de la route `confirm`) n'a pas cet en-tête.
 
 ### `POST /assistant/proposals/:id/confirm`
 
@@ -293,6 +293,8 @@ Corps (`confirmProposalBody`, strict) :
 
 Le `argsHash` envoyé est **celui reçu dans la proposition**, sans recalcul ni modification. Il lie la confirmation au contenu
 affiché : si le contenu a changé, le serveur répond 409 `conflict`.
+
+**Erreurs ajoutées pour la route** : `budget_exceeded` (429) est renvoyé par le limiteur de confirmations : au plus 10 confirmations par utilisateur sur une fenêtre glissante de 60 s. Ce limiteur est tenu en mémoire, propre à chaque processus, et vérifié avant la lecture de la proposition (une confirmation sur une proposition inexistante est donc comptée). Une tentative refusée n'est pas enregistrée. Ce 429 n'est pas un plafond de coût : il réutilise le code `budget_exceeded`. Son corps est `{ statusCode, errorCode, message }` sans `details` : il n'y a donc **pas** de `Retry-After` pour cette route.
 
 Requête :
 
@@ -471,6 +473,7 @@ ne doit pas s'en servir comme mécanisme de reprise.
 | `422` `effect_failed` | L'applicateur a refusé l'effet. Le corps porte `proposal` au statut 5 : afficher « Échec » avec `proposal.errorMessage`. Pas de réessai automatique ; une nouvelle demande est nécessaire. |
 | `403` `effect_forbidden` | Droits insuffisants pour cet effet. Le corps peut porter `proposal` (statut 5, selon le port d'exécuteur) : si présent, l'afficher. Pas de réessai. |
 | `403` `identity_refused` | Compte inactif ou identité refusée. Afficher le message ; la proposition n'est pas exécutée. |
+| `429` `budget_exceeded` | Trop de confirmations (plus de 10 en 60 s pour cet utilisateur) ; la proposition n'est pas exécutée. Afficher « trop de confirmations, réessayez dans une minute ». Ne pas réessayer en boucle ni automatiquement. Lire `Retry-After` s'il est présent (il ne l'est pas pour cette route). |
 | `404` `not_found` | Proposition introuvable ou à un autre utilisateur. Afficher « introuvable » et retirer la carte. |
 | `422` `invalid_input` | `argsHash` mal formé (pas 64 hexadécimaux minuscules) : erreur du client, à corriger dans le code. |
 | `501` `not_implemented` | Brique non branchée (A0, section 6). |
@@ -517,7 +520,7 @@ Statuts issus de `ASST_ERROR_HTTP_STATUS`.
 | `conflict` | 409 | `argsHash` ne correspond plus au contenu, ou verrou concurrent (`rowVersion`). | Relire, réafficher la carte modifiée, exiger une nouvelle confirmation. |
 | `effect_forbidden` | 403 | Droits insuffisants pour l'effet (menu, périmètre, imputabilité). | Afficher le message ; afficher `proposal` s'il est présent. Pas de réessai. |
 | `effect_failed` | 422 | L'applicateur a refusé l'effet (refus métier). La proposition est au statut 5. | Afficher « Échec » et `proposal.errorMessage`. Pas de réessai ; nouvelle demande pour recommencer. |
-| `budget_exceeded` | 429 | Plafond de coût atteint (utilisateur du jour ou global), ou limite de débit (messages, confirmations). | Afficher « plafond atteint, réessayez plus tard ». Si l'en-tête `Retry-After` est présent, attendre ce délai. Ne pas réessayer en boucle. |
+| `budget_exceeded` | 429 | Plafond de coût atteint (utilisateur du jour ou global), ou limite de débit : messages (`details.retryAfterSeconds`) ou confirmations (10 par minute, route `confirm`, sans `details`). | Afficher « plafond atteint, réessayez plus tard » pour un plafond de coût, « trop de confirmations, réessayez dans une minute » pour la limite de confirmations. Si l'en-tête `Retry-After` est présent, attendre ce délai. Ne pas réessayer en boucle. |
 | `assistant_unavailable` | 503 | IA désactivée ou arrêt d'urgence. | Afficher « assistant indisponible » ; désactiver la saisie. |
 | `invalid_input` | 422 | Corps, paramètres ou query invalides (y compris clé inconnue). `message` vaut « Requête invalide. » et `details` est la liste `{ path, message }` des anomalies. | Erreur de saisie hors bornes ou erreur du client : afficher les anomalies ou un message générique, corriger le client. |
 
@@ -607,7 +610,9 @@ Exemple d'action `proposer_relance` (valeurs d'exemple) :
 8. **Messages d'erreur.** `message` est en français, sans contenu de courrier : il peut être affiché tel quel.
 9. **Identifiants en chaînes.** Voir 1.2 : ne jamais les convertir en nombre.
 
-## 6. État d'implémentation (A0)
+## 6. État d'implémentation (A0, historique)
+
+Cette section décrit l'état à la livraison du lot A0. Depuis, A1 (planificateur, magasin, conversations, porte de coût) et A2 (exécuteur) sont branchés dans `assistant.module.ts` et les routes ne répondent plus 501. Les ports par défaut « non implémenté » (`not-implemented.ts`) ont été retirés en A4 ; le code d'erreur `not_implemented` (501) reste dans le contrat (`packages/types/src/asst-enums.ts`) et est géré par l'interface.
 
 Présent dans la copie de travail :
 

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import {
   AsstActionTool,
@@ -19,6 +20,7 @@ import type { ActionApplier } from '../../workflow-agent-catalog/catalog.contrac
 import { AgentDataAdapter } from '../../workflow-agents/tools/agent-data.adapter';
 import { AsstError, type AsstIdentity } from '../assistant.contracts';
 import { AsstIdentityService } from '../identity/asst-identity.service';
+import { AsstEffectRunner, type AsstRunOutcome } from './asst-effect-runner';
 import { asstActionsHash } from './asst-actions-hash';
 import { AsstConfirmLimiter } from './asst-confirm-limiter';
 import { AsstExecutorService } from './asst-executor.service';
@@ -551,5 +553,125 @@ suite(title, () => {
     expect(row.status).toBe(5);
     expect(row.errorCode).toBe('execution_interrupted');
     expect(row.finishedAt).not.toBeNull();
+  });
+
+  // ---------------------------------------------------------------------------
+  // 8. Issue ambiguë : relecture du statut SOUS VERROU DE LIGNE (transaction concurrente encore en vol)
+  // ---------------------------------------------------------------------------
+
+  describe('issue ambiguë : relecture sous verrou de ligne', () => {
+    let other: PrismaClient;
+    beforeAll(async () => {
+      other = new PrismaClient({ datasourceUrl: url });
+      await other.$connect();
+    });
+    afterAll(async () => {
+      await other?.$disconnect();
+    });
+
+    /**
+     * Transaction « en vol » ouverte par un AUTRE client : transition légale 1 -> 2 écrite (verrou de ligne tenu),
+     * sans fin tant que `finish` n'est pas appelée (`'commit'` valide, `'rollback'` annule).
+     */
+    async function holdApplied(p: AsstProposalDto) {
+      let release!: (mode: 'commit' | 'rollback') => void;
+      const gate = new Promise<'commit' | 'rollback'>((resolve) => (release = resolve));
+      let written!: () => void;
+      const ready = new Promise<void>((resolve) => (written = resolve));
+      const held = other
+        .$transaction(
+          async (tx) => {
+            const done = await store.transitionProposal({
+              proposalId: p.proposalId,
+              expectedRowVersion: p.rowVersion,
+              expectedStatus: AsstProposalStatus.Confirmed,
+              to: AsstProposalStatus.Applied,
+              result: { effects: [] },
+              now: new Date(),
+              db: tx,
+            });
+            if (!done) throw new Error('transition en vol refusée');
+            written();
+            if ((await gate) === 'rollback') throw new Error('annulation voulue de la transaction en vol');
+          },
+          { timeout: 60_000, maxWait: 10_000 },
+        )
+        .catch(() => undefined);
+      await ready;
+      return { finish: async (mode: 'commit' | 'rollback') => (release(mode), held) };
+    }
+
+    /** Appelle la voie « issue ambiguë » du runner (méthode privée, appelée telle quelle) avec un runner à délais courts. */
+    function resolve(p: AsstProposalDto, identity: AsstIdentity, lockTimeoutMs: number, retryDelaysMs: number[]) {
+      const runner = new AsstEffectRunner(prisma as unknown as PrismaService, registry, rights, store);
+      runner.lockTimeoutMs = lockTimeoutMs;
+      runner.retryDelaysMs = retryDelaysMs;
+      const compensate = jest.fn(async () => undefined);
+      const input = { identity, proposal: p, actions: [draft()], now: new Date() };
+      const outcome = (
+        runner as unknown as {
+          resolveAmbiguous(i: unknown, e: unknown, c: Array<() => Promise<void>>): Promise<AsstRunOutcome>;
+        }
+      ).resolveAmbiguous(input, new Error('COMMIT interrompu'), [compensate]);
+      return { outcome, compensate };
+    }
+
+    it('(a) transaction en vol non terminée et lock_timeout épuisé => uncertain, compensation NON appelée', async () => {
+      const a = await makeImputer();
+      const p = await advanceTo(await newProposal(a, [draft()]), AsstProposalStatus.Confirmed);
+      const holder = await holdApplied(p);
+      const started = Date.now();
+      const { outcome, compensate } = resolve(p, a.identity, 250, [0]);
+
+      const out = await outcome;
+
+      expect(out).toEqual({ ok: false, failure: expect.objectContaining({ kind: 'uncertain', errorCode: 'result_uncertain' }) });
+      expect(Date.now() - started).toBeGreaterThanOrEqual(400); // 2 essais d'au moins ~250 ms chacun
+      expect(compensate).not.toHaveBeenCalled();
+      await holder.finish('commit');
+      expect((await dbProposal(p)).status).toBe(AsstProposalStatus.Applied);
+    });
+
+    it('(b) transaction en vol VALIDÉE pendant l’attente => Appliquée, succès, AUCUNE compensation', async () => {
+      const a = await makeImputer();
+      const p = await advanceTo(await newProposal(a, [draft()]), AsstProposalStatus.Confirmed);
+      const holder = await holdApplied(p);
+      const { outcome, compensate } = resolve(p, a.identity, 10_000, [0]);
+      await new Promise((r) => setTimeout(r, 400)); // la relecture est bloquée sur le verrou
+      await holder.finish('commit');
+
+      const out = await outcome;
+
+      expect(out.ok).toBe(true);
+      if (out.ok) expect(out.proposal.status).toBe(AsstProposalStatus.Applied);
+      expect(compensate).not.toHaveBeenCalled();
+    });
+
+    it('(c) transaction en vol ANNULÉE pendant l’attente => Confirmée relue, compensation appelée une fois, échec normal', async () => {
+      const errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      const a = await makeImputer();
+      const p = await advanceTo(await newProposal(a, [draft()]), AsstProposalStatus.Confirmed);
+      const holder = await holdApplied(p);
+      const { outcome, compensate } = resolve(p, a.identity, 10_000, [0]);
+      await new Promise((r) => setTimeout(r, 400));
+      await holder.finish('rollback');
+
+      const out = await outcome;
+
+      expect(out).toEqual({ ok: false, failure: expect.objectContaining({ kind: 'failed', errorCode: 'effect_failed' }) });
+      expect(compensate).toHaveBeenCalledTimes(1);
+      expect((await dbProposal(p)).status).toBe(AsstProposalStatus.Confirmed);
+      errorLog.mockRestore();
+    });
+
+    it('sans transaction en vol : Confirmée lue sous verrou => compensation (annulation certaine)', async () => {
+      const errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      const a = await makeImputer();
+      const p = await advanceTo(await newProposal(a, [draft()]), AsstProposalStatus.Confirmed);
+      const { outcome, compensate } = resolve(p, a.identity, 2_000, [0]);
+      expect((await outcome).ok).toBe(false);
+      expect(compensate).toHaveBeenCalledTimes(1);
+      errorLog.mockRestore();
+    });
   });
 });

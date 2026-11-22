@@ -2,13 +2,14 @@ import { AsstActionTool, AsstMessageRole } from '@archivage/types';
 import { MAIL_INPUTATION_TYPE_IDS } from '../../workflow-agent-catalog/catalog.contracts';
 import { sanitizeText } from '../../workflow-agents/injection/untrusted';
 import {
+  CLARIFICATION_INFO_SUFFIX,
   INTENT_CONFIRM_NO,
   INTENT_CONFIRM_YES,
   isClarificationContent,
   parseClarificationContent,
   parseIntentConfirmation,
 } from './clarification-format';
-import type { PlannerInputationTypeView } from './planner.types';
+import { PLANNER_CHOICES_MAX, type PlannerInputationTypeView } from './planner.types';
 
 // Gardes d'INTENTION du validateur d'actions (fonctions pures, sans accès aux données).
 //
@@ -1004,12 +1005,35 @@ export function isCancellation(text: string): boolean {
 /** Nombre maximal d'allers-retours « question de précision / réponse » remontés dans l'historique. */
 export const INTENT_HISTORY_MAX_ROUNDS = 4;
 
+/** Rangs reconnus (texte normalisé) -> numéro de choix ; 6 au plus (`PLANNER_CHOICES_MAX`). */
+const RANK_WORDS: Readonly<Record<string, number>> = {
+  premier: 1, premiere: 1, '1er': 1, '1ere': 1, first: 1, '1st': 1,
+  deuxieme: 2, second: 2, seconde: 2, '2e': 2, '2eme': 2, '2nd': 2, '2nde': 2,
+  troisieme: 3, '3e': 3, '3eme': 3, third: 3, '3rd': 3,
+  quatrieme: 4, '4e': 4, '4eme': 4, fourth: 4, '4th': 4,
+  cinquieme: 5, '5e': 5, '5eme': 5, fifth: 5, '5th': 5,
+  sixieme: 6, '6e': 6, '6eme': 6, sixth: 6, '6th': 6,
+};
+/**
+ * Message ENTIER = [article] rang [option|choix|proposition|reponse|one] : aucun autre mot (une phrase autour, même
+ * sensée, ne désigne rien).
+ */
+const RANK_ONLY = new RegExp(
+  `^(?:(?:le|la|l|les|the)\\s+)?(${Object.keys(RANK_WORDS).join('|')})(?:\\s+(?:option|choix|proposition|reponse|one))?$`,
+);
+
 /**
  * Index du choix que le texte (déjà normalisé) désigne EXACTEMENT, ou `null` : libellé complet (casse, accents et
  * ponctuation ignorés), numéro de choix (« 1 », « le 2 », « n°1 », « choix 2 »), ou — si `names` — un nom proposé
- * (segment du libellé « Nom — Groupe » ou mot du nom) porté par UN SEUL choix.
+ * (segment du libellé « Nom — Groupe » ou mot du nom) porté par UN SEUL choix. Si `ranks` (faux par défaut) : un RANG
+ * seul (« la première », « le 2e », « la deuxième option », « the second »), message entier, hors plage = `null`.
+ * « le dernier » n'est pas pris en charge.
  */
-export function designatedChoiceIndex(norm: string, choices: readonly string[], opts: { names: boolean }): number | null {
+export function designatedChoiceIndex(
+  norm: string,
+  choices: readonly string[],
+  opts: { names: boolean; ranks?: boolean },
+): number | null {
   if (!norm) return null;
   const labels = choices.map((c) => normalizeWords(c, 400));
   const exact = labels.flatMap((l, i) => (l === norm ? [i] : []));
@@ -1019,6 +1043,13 @@ export function designatedChoiceIndex(norm: string, choices: readonly string[], 
   if (num) {
     const n = Number(num[1]);
     return n >= 1 && n <= choices.length ? n - 1 : null;
+  }
+  if (opts.ranks) {
+    const rank = RANK_ONLY.exec(norm);
+    if (rank) {
+      const n = RANK_WORDS[rank[1] ?? ''] ?? 0;
+      return n >= 1 && n <= choices.length && n <= PLANNER_CHOICES_MAX ? n - 1 : null;
+    }
   }
   if (!opts.names) return null;
   const hits = choices.flatMap((c, i) => (labelDesignators(c).includes(norm) ? [i] : []));
@@ -1042,7 +1073,8 @@ function isAnswerValue(norm: string): boolean {
 /**
  * Le message courant RÉPOND-il à la question marquée `assistantContent` ? Il ne doit porter AUCUNE marque de réserve
  * (`intentMarks`) ni annuler, et : question AVEC choix -> désigner exactement un choix (libellé, numéro ou nom proposé ;
- * libellé ou numéro seulement pour la question de confirmation d'intention) ; question SANS choix -> n'être qu'une
+ * libellé ou numéro seulement pour la question de confirmation d'intention ; le RANG (« la première ») n'est admis
+ * que pour une question à choix qui n'est pas la confirmation d'intention) ; question SANS choix -> n'être qu'une
  * valeur (`isAnswerValue`). « non », « plus tard », « attends », « je réfléchis », « tant pis »… ne répondent pas.
  */
 export function answersClarification(current: string, assistantContent: string): boolean {
@@ -1055,7 +1087,10 @@ export function answersClarification(current: string, assistantContent: string):
   // « oui » / « yes » SEULS (tour X3) : choix 1 de la question de confirmation d'intention UNIQUEMENT ; pour toute
   // autre question de précision, ils ne désignent rien (même si un choix du modèle s'intitule « Oui »).
   if (BARE_YES.test(norm)) return confirmation;
-  if (parsed) return designatedChoiceIndex(norm, parsed.choices, { names: !confirmation }) !== null;
+  // Le rang n'est admis que pour une question construite par le CODE (sans ligne d'information finale) : toute
+  // question du modèle (`clarify`, qui porte `CLARIFICATION_INFO_SUFFIX`) l'exclut.
+  const byCode = !assistantContent.endsWith(CLARIFICATION_INFO_SUFFIX);
+  if (parsed) return designatedChoiceIndex(norm, parsed.choices, { names: !confirmation, ranks: !confirmation && byCode }) !== null;
   return isClarificationContent(assistantContent) && isAnswerValue(norm);
 }
 
@@ -1080,6 +1115,22 @@ export function confirmationAnswer(current: string): 'yes' | 'no' | null {
 }
 
 /**
+ * Libellé du choix que `answer` désigne UNIQUEMENT par son rang (« la première »), dans la question marquée
+ * `assistantContent` (hors confirmation d'intention) ; `null` pour toute autre réponse (libellé, numéro, nom, valeur).
+ */
+function rankedChoiceLabel(answer: string, assistantContent: string): string | null {
+  if (parseIntentConfirmation(assistantContent) !== null) return null;
+  // Question du modèle (ligne d'information finale) : aucun libellé n'est repris par rang.
+  if (assistantContent.endsWith(CLARIFICATION_INFO_SUFFIX)) return null;
+  const parsed = parseClarificationContent(assistantContent);
+  if (!parsed) return null;
+  const norm = normalizeWords(answer);
+  if (designatedChoiceIndex(norm, parsed.choices, { names: true }) !== null) return null;
+  const idx = designatedChoiceIndex(norm, parsed.choices, { names: true, ranks: true });
+  return idx === null ? null : (parsed.choices[idx] ?? null);
+}
+
+/**
  * Messages PRÉCÉDENTS de l'utilisateur qui portent encore l'intention (ordre chronologique). Règle : seul le message
  * COURANT établit l'intention, SAUF s'il RÉPOND à la question de précision marquée qui le précède
  * (`answersClarification` : choix désigné exactement, ou valeur pour une question sans choix, et AUCUNE marque) ; le
@@ -1101,7 +1152,10 @@ export function intentHistory(
     if (!asked || asked.role !== AsstMessageRole.Assistant || typeof asked.content !== 'string') break;
     if (!isClarificationContent(asked.content) || !answersClarification(answer, asked.content)) break;
     if (!said || said.role !== AsstMessageRole.User || typeof said.content !== 'string') break;
-    chain.unshift(said.content);
+    // Réponse PAR RANG : le libellé du choix désigné (écrit par le code dans la question) est repris comme texte
+    // d'intention, pour que le validateur sache de qui il s'agit (équivalent de la réponse par libellé exact).
+    const rankLabel = rankedChoiceLabel(answer, asked.content);
+    chain.unshift(said.content, ...(rankLabel ? [rankLabel] : []));
     answer = said.content;
     i -= 2;
   }
@@ -1919,6 +1973,9 @@ function formTextAnalysis(text: string, phrases: readonly (readonly string[])[])
   if (/(?:^|[^a-z0-9])\/|\/(?:$|[^a-z0-9])/.test(folded)) return 'structure : barre oblique';
   const bad = /[^a-z0-9\s',.!?;:\-—–°/]/.exec(folded);
   if (bad) return `structure : caractère « ${bad[0]} »`;
+  // Rang seul (« la première », « le 1er ») : jamais une réponse de forme directe, quel que soit le lexique des acteurs
+  // (« 1er Adjoint — Mairie », « Première Direction »…) : la confirmation d'intention est toujours demandée.
+  if (RANK_ONLY.test(normalizeWords(folded))) return 'structure : rang';
   if (isPureFormAnswer(normalizeWords(folded))) return 0;
   const kinds: Array<'ordre' | 'complement'> = [];
   for (const m of folded.matchAll(/[^.!?;\n]+[.!?;\n]*/g)) {

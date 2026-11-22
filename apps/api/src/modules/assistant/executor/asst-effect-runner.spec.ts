@@ -9,7 +9,7 @@ import {
 } from '../../workflow-agent-catalog/catalog.contracts';
 import type { AsstProposalStore, AsstProposalTransition } from '../assistant.contracts';
 import { makeAsstIdentity } from '../testing';
-import { ASST_EFFECT_TX_OPTIONS, AsstEffectRunner, lockTargets } from './asst-effect-runner';
+import { ASST_AMBIGUOUS_LOCK_TIMEOUT_MS, ASST_EFFECT_TX_OPTIONS, AsstEffectRunner, lockTargets } from './asst-effect-runner';
 
 const NOW = new Date('2026-11-22T09:00:00.000Z');
 
@@ -29,8 +29,36 @@ interface FakeTx {
   dataChangeAudit: { create: jest.Mock };
 }
 
-function makePrisma(opts: { failCommit?: boolean; failAudit?: boolean } = {}) {
-  const state = { committed: [] as JournalEntry[], rolledBack: 0, txs: [] as FakeTx[] };
+/** Résultat simulé d'une relecture verrouillée : statut lu, ligne absente ('absent') ou erreur (ex. 55P03). */
+type LockedRead = number | 'absent' | Error;
+const lockTimeoutError = () => Object.assign(new Error('canceling statement due to lock timeout'), { code: '55P03' });
+
+function makePrisma(opts: { failCommit?: boolean; failAudit?: boolean; locked?: LockedRead[] } = {}) {
+  const state = {
+    committed: [] as JournalEntry[],
+    rolledBack: 0,
+    txs: [] as FakeTx[],
+    /** SQL des relectures verrouillées, dans l'ordre d'exécution (tous essais confondus). */
+    lockedSql: [] as string[],
+    lockedReads: 0,
+  };
+  // Relectures verrouillées : séquence consommée essai par essai (la dernière valeur se répète) ; défaut = Confirmée.
+  const lockedSeq: LockedRead[] = opts.locked ?? [AsstProposalStatus.Confirmed];
+  const lockedTx = () => {
+    const result = lockedSeq[Math.min(state.lockedReads, lockedSeq.length - 1)];
+    state.lockedReads += 1;
+    return {
+      $executeRaw: jest.fn(async (q: { sql: string; values: unknown[] }) => {
+        state.lockedSql.push(q.sql);
+        return 0;
+      }),
+      $queryRaw: jest.fn(async (q: { sql: string; values: unknown[] }) => {
+        state.lockedSql.push(q.sql);
+        if (result instanceof Error) throw result;
+        return result === 'absent' ? [] : [{ status: result }];
+      }),
+    };
+  };
   const makeTx = (): FakeTx => {
     const tx: FakeTx = {
       journal: [],
@@ -49,8 +77,11 @@ function makePrisma(opts: { failCommit?: boolean; failAudit?: boolean } = {}) {
     };
     return tx;
   };
+  let mainDone = false;
   const prisma = {
     $transaction: jest.fn(async (fn: (tx: FakeTx) => Promise<unknown>, _options?: unknown) => {
+      if (mainDone) return fn(lockedTx() as unknown as FakeTx); // 2e transaction et suivantes : relecture verrouillée
+      mainDone = true;
       const tx = makeTx();
       state.txs.push(tx);
       try {
@@ -119,7 +150,9 @@ function confirmedProposal(actions: AsstProposedAction[]): AsstProposalDto {
   };
 }
 
-function setup(opts: { failCommit?: boolean; failAudit?: boolean; transitionNull?: boolean; skip?: string[] } = {}) {
+function setup(
+  opts: { failCommit?: boolean; failAudit?: boolean; transitionNull?: boolean; skip?: string[]; locked?: LockedRead[] } = {},
+) {
   const { prisma, state } = makePrisma(opts);
   const registry = new ActionApplierRegistry();
   const appliers = {
@@ -139,6 +172,7 @@ function setup(opts: { failCommit?: boolean; failAudit?: boolean; transitionNull
   };
   const transitions: AsstProposalTransition[] = [];
   const store = {
+    getProposal: jest.fn(async () => confirmedProposal([])),
     transitionProposal: jest.fn(async (t: AsstProposalTransition) => {
       transitions.push(t);
       if (opts.transitionNull) return null;
@@ -148,6 +182,7 @@ function setup(opts: { failCommit?: boolean; failAudit?: boolean; transitionNull
   } as unknown as AsstProposalStore & { transitionProposal: jest.Mock };
   const runner = new AsstEffectRunner(prisma as never, registry, rightsFactory as never, store);
   runner.retryDelaysMs = [0, 0];
+  runner.lockTimeoutMs = 50;
   const identity = makeAsstIdentity(1, { username: 'agent.dupont' });
   const run = (actions: AsstProposedAction[]) =>
     runner.run({ identity, proposal: confirmedProposal(actions), actions, now: NOW });
@@ -407,7 +442,7 @@ describe('AsstEffectRunner', () => {
 
   it('issue ambiguë (COMMIT validé puis erreur côté client) : proposition déjà Appliquée => succès, AUCUNE compensation', async () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    const { run, appliers, store } = setup({ failCommit: true });
+    const { run, appliers, store } = setup({ failCommit: true, locked: [AsstProposalStatus.Applied] });
     const applied = { ...confirmedProposal([]), status: AsstProposalStatus.Applied, rowVersion: 2 };
     (store as unknown as { getProposal: jest.Mock }).getProposal = jest.fn(async () => applied);
     const c = jest.fn(async () => undefined);
@@ -419,7 +454,7 @@ describe('AsstEffectRunner', () => {
 
   it('issue ambiguë et relecture en échec (plusieurs essais) : AUCUNE compensation, résultat incertain', async () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    const { run, appliers, store } = setup({ failCommit: true });
+    const { run, appliers, store } = setup({ failCommit: true, locked: [AsstProposalStatus.Applied] });
     const getProposal = jest.fn(async () => {
       throw new Error('base injoignable');
     });
@@ -434,7 +469,7 @@ describe('AsstEffectRunner', () => {
 
   it('issue ambiguë : la relecture réussit au 2e essai sur « Appliquée » => succès sans compensation', async () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    const { run, appliers, store } = setup({ failCommit: true });
+    const { run, appliers, store } = setup({ failCommit: true, locked: [AsstProposalStatus.Applied] });
     const applied = { ...confirmedProposal([]), status: AsstProposalStatus.Applied, rowVersion: 2 };
     const getProposal = jest.fn().mockRejectedValueOnce(new Error('coupure')).mockResolvedValue(applied);
     (store as unknown as { getProposal: jest.Mock }).getProposal = getProposal;
@@ -442,6 +477,94 @@ describe('AsstEffectRunner', () => {
     appliers.brouillon.apply.mockImplementationOnce(async () => ({ effects: [], compensate: c }));
     expect(await run([brouillon()])).toEqual({ ok: true, proposal: applied });
     expect(c).not.toHaveBeenCalled();
+  });
+
+  describe('issue ambiguë : relecture du statut sous verrou de ligne', () => {
+    const uncertain = {
+      ok: false,
+      failure: { kind: 'uncertain', errorCode: 'result_uncertain', message: expect.stringContaining('Résultat incertain') },
+    };
+    const quiet = () => jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+    it('SET LOCAL lock_timeout posé AVANT un SELECT ... FOR UPDATE sur asst_proposal, dans une 2e transaction courte', async () => {
+      quiet();
+      const { run, appliers, state, prisma } = setup({ failCommit: true, locked: [AsstProposalStatus.Confirmed] });
+      appliers.brouillon.apply.mockImplementationOnce(async () => ({ effects: [], compensate: jest.fn(async () => undefined) }));
+      await run([brouillon()]);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+      expect(state.lockedSql).toHaveLength(2);
+      expect(state.lockedSql[0]).toBe("SET LOCAL lock_timeout = '50ms'");
+      expect(state.lockedSql[1]).toBe("SELECT status FROM asst_proposal WHERE asst_proposal_id = ? FOR UPDATE");
+    });
+
+    it('délai de verrou par défaut : constante nommée exportée', () => {
+      expect(ASST_AMBIGUOUS_LOCK_TIMEOUT_MS).toBe(2000);
+    });
+
+    it.each([AsstProposalStatus.Failed, AsstProposalStatus.Confirmed])(
+      'statut %s relu sous verrou : transaction annulée => compensation UNE fois puis échec normal',
+      async (status) => {
+        quiet();
+        const { run, appliers } = setup({ failCommit: true, locked: [status] });
+        const c = jest.fn(async () => undefined);
+        appliers.brouillon.apply.mockImplementationOnce(async () => ({ effects: [], compensate: c }));
+        const out = await run([brouillon()]);
+        expect(out).toEqual({ ok: false, failure: expect.objectContaining({ kind: 'failed', errorCode: 'effect_failed' }) });
+        expect(c).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it.each([AsstProposalStatus.Proposed, AsstProposalStatus.Expired, AsstProposalStatus.Refused, 9])(
+      'statut inattendu %s relu sous verrou : uncertain, AUCUNE compensation',
+      async (status) => {
+        quiet();
+        const { run, appliers } = setup({ failCommit: true, locked: [status] });
+        const c = jest.fn(async () => undefined);
+        appliers.brouillon.apply.mockImplementationOnce(async () => ({ effects: [], compensate: c }));
+        expect(await run([brouillon()])).toEqual(uncertain);
+        expect(c).not.toHaveBeenCalled();
+      },
+    );
+
+    it('proposition introuvable : uncertain, AUCUNE compensation', async () => {
+      quiet();
+      const { run, appliers } = setup({ failCommit: true, locked: ['absent'] });
+      const c = jest.fn(async () => undefined);
+      appliers.brouillon.apply.mockImplementationOnce(async () => ({ effects: [], compensate: c }));
+      expect(await run([brouillon()])).toEqual(uncertain);
+      expect(c).not.toHaveBeenCalled();
+    });
+
+    it('lock_timeout (55P03) sur tous les essais : uncertain, AUCUNE compensation', async () => {
+      quiet();
+      const { run, appliers, state } = setup({ failCommit: true, locked: [lockTimeoutError()] });
+      const c = jest.fn(async () => undefined);
+      appliers.brouillon.apply.mockImplementationOnce(async () => ({ effects: [], compensate: c }));
+      expect(await run([brouillon()])).toEqual(uncertain);
+      expect(state.lockedReads).toBe(3);
+      expect(c).not.toHaveBeenCalled();
+    });
+
+    it('lock_timeout au 1er essai puis Échec lu au 2e : compensation une fois', async () => {
+      quiet();
+      const { run, appliers, state } = setup({ failCommit: true, locked: [lockTimeoutError(), AsstProposalStatus.Failed] });
+      const c = jest.fn(async () => undefined);
+      appliers.brouillon.apply.mockImplementationOnce(async () => ({ effects: [], compensate: c }));
+      const out = await run([brouillon()]);
+      expect(out.ok).toBe(false);
+      expect(state.lockedReads).toBe(2);
+      expect(c).toHaveBeenCalledTimes(1);
+    });
+
+    it('Appliquée sous verrou mais DTO illisible sur tous les essais : uncertain, AUCUNE compensation', async () => {
+      quiet();
+      const { run, appliers, store } = setup({ failCommit: true, locked: [AsstProposalStatus.Applied] });
+      (store as unknown as { getProposal: jest.Mock }).getProposal = jest.fn(async () => null);
+      const c = jest.fn(async () => undefined);
+      appliers.brouillon.apply.mockImplementationOnce(async () => ({ effects: [], compensate: c }));
+      expect(await run([brouillon()])).toEqual(uncertain);
+      expect(c).not.toHaveBeenCalled();
+    });
   });
 
   it('échec AVANT la fin du callback : annulation certaine, compensation sans relecture', async () => {

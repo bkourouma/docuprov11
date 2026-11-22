@@ -104,7 +104,7 @@ describe('AssistantModule : câblage', () => {
     const ref = await compile();
     for (const token of ALL_TOKENS) {
       const port = ref.get<object>(token);
-      expect(port.constructor.name).not.toMatch(/^NotImplemented/);
+      expect(port.constructor.name).not.toMatch(/^(NotImplemented|Unavailable)/);
     }
   });
 });

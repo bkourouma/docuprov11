@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import {
   ASST_ACTION_TOOL_VALUES,
   AsstActionTool,
@@ -29,6 +29,12 @@ import type { AsstIdentity, AsstProposalStore } from '../assistant.contracts';
 
 /** Options de la transaction interactive (attente du verrou de connexion, durée maximale). */
 export const ASST_EFFECT_TX_OPTIONS = { maxWait: 5_000, timeout: 15_000 } as const;
+
+/**
+ * Attente maximale (ms) du verrou de ligne lors de la relecture d'une issue ambiguë (`SET LOCAL lock_timeout`) :
+ * le verrou attend la fin de la transaction encore en vol ; au-delà, l'erreur 55P03 donne un essai raté.
+ */
+export const ASST_AMBIGUOUS_LOCK_TIMEOUT_MS = 2_000;
 
 /** Liste blanche des outils exécutables par l'assistant (la délégation est exclue en v1). */
 const ALLOWED_TOOLS: ReadonlySet<string> = new Set<string>(ASST_ACTION_TOOL_VALUES);
@@ -88,6 +94,12 @@ interface PreparedAction {
   readonly args: unknown;
 }
 
+/** Issue relue d'une transaction ambiguë. */
+type AmbiguousRead =
+  | { readonly kind: 'applied'; readonly proposal: AsstProposalDto }
+  | { readonly kind: 'rolled_back' }
+  | { readonly kind: 'unknown' };
+
 /** Erreur interne : la transition finale 1 -> 2 a perdu son CAS (la transaction est annulée). */
 class AsstStateLostError extends Error {
   constructor() {
@@ -111,6 +123,8 @@ export class AsstEffectRunner {
   private readonly logger = new Logger(AsstEffectRunner.name);
   /** Délais (ms) entre les relectures d'une issue ambiguë ; modifiable en test. */
   retryDelaysMs: number[] = [200, 500, 1000];
+  /** Attente maximale (ms) du verrou de ligne à chaque relecture d'une issue ambiguë ; modifiable en test. */
+  lockTimeoutMs: number = ASST_AMBIGUOUS_LOCK_TIMEOUT_MS;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -151,10 +165,12 @@ export class AsstEffectRunner {
   }
 
   /**
-   * Issue ambiguë (erreur APRÈS le retour du callback : coupure pendant ou après le COMMIT). On relit l'état avec
-   * quelques essais : « Appliquée » => succès (jamais de compensation) ; « Confirmée »/« Échec » => la transaction a été
-   * annulée, compensation permise ; état inconnu => AUCUNE compensation (un brouillon supprimé alors que tout est
-   * appliqué serait irréparable) : échec `uncertain`, le statut est laissé au balayage `recoverInterrupted`.
+   * Issue ambiguë (erreur APRÈS le retour du callback : coupure pendant ou après le COMMIT). Le statut est relu SOUS
+   * VERROU DE LIGNE (le verrou attend la fin de la transaction encore en vol), avec quelques essais espacés :
+   * « Appliquée » => succès (jamais de compensation) ; « Confirmée »/« Échec » lu sous verrou => la transaction a été
+   * annulée, compensation permise ; TOUT autre cas (statut inattendu, lecture impossible, lock_timeout épuisé,
+   * proposition introuvable) => AUCUNE compensation (un brouillon supprimé alors que tout est appliqué serait
+   * irréparable) : échec `uncertain`, le statut est laissé au balayage `recoverInterrupted`.
    */
   private async resolveAmbiguous(
     input: AsstEffectRunInput,
@@ -163,27 +179,58 @@ export class AsstEffectRunner {
   ): Promise<AsstRunOutcome> {
     const proposalId = input.proposal.proposalId;
     this.logger.error(`issue ambiguë après exécution (proposition ${proposalId}) : ${errorName(err)}`);
-    const current = await this.readWithRetry(input);
-    if (current && current.status === AsstProposalStatus.Applied) return { ok: true, proposal: current };
-    if (current && (current.status === AsstProposalStatus.Confirmed || current.status === AsstProposalStatus.Failed)) {
+    const read = await this.readWithRetry(input);
+    if (read.kind === 'applied') return { ok: true, proposal: read.proposal };
+    if (read.kind === 'rolled_back') {
       await this.compensate(compensations, proposalId);
       return { ok: false, failure: this.toFailure(err, proposalId) };
     }
     return { ok: false, failure: { kind: 'uncertain', errorCode: 'result_uncertain', message: UNCERTAIN_MESSAGE } };
   }
 
-  /** Relit la proposition (quelques essais espacés) ; `null` si l'état reste inconnu. Ne lève jamais. */
-  private async readWithRetry(input: AsstEffectRunInput): Promise<AsstProposalDto | null> {
+  /** Relit l'issue (essais espacés, chacun sous verrou de ligne). Ne lève jamais. */
+  private async readWithRetry(input: AsstEffectRunInput): Promise<AmbiguousRead> {
     for (let attempt = 0; attempt <= this.retryDelaysMs.length; attempt++) {
       if (attempt > 0) await sleep(this.retryDelaysMs[attempt - 1]);
       try {
-        const current = await this.store.getProposal(input.identity.user.userId, input.proposal.proposalId);
-        if (current) return current;
+        const status = await this.readStatusLocked(input.proposal.proposalId);
+        if (status === null) return { kind: 'unknown' }; // introuvable : jamais de compensation
+        if (status === AsstProposalStatus.Applied) {
+          const current = await this.store.getProposal(input.identity.user.userId, input.proposal.proposalId);
+          if (current && current.status === AsstProposalStatus.Applied) return { kind: 'applied', proposal: current };
+          continue; // DTO illisible : essai suivant
+        }
+        if (status === AsstProposalStatus.Confirmed || status === AsstProposalStatus.Failed) {
+          return { kind: 'rolled_back' };
+        }
+        return { kind: 'unknown' }; // statut inattendu (0, 3, 4...) : ambigu
       } catch {
-        // essai suivant
+        // lock_timeout (55P03), connexion coupée... : essai suivant
       }
     }
-    return null;
+    return { kind: 'unknown' };
+  }
+
+  /**
+   * Statut de la proposition lu SOUS VERROU DE LIGNE dans une transaction courte : `lock_timeout` borné puis
+   * `SELECT ... FOR UPDATE`, qui attend la fin (validation ou annulation) de la transaction encore en vol.
+   * `null` si la ligne n'existe pas ; lève si le verrou n'est pas obtenu à temps.
+   */
+  private async readStatusLocked(proposalId: string): Promise<number | null> {
+    if (!/^[1-9]\d{0,18}$/.test(proposalId)) return null;
+    const id = BigInt(proposalId);
+    const ms = Math.max(1, Math.trunc(Number(this.lockTimeoutMs)) || ASST_AMBIGUOUS_LOCK_TIMEOUT_MS);
+    return this.prisma.$transaction(
+      async (tx) => {
+        // `SET LOCAL` n'accepte pas de paramètre lié : entier borné, injecté en littéral.
+        await tx.$executeRaw(Prisma.sql`SET LOCAL lock_timeout = ${Prisma.raw(`'${ms}ms'`)}`);
+        const rows = await tx.$queryRaw<Array<{ status: number }>>(
+          Prisma.sql`SELECT status FROM asst_proposal WHERE asst_proposal_id = ${id} FOR UPDATE`,
+        );
+        return rows.length > 0 ? Number(rows[0].status) : null;
+      },
+      { maxWait: ASST_EFFECT_TX_OPTIONS.maxWait, timeout: ms + 5_000 },
+    );
   }
 
   /** Liste blanche, applicateur du registre, arguments revalidés STRICTEMENT par l'applicateur. */
