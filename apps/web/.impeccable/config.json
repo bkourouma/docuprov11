@@ -1,0 +1,107 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/recommande.html"
+        ],
+        "createdAt": "2026-11-22T17:35:37.125Z",
+        "reason": "agent: maquettes de decision du tour de choix clos (direction Registre retenue par l'utilisateur) ; jamais livrees, conservees comme main ecartee"
+      },
+      {
+        "rule": "undersized-ui-text",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/recommande.html"
+        ],
+        "createdAt": "2026-11-22T17:35:37.313Z",
+        "reason": "agent: maquettes de decision du tour de choix clos (direction Registre retenue par l'utilisateur) ; jamais livrees, conservees comme main ecartee"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/registre.html"
+        ],
+        "createdAt": "2026-11-22T17:35:37.522Z",
+        "reason": "agent: maquettes de decision du tour de choix clos (direction Registre retenue par l'utilisateur) ; jamais livrees, conservees comme main ecartee"
+      },
+      {
+        "rule": "undersized-ui-text",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/registre.html"
+        ],
+        "createdAt": "2026-11-22T17:35:37.696Z",
+        "reason": "agent: maquettes de decision du tour de choix clos (direction Registre retenue par l'utilisateur) ; jamais livrees, conservees comme main ecartee"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/carnet.html"
+        ],
+        "createdAt": "2026-11-22T17:35:37.875Z",
+        "reason": "agent: maquettes de decision du tour de choix clos (direction Registre retenue par l'utilisateur) ; jamais livrees, conservees comme main ecartee"
+      },
+      {
+        "rule": "undersized-ui-text",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/carnet.html"
+        ],
+        "createdAt": "2026-11-22T17:35:38.065Z",
+        "reason": "agent: maquettes de decision du tour de choix clos (direction Registre retenue par l'utilisateur) ; jamais livrees, conservees comme main ecartee"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/canon.html"
+        ],
+        "createdAt": "2026-11-22T17:35:38.288Z",
+        "reason": "agent: maquettes de decision du tour de choix clos (direction Registre retenue par l'utilisateur) ; jamais livrees, conservees comme main ecartee"
+      },
+      {
+        "rule": "undersized-ui-text",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/canon.html"
+        ],
+        "createdAt": "2026-11-22T17:35:38.498Z",
+        "reason": "agent: maquettes de decision du tour de choix clos (direction Registre retenue par l'utilisateur) ; jamais livrees, conservees comme main ecartee"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/recommande.html"
+        ],
+        "createdAt": "2026-11-22T17:47:38.010Z",
+        "reason": "agent: maquettes des directions non retenues (tour de choix clos) ; leurs polices sont volontairement hors de DESIGN.md, elles ne sont pas livrees"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/carnet.html"
+        ],
+        "createdAt": "2026-11-22T17:47:38.251Z",
+        "reason": "agent: maquettes des directions non retenues (tour de choix clos) ; leurs polices sont volontairement hors de DESIGN.md, elles ne sont pas livrees"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/canon.html"
+        ],
+        "createdAt": "2026-11-22T17:47:38.440Z",
+        "reason": "agent: maquettes des directions non retenues (tour de choix clos) ; leurs polices sont volontairement hors de DESIGN.md, elles ne sont pas livrees"
+      }
+    ]
+  }
+}

@@ -5,7 +5,7 @@ import { Breadcrumb, Grid, Typography } from 'antd';
 import Link from 'next/link';
 import { motion } from 'motion/react';
 import { fadeUp } from '../theme/motion';
-import { icons, iconDefaults, type IconName } from '../theme/icons';
+import type { IconName } from '../theme/icons';
 import { fontSize } from '../theme/tokens';
 
 export interface Crumb {
@@ -18,26 +18,29 @@ export interface Crumb {
  * fil d'Ariane optionnel, titre (display), actions à droite. Les actions passent
  * sous le titre en mobile.
  *
+ * Le titre porte seul l'en-tête : la pastille d'icône qui le précédait a été retirée. La
+ * prop `icon` reste acceptée (une soixantaine de pages la passent) mais n'est plus rendue —
+ * l'icône de l'écran vit dans la navigation, pas à côté de son nom.
+ *
  * Pas de sous-titre : les descriptions grises sous les titres d'écran ont été retirées de
  * toute l'application (2026-09-08). Ne pas réintroduire de prop `description` ici.
  */
 export function PageHeader({
   title,
-  icon,
   breadcrumb,
   actions,
 }: {
   title: string;
+  /** Conservée pour compatibilité ; n'est plus rendue. */
   icon?: IconName;
   breadcrumb?: Crumb[];
   actions?: ReactNode;
 }) {
   const screens = Grid.useBreakpoint();
   const stacked = !screens.sm;
-  const Glyph = icon ? icons[icon] : null;
 
   return (
-    <motion.header variants={fadeUp} initial="hidden" animate="show" style={{ marginBottom: 24 }}>
+    <motion.header variants={fadeUp} initial="hidden" animate="show" style={{ marginBottom: 20 }}>
       {breadcrumb && breadcrumb.length > 0 && (
         <Breadcrumb
           style={{ marginBottom: 10, fontSize: fontSize.sm }}
@@ -50,41 +53,30 @@ export function PageHeader({
         style={{
           display: 'flex',
           flexDirection: stacked ? 'column' : 'row',
-          alignItems: stacked ? 'stretch' : 'flex-end',
+          // Centré dans une rangée de 36 px (la hauteur d'un bouton) : le titre garde la même
+          // assise qu'il y ait des actions à droite ou non.
+          alignItems: stacked ? 'stretch' : 'center',
+          minHeight: stacked ? undefined : 36,
           justifyContent: 'space-between',
           gap: 16,
         }}
       >
-        <div style={{ display: 'flex', gap: 14, alignItems: 'center', minWidth: 0 }}>
-          {Glyph && (
-            <span
-              style={{
-                display: 'grid',
-                placeItems: 'center',
-                width: 44,
-                height: 44,
-                flex: 'none',
-                // Pastille = cercle (grille de rondeur §4.2) ; teintes prises aux
-                // variables AntD pour suivre clair/sombre sans logique JS.
-                borderRadius: 'var(--da-radius-pill)',
-                background: 'var(--ant-color-primary-bg)',
-                color: 'var(--ant-color-primary)',
-              }}
-            >
-              <Glyph size={22} strokeWidth={iconDefaults.strokeWidth} />
-            </span>
-          )}
-          <div style={{ minWidth: 0 }}>
-            {/* Titre d'écran Plus Admin : 24 px / 600 — la graisse est explicite car
-                `.da-display` n'est plus qu'un alias de police (plus de famille display). */}
-            <Typography.Title
-              level={2}
-              className="da-display"
-              style={{ margin: 0, fontSize: fontSize.xl, fontWeight: 600, lineHeight: 1.2 }}
-            >
-              {title}
-            </Typography.Title>
-          </div>
+        <div style={{ minWidth: 0 }}>
+          {/* Titre d'écran : Archivo étroit et gras (`.da-display`), 30 px — 24 px quand les
+              actions passent dessous, pour qu'un titre long ne prenne pas trois lignes. */}
+          <Typography.Title
+            level={1}
+            className="da-display"
+            style={{
+              margin: 0,
+              fontSize: stacked ? fontSize.xl : fontSize.xxl,
+              fontWeight: 700,
+              lineHeight: 1.1,
+              textWrap: 'balance',
+            }}
+          >
+            {title}
+          </Typography.Title>
         </div>
         {actions && (
           <div

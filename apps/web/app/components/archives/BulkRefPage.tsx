@@ -102,10 +102,14 @@ export function BulkRefPage<T>({
       } ${nomNu}`
     : formTitle;
 
+  // Échec du chargement : le référentiel ne doit pas s'annoncer vide (cf. RefLayout).
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     try {
       setRows(await api.list());
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     }
     // `api` est un objet de module (une constante), son identité ne change pas d'un rendu à
@@ -205,6 +209,8 @@ export function BulkRefPage<T>({
 
   return (
     <RefLayout
+      loadFailed={loadFailed && rows.length === 0}
+      onRetry={load}
       icon={icon}
       title={title}
       tableTitle={tableTitle}

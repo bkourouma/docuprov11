@@ -22,6 +22,14 @@ import { fontSize, space } from '../theme/tokens';
  *
  * Le formulaire est fourni via `renderForm(close)` : la page appelle `close()`
  * après une création réussie pour refermer le Drawer mobile.
+ *
+ * Le tableau court BORD À BORD dans sa carte, comme les listes de courriers : c'est le même
+ * papier de registre. Ce qui l'accompagne (barre de lot, filtre, alerte, squelette, état
+ * vide) garde sa gouttière — règles `.da-ref-card` de globals.css.
+ *
+ * `loadFailed` : la page signale que la lecture a échoué ET qu'elle n'a rien à montrer. La
+ * carte dit alors l'échec et propose de réessayer, au lieu d'afficher « Ce référentiel est
+ * vide » — un registre qui n'a pas pu être lu n'est pas un registre vide.
  */
 export function RefLayout({
   icon,
@@ -33,6 +41,8 @@ export function RefLayout({
   formTitle,
   renderForm,
   tableSpan = 15,
+  loadFailed = false,
+  onRetry,
 }: {
   icon: IconName;
   title: string;
@@ -44,11 +54,26 @@ export function RefLayout({
   formTitle: string;
   renderForm: (close: () => void) => ReactNode;
   tableSpan?: number;
+  /** La lecture a échoué et la page n'a aucune ligne à montrer. */
+  loadFailed?: boolean;
+  /** Relance la lecture depuis l'état d'échec ; la promesse rendue pilote l'attente du bouton. */
+  onRetry?: () => void | Promise<void>;
 }) {
   const { message } = App.useApp();
   const screens = Grid.useBreakpoint();
   const isWide = screens.lg;
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Relecture en cours depuis l'état d'échec : le bouton tourne, la carte ne reste pas muette.
+  const [retrying, setRetrying] = useState(false);
+  const retry = async () => {
+    if (!onRetry) return;
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const onExport = async (format: 'xlsx' | 'pdf') => {
     if (!exportPath) return;
@@ -123,8 +148,27 @@ export function RefLayout({
       <Row gutter={[16, 16]} align="top">
         <Col xs={24} lg={isWide ? tableSpan : 24}>
           <ConfigProvider renderEmpty={renderTableEmpty}>
-            <Card variant="outlined" title={tableTitle}>
-              {table}
+            <Card
+              variant="outlined"
+              title={tableTitle}
+              className="da-ref-card"
+              styles={{ body: { padding: 0 } }}
+            >
+              {loadFailed ? (
+                <EmptyState
+                  icon="alert"
+                  title="Le référentiel n’a pas pu être chargé"
+                  action={
+                    onRetry ? (
+                      <Button loading={retrying} onClick={() => void retry()}>
+                        Réessayer
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : (
+                table
+              )}
             </Card>
           </ConfigProvider>
         </Col>

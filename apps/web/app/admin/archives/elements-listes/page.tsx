@@ -47,12 +47,16 @@ function MetaDataListItemsScreen() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
 
+  // Échec du chargement : le référentiel ne doit pas s'annoncer vide (cf. RefLayout).
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     try {
       const [i, m] = await Promise.all([metaDataListItemsApi.list(), metaDatasApi.list()]);
       setItems(i);
       setMetaDatas(m);
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     }
   }, [message]);
@@ -173,6 +177,8 @@ function MetaDataListItemsScreen() {
 
   return (
     <RefLayout
+      loadFailed={loadFailed && items.length === 0}
+      onRetry={load}
       icon="menu"
       title="Éléments des listes"
       tableTitle="Valeurs de liste"

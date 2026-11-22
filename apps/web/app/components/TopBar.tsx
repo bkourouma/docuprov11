@@ -1,39 +1,24 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
-import { Avatar, Button, Dropdown, Grid, Typography, type MenuProps } from 'antd';
+import { usePathname } from 'next/navigation';
+import { Button, Grid } from 'antd';
 import { icons } from '../theme/icons';
 import { radii } from '../theme/tokens';
-import { OFF_MENU_TITLES, activeItem } from './nav';
+import { OFF_MENU_TITLES, placeOfPath } from './nav';
 import { LogoIcon } from './BrandMark';
 import { NotificationsBell } from './NotificationsBell';
-
-interface Me {
-  username: string;
-  fullName: string | null;
-  isAdmin: boolean;
-}
-
-function initials(me: Me | null): string {
-  const base = me?.fullName || me?.username || '?';
-  const parts = base.trim().split(/\s+/);
-  return (parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '');
-}
+import { UserMenu, type ShellUser } from './UserMenu';
 
 /**
- * Barre supérieure « Plus Admin » : bleu roi plein CONSTANT entre les thèmes
- * (îlot `--da-topbar-*`, PRD relook §4.4), bouton de repli, titre de la page,
- * recherche globale (palette ⌘K), cloche, menu utilisateur.
+ * Barre supérieure « Registre » : posée sur le fond de page, un filet pour seule limite.
+ * Elle dit OÙ l'on est (fil d'Ariane module / geste / écran) et donne la recherche globale
+ * (palette Ctrl+K), l'assistant et la cloche.
  *
- * Le thème sombre n'est pas proposé : sa bascule a été retirée de la barre à la
- * demande de l'utilisateur, l'application reste en clair (cf. `Providers`).
+ * Le menu utilisateur vit au pied du rail des modules sur un poste de bureau ; il ne revient
+ * ici qu'en mobile, où le rail est rangé dans le tiroir de navigation.
  *
- * Le bouton de repli est un bouton texte discret, identique aux autres actions de
- * la barre : la languette rose #ff0854 de la §4.4 (« signature n°2 ») a été retirée
- * à la demande de l'utilisateur.
- *
- * Les popovers (cloche, menu utilisateur) sont portalés hors de l'îlot et
- * restent rendus sous le thème ambiant.
+ * Le thème sombre n'est pas proposé : l'application reste en clair (cf. `Providers`).
+ * Les popovers (cloche, menu utilisateur) sont portalés hors de la barre.
  */
 export function TopBar({
   me,
@@ -44,8 +29,8 @@ export function TopBar({
   onLogout,
   onOpenAssistant,
 }: {
-  me: Me | null;
-  /** État replié de la sidebar (desktop) — pilote le libellé de la languette. */
+  me: ShellUser | null;
+  /** Panneau des écrans replié (poste de bureau) — pilote le libellé et le glyphe du bouton. */
   collapsed: boolean;
   onToggleSider: () => void;
   onOpenMenu: () => void;
@@ -55,50 +40,19 @@ export function TopBar({
   onOpenAssistant?: () => void;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const screens = Grid.useBreakpoint();
   const isMobile = !screens.lg;
 
-  const current = activeItem(pathname);
+  const place = placeOfPath(pathname);
   const Search = icons['search'];
   // Desktop : le glyphe dit dans quel sens le clic agit (replier / déplier). Mobile : hamburger.
   const Toggle = isMobile ? icons['menu'] : collapsed ? icons['expand'] : icons['collapse'];
-
-  const userMenu: MenuProps['items'] = [
-    {
-      key: 'who',
-      disabled: true,
-      label: (
-        <div style={{ padding: '2px 0' }}>
-          <div style={{ fontWeight: 600 }}>{me?.fullName ?? me?.username ?? '—'}</div>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {me?.username}
-            {me?.isAdmin ? ' · admin' : ''}
-          </Typography.Text>
-        </div>
-      ),
-    },
-    { type: 'divider' },
-    {
-      key: 'profile',
-      icon: <icons.users size={16} strokeWidth={1.75} />,
-      label: 'Mon profil',
-      onClick: () => router.push('/profil'),
-    },
-    { type: 'divider' },
-    {
-      key: 'logout',
-      icon: <icons.logout size={16} strokeWidth={1.75} />,
-      label: 'Déconnexion',
-      onClick: onLogout,
-    },
-  ];
 
   return (
     <header
       className="da-topbar"
       style={{
-        height: 60,
+        height: 56,
         display: 'flex',
         alignItems: 'center',
         gap: 12,
@@ -108,53 +62,61 @@ export function TopBar({
         zIndex: 20,
       }}
     >
-      {/* Repli de la sidebar (desktop) / ouverture du drawer (mobile). */}
+      {/* Repli du panneau des écrans (desktop) / ouverture du tiroir (mobile). */}
       <Button
         type="text"
         aria-label={
           isMobile
             ? 'Ouvrir le menu'
             : collapsed
-              ? 'Déplier la barre latérale'
-              : 'Replier la barre latérale'
+              ? 'Déplier le panneau des écrans'
+              : 'Replier le panneau des écrans'
         }
         icon={<Toggle size={20} strokeWidth={1.75} />}
         onClick={isMobile ? onOpenMenu : onToggleSider}
       />
 
-      {isMobile && <LogoIcon size={26} />}
+      {/* Le logo vit dans le panneau des écrans : il revient ici quand celui-ci n'est pas à
+          l'écran (mobile, ou panneau replié), pour que la marque ne disparaisse jamais. */}
+      {(isMobile || collapsed) && <LogoIcon size={26} />}
 
       {/*
-        Le titre absorbe l'espace disponible (`flex: 1 1 auto`) et peut RÉTRÉCIR
-        (`minWidth: 0`). En mobile il n'est PAS affiché — la place est trop courte,
-        et l'écran courant est déjà signalé par l'item actif du tiroir de navigation —
-        mais le bloc reste en place pour pousser les actions vers la droite.
+        Le fil d'Ariane absorbe l'espace disponible (`flex: 1 1 auto`) et peut RÉTRÉCIR
+        (`minWidth: 0`). En mobile il n'est PAS affiché — la place est trop courte, et l'écran
+        courant est déjà signalé dans le tiroir de navigation — mais le bloc reste en place
+        pour pousser les actions vers la droite.
       */}
       <div style={{ minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
         {!isMobile && (
-          <span
-            style={{
-              // Titre : encre atténuée du design system — 10,8:1 sur la barre verte.
-              color: 'var(--da-on-topbar-muted)',
-              fontSize: 16,
-              fontWeight: 600,
-              display: 'block',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {current?.label ?? OFF_MENU_TITLES[pathname] ?? 'Docu-Archives'}
-          </span>
+          <nav className="da-crumbs" aria-label="Emplacement dans l’application">
+            {place ? (
+              <>
+                <span>{place.module.label}</span>
+                <span className="da-crumb-sep" aria-hidden>
+                  /
+                </span>
+                <span>{place.group.label}</span>
+                <span className="da-crumb-sep" aria-hidden>
+                  /
+                </span>
+                <span className="da-crumb-here" aria-current="page">
+                  {place.item.label}
+                </span>
+              </>
+            ) : (
+              <span className="da-crumb-here" aria-current="page">
+                {OFF_MENU_TITLES[pathname] ?? 'DocuPro'}
+              </span>
+            )}
+          </nav>
         )}
       </div>
 
       {/*
-        Déclencheur de recherche globale. Le faux champ « Rechercher… » ne tient pas sur un
-        téléphone (240 px minimum), mais le masquer purement et simplement — ce qui était le cas
-        — rendait la recherche globale INATTEIGHABLE en mobile : le seul autre point d'entrée est
-        le raccourci Ctrl+K, qu'un téléphone n'a pas. On conditionne donc la FORME, pas la
-        présence : bouton-icône sous 992 px, faux champ au-dessus.
+        Déclencheur de recherche globale. Le faux champ ne tient pas sur un téléphone, mais le
+        masquer purement et simplement rendrait la recherche globale INATTEIGNABLE en mobile : le
+        seul autre point d'entrée est le raccourci Ctrl+K, qu'un téléphone n'a pas. On conditionne
+        donc la FORME, pas la présence : bouton-icône sous 992 px, faux champ au-dessus.
       */}
       {isMobile ? (
         <button
@@ -180,36 +142,36 @@ export function TopBar({
       ) : (
         <button
           onClick={onOpenPalette}
-          aria-label="Recherche globale (Ctrl+K)"
+          aria-label="Aller à un écran (Ctrl+K)"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
-            height: 36,
-            padding: '0 10px 0 12px',
-            minWidth: 240,
-            // Voiles pris aux variables de la barre : écrits en dur, ils supposaient un
-            // fond sombre et disparaissaient dès que la barre est passée au clair.
-            border: '1px solid var(--da-topbar-line)',
-            // Déclencheur dessiné à la main : il imite un champ, il en suit donc le rayon.
+            gap: 10,
+            height: 34,
+            padding: '0 8px 0 12px',
+            minWidth: 300,
+            flex: 'none',
+            // Déclencheur dessiné à la main : il imite un champ, il en suit donc la bordure de
+            // contrôle (3,4:1) et le rayon.
+            border: '1px solid var(--da-topbar-field-line)',
             borderRadius: radii.field,
             background: 'var(--da-topbar-field)',
-            color: 'var(--da-on-topbar)',
+            color: 'var(--da-on-topbar-muted)',
+            fontFamily: 'inherit',
             cursor: 'pointer',
           }}
         >
           <Search size={16} strokeWidth={1.75} />
-          <span style={{ flex: 1, textAlign: 'left', fontSize: 13, fontWeight: 400 }}>
-            Rechercher…
-          </span>
+          <span style={{ flex: 1, textAlign: 'left', fontSize: 13 }}>Aller à un écran</span>
           <kbd
             style={{
-              fontFamily: 'var(--font-geist-mono, monospace)',
+              fontFamily: 'inherit',
               fontSize: 11,
+              fontWeight: 600,
               padding: '2px 6px',
               borderRadius: 4,
               border: '1px solid var(--da-topbar-line)',
-              background: 'transparent',
+              background: 'var(--da-topbar-bg)',
               color: 'var(--da-on-topbar)',
             }}
           >
@@ -230,53 +192,7 @@ export function TopBar({
 
       <NotificationsBell />
 
-      <Dropdown menu={{ items: userMenu }} trigger={['click']} placement="bottomRight">
-        <button
-          aria-label="Menu utilisateur"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            border: 'none',
-            background: 'transparent',
-            cursor: 'pointer',
-            padding: '4px 6px',
-            // Bouton dessiné à la main, voisin des boutons AntD de la barre : même rayon.
-            borderRadius: radii.field,
-          }}
-        >
-          <Avatar
-            size={32}
-            style={{
-              // Pastille pleine, et non l'inverse encre/fond de la barre : sur une barre
-              // claire, celui-ci donnait un disque noir à texte vert pâle.
-              background: 'var(--da-topbar-avatar-bg)',
-              color: 'var(--da-topbar-avatar-fg)',
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            {initials(me).toUpperCase() || '?'}
-          </Avatar>
-          {!isMobile && (
-            <span style={{ textAlign: 'left', lineHeight: 1.2 }}>
-              <span
-                style={{
-                  display: 'block',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: 'var(--da-on-topbar)',
-                }}
-              >
-                {me?.fullName ?? me?.username ?? '—'}
-              </span>
-              {me?.isAdmin && (
-                <span style={{ fontSize: 11, color: 'var(--da-on-topbar-muted)' }}>admin</span>
-              )}
-            </span>
-          )}
-        </button>
-      </Dropdown>
+      {isMobile && <UserMenu me={me} onLogout={onLogout} variant="bar" />}
     </header>
   );
 }

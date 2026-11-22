@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>DocuPro · Carnet à souches</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&family=Spline+Sans+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--vio:#3F2A8C;--vio2:#33217A;--ink:#1B1A3A;--mut:#5C5A78;--ground:#F7F4FB;--line:#DAD4EA;--pink:#FBE3EA;--perf:#D79AB0;--red:#D21F3C;--mono:'Spline Sans Mono',ui-monospace,monospace;--caps:'Barlow Semi Condensed',sans-serif}
+html,body{width:1440px;height:900px;overflow:hidden}
+body{font:14.5px/1.4 'Barlow',system-ui,sans-serif;color:var(--ink);background:var(--ground);font-variant-numeric:tabular-nums}
+::selection{background:var(--vio);color:#fff}
+a{color:inherit;text-decoration:none}
+svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+/* barre de modules, sans menu latéral */
+.top{height:56px;background:var(--vio);display:flex;align-items:flex-end;padding:0 40px;color:#fff}
+.plate{background:#fff;border-radius:4px;height:36px;padding:0 14px;display:grid;place-items:center;margin:0 28px 10px 0}
+.plate img{height:26px;display:block}
+.mods{display:flex}
+.mods a{height:44px;padding:0 16px;display:flex;align-items:center;white-space:nowrap;font:600 14px var(--caps);letter-spacing:.06em;text-transform:uppercase;color:#D3CAF0;border-radius:6px 6px 0 0}
+.mods a.on{background:#fff;color:var(--vio)}
+.right{margin-left:auto;display:flex;align-items:center;gap:8px;height:56px}
+.find{width:340px;height:36px;white-space:nowrap;border-radius:6px;background:var(--vio2);border:1px solid #6450B4;color:#D3CAF0;display:flex;align-items:center;gap:10px;padding:0 10px 0 12px;font-size:13.5px}
+kbd{margin-left:auto;font:500 11px var(--mono);border:1px solid #7C69C8;border-radius:4px;padding:2px 6px;color:#E6E0F8}
+.ico{width:36px;height:36px;display:grid;place-items:center;color:#E6E0F8}
+.me{display:flex;align-items:center;gap:10px;font-weight:500;font-size:13.5px}
+.me i{width:32px;height:32px;border-radius:50%;background:#fff;color:var(--vio);display:grid;place-items:center;font:600 12px 'Barlow',system-ui,sans-serif;font-style:normal}
+/* onglets des écrans du module */
+.tabs{height:46px;background:#fff;border-bottom:1px solid var(--line);display:flex;padding:0 40px;gap:2px}
+.tabs a{display:flex;align-items:center;gap:8px;padding:0 13px;white-space:nowrap;font-weight:500;color:#3A3857;box-shadow:inset 0 -3px 0 transparent}
+.tabs a:first-child{padding-left:0}
+.tabs a.on{color:var(--vio);font-weight:600;box-shadow:inset 0 -3px 0 var(--vio)}
+.tabs .more{margin-left:auto}.tabs .more::after{content:"";border:4px solid transparent;border-top-color:var(--mut);margin-top:5px}
+.tabs b{font:500 11px var(--mono);background:var(--ground);border-radius:999px;padding:2px 7px;color:var(--vio)}
+main{padding:24px 40px 0}
+.head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
+h1{font:600 30px/1.1 'Barlow',system-ui,sans-serif;letter-spacing:-.01em}
+.head p{color:var(--mut);margin-top:5px;font-size:13.5px}
+.btn{height:36px;padding:0 16px;border-radius:6px;font:600 14px 'Barlow',system-ui,sans-serif;display:inline-flex;align-items:center;border:1px solid #9C96B8;background:#fff}
+.btn.pri{background:var(--vio);border-color:var(--vio);color:#fff;margin-left:8px}
+/* signature : le carnet de coupons, une case par étape du parcours */
+.book{display:grid;grid-template-columns:repeat(5,1fr);background:var(--pink);border:1px solid var(--perf);border-radius:6px;margin-bottom:16px;overflow:hidden}
+.cp{padding:12px 22px 14px;border-left:1px dashed var(--perf);position:relative;display:block}
+.cp:first-child{border-left:0}
+.cp+.cp::before,.cp+.cp::after{content:"";position:absolute;left:-8px;width:14px;height:14px;border-radius:50%;background:var(--ground);border:1px solid var(--perf)}
+.cp+.cp::before{top:-8px}.cp+.cp::after{bottom:-8px}
+.cp.on{background:#fff}
+.cp span{font:600 12.5px/1 var(--caps);letter-spacing:.1em;text-transform:uppercase;color:#7A3A52;display:block}
+.cp b{display:block;font:500 34px/1.15 var(--mono);color:var(--vio);letter-spacing:-.03em;margin-top:6px}
+.cp em{font-style:normal;font-size:13px;color:#6B4A58}
+.cp em strong{color:var(--red);font-weight:600}
+.tools{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13.5px;color:var(--mut)}
+.tools p{margin-right:auto}.tools strong{color:var(--ink)}
+.sel{height:34px;border:1px solid #9C96B8;border-radius:6px;background:#fff;padding:0 12px;display:flex;align-items:center;gap:10px;color:var(--ink)}
+.sel::after{content:"";border:4px solid transparent;border-top-color:var(--mut);margin-top:5px}
+.seg{display:flex;border:1px solid #9C96B8;border-radius:6px;background:#fff;overflow:hidden;color:var(--ink)}
+.seg a{height:32px;padding:0 13px;display:flex;align-items:center;font-weight:500;border-left:1px solid var(--line)}
+.seg a:first-child{border-left:0}.seg a.on{background:var(--vio);color:#fff}
+/* tableau */
+.tbl{background:#fff;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th{font:600 12.5px/1 var(--caps);letter-spacing:.1em;text-transform:uppercase;color:var(--mut);text-align:left;padding:0 18px;height:36px;border-bottom:1px solid var(--line);background:#FCFBFE}
+th.sort{color:var(--vio)}th.sort::after{content:"";display:inline-block;border:4px solid transparent;border-bottom-color:var(--vio);margin:0 0 2px 6px}
+td{padding:0 18px;height:46px;border-bottom:1px solid #ECE8F5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+tr:last-child td{border-bottom:0}
+.no{font:500 13.5px var(--mono);color:var(--vio)}.no i{font-style:normal;color:var(--mut);margin-right:10px}
+.obj b{font-weight:600;display:block;line-height:1.25;overflow:hidden;text-overflow:ellipsis}.obj small{font-size:12.5px;color:var(--mut);display:block;line-height:1.25}
+.u{font:700 11px/1 var(--caps);font-style:normal;letter-spacing:.1em;text-transform:uppercase;color:var(--red);margin-left:10px}
+.legs{display:inline-flex;vertical-align:middle;margin-right:12px}
+.legs i{width:30px;height:22px;border:1px solid #A99EDB;border-left-style:dashed;margin-left:-1px;display:grid;place-items:center;font:600 11px/1 var(--caps);font-style:normal;color:#6E659C;background:#fff}
+.legs i:first-child{border-left-style:solid;border-radius:3px 0 0 3px;margin-left:0}.legs i:last-child{border-radius:0 3px 3px 0}
+.legs .ok{background:var(--vio);border-color:var(--vio);color:#fff}
+.legs .now{border:1.5px solid var(--vio);color:var(--vio);font-weight:700;position:relative}
+.leg{font-weight:500;font-size:13.5px}
+.due{font:500 13.5px var(--mono);color:var(--vio)}.due i{font:500 13px 'Barlow',system-ui,sans-serif;font-style:normal;color:var(--mut);margin-left:10px}
+.late .due,.late .due i,.late .leg{color:var(--red);font-weight:600}.late .legs .now{border-color:var(--red);color:var(--red)}
+.void td,.void .no,.void .obj small{color:#5F5D7A}.void .obj b{text-decoration:line-through}
+.void .legs i{border-color:#E3A2AF;color:#B4475A}
+.vd{font:700 11.5px/1 var(--caps);letter-spacing:.12em;text-transform:uppercase;color:var(--red);border:1.5px solid var(--red);border-radius:3px;padding:3px 7px}
+.fi{width:30px;height:30px;border:1px solid var(--line);border-radius:6px;display:grid;place-items:center;color:var(--vio)}
+.foot{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;color:var(--mut);font-size:13.5px}
+.pg{display:flex;gap:4px}.pg a{min-width:32px;height:32px;padding:0 10px;border-radius:6px;display:grid;place-items:center;font-weight:500;color:var(--ink)}.pg a.on{background:var(--vio);color:#fff}
+</style></head>
+<body>
+<header class="top">
+  <div class="plate"><img alt="DocuPro" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAAAyCAMAAAAuj2TTAAABPlBMVEVHcEzsra//ZWb/hn//WVr/jIz/eHby3t/3ysn/bGwwer76qqj/g4P6upr/YmP/ZWb/XF3/XV7umZT+joj/enj/aGn/fX7/bG3/mY7/YWL+endtruD/Wlv2iHD/cHH+enD/cHH/X2D/ZWX2h2//X2D/YmP+b2f+bWorKysODg4kJCQ4ODj/YGEUFBRFRUVonsL3ji/zglq5nnTzh2A2f8FintNhpdrzt3L4rYrelj31kFTxV0lNTU1RlM44f8JXlMw9g8NLjMj8y5Rrqtv/3zVFRUX/3zH/V1gteL1TnNUwe7/3kx3vQjZeotj0fFxOl9JAicg3gcP4miv8ypJHkM3wlSdmqdxysuKdyOP/2R12teTya0fxVTyPyPD7tST9xyH5pSZ/m6X4mR+ZmIXAl13hlDWWveBro9OqvsD2i3F/9QyMAAAAR3RSTlMADbRR/Cd9AgWKwxVc5uSn884dN3DNQJJA2Gb++P6FjlzgvvbtihKbmO25c4DYV/737fbR6U/Zbavyts08eNE5r2bFiaeVvyBizQMAAAAJcEhZcwAACxMAAAsTAQCanBgAAAWaSURBVGiB3Zp3e9pIEMYlVDlswEh0DguCQ4nx+RzXOO0qKshAjhJjkzg5p9z3/wK3RYsKTS5nw80f9j6r1Wh/u+/MjmRT1CKj5edrwsJRS28C8/zs4pQWVx1FenF2dtk8Tf35e+ixp3IXC23+fHbRbF5enZ9/YATxsadzWxMzCKO5CzA+G0e/HR489oxuZUIKBMdls3nx8fzjldG7/knr/rCKgcKVYXAgVV0ZxsknrdVRVxAkJOPgeIdU9eVvrdVW1dUDQSkXbMcuUNVnw9gDqtLVpQMRgIkUOhdmHA445TYvPsDgMK4/ad2Oqi4fyLN6tVrfqddFaqf6bMp1Z8o1jC8oOKB1TX25QES6VqHFanVHqE0BoV0ptweDA6mqnR20lgxEoGoViqpWarF6bRLk2JFyjWsSHLo5MG+QtaB6/zNmh28EslOvVCZBhPV/gKpwcJwQVemtoTktazFBYnk5QSoYMZEPxMPhcLwYTJBSgE5keGsgB0IQNng4PsRbXYLi8BRDbuSxc56JkSfGlEg8HQ6n45EMNwapVF/WJ3dk/cfmhZ1ysaoGfQ20OppHWuJGwza2kEHTjgVydl+Rw8Bpdty3TVER1GDgBdTKA6KCyxN4DBd1OC9l8CorYBhxVeJF6g8w/9rLlxWhsjMN5Oyvd0YPpFyM0ekPYNbqmMO5IMBkuPZFV1eahtNlHT1bBGRtDLIJQMLOu3KMB6QRldCC5Jx9rGxLbYqOMUiPpFxdG8LgAOLqA3HNBykAtSRYd58C2OLODj8gjbjoAWkE4fPci9QozC1iLZD3Jk65gz7UV3uQRfszH4RNUBTv7mqUwdq62Lb9gLAhL0gA7nbJ7TvH+QVpZ7Mwa1ni0rvTQba2t7eiZG5J1NhgUkwAtSIUlcJzCyS3oHFzQEpyRsbBwlkgaUnKo3UIgCc/RS02n0rJ6CIr+QT5NjDh/LG4VJC5pscITCllNwiMzRRZSdzYsHUwEyQMIiroAoEaK5EdwSAo7NAqQQX4AvlqtpG4oKrah+DX9B2BIEE3CJyk5AYJ2PfNBeEnQFAjeBeQjm6LK4uC/wFAki6QcCaDRhe4u4CAlOsUl+492e8dJBopR6KWT3ewh/P0HUBaA3SeE3Fl+7Nj5H5AxlaivVmrERFvD/LebOuuzPVgIGVhAgSkqFuDtDukWCSZ64FAYER4QUAmvH2MkGLROhbngJTdIH7SLxyz5gFhWTZXSpehRwxSUICl0TXZCVK82Y5kcbHYz1rF/HSQZD6fnHkgBsjWgAMRWnB8IKYzTAY7yI8PRInjuBiNnI/TL9luAIJKrdzND8SvJi4WTesV8b5KlE3PGHkMQtvOHSB5axTtDiT/JQo4AXGxqKu+QGYVja5hoGhU3GNyCZ8gdygaYcrCGHq3u6hoZKHqxWllvLP63vKSNQKiT5AZZfxiEKtYRC8lg6zZ0ueB5NIKfrGK2E/LBdDmC8yG3bdNuV++ohH0qohqxfB0ECxXuExKYbyZbEme/yl6/YkdI30SHPqwr2kTtRaV4InJikTcCpIcKcbj8WKEl8hwUVJka2QMj+GtMTLWucDAa4zDvbgGe1Be4tAT0I00kwygG8tKjJpvDpBvXRIcZhZwaN4yfraJ0PyNufE3CsGPc8oG6au26UPIMbkjS21ukA6s5MGBiEC8MbLchkGM7wP0wj4amUBerT5W1iqC7I20dms0ymogV6ltCNKaSL/LbRZI7/toNBqaeP56S0NFyts3jz27G5gFgj6XatZGABTw8/XBCu2HAwR+wB6DqOr+K3rxzctkNgj6kwLZkbeLzp+lMyeI0ds7RCCv36yUqpA5QXaPaPrVvrr/yyr+gd0RI5tITqGD1fyXh+Mnp8cI5MXc96/lN1ESjwDICbOKcvJY6tdd/uljT+JeLLZyufZ/Zf8C5T3gkmRzFbwAAAAASUVORK5CYII="></div>
+  <nav class="mods"><a>Docu-Archives</a><a>Docu-Flow</a><a class="on">Docu-Courriers</a><a>Paramétrage</a><a>Administration</a></nav>
+  <div class="right"><div class="find"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg>Rechercher un numéro, un objet, un écran<kbd>Ctrl K</kbd></div>
+  <a class="ico" aria-label="Notifications"><svg viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></svg></a><a class="me" aria-label="Bureau d'ordre"><i>BO</i></a></div>
+</header>
+<nav class="tabs"><a>Tableau de bord</a><a>Enregistrement</a><a>Courriers arrivés<b>14</b></a><a>Documents scannés<b>6</b></a><a>Courriers imputés<b>9</b></a><a class="on">Suivi des courriers<b>7</b></a><a>Validation<b>5</b></a><a class="more">Plus<b>3</b></a></nav>
+<main>
+  <div class="head">
+    <div><h1>Suivi des courriers</h1><p>Données de démonstration, arrêtées au 22/11/2026 à 10 h 42</p></div>
+    <div><a class="btn">Exporter</a><a class="btn pri">Enregistrer un courrier</a></div>
+  </div>
+  <section class="book" aria-label="Parcours du courrier">
+    <a class="cp"><span>Enregistrés</span><b>14</b><em>arrivés, à contrôler</em></a>
+    <a class="cp"><span>Imputés</span><b>9</b><em>en attente de prise en charge</em></a>
+    <a class="cp on"><span>En traitement</span><b>38</b><em>dont <strong>7 en retard</strong></em></a>
+    <a class="cp"><span>À valider</span><b>5</b><em>transmis à la direction</em></a>
+    <a class="cp"><span>À décharger</span><b>3</b><em>décharges à intégrer</em></a>
+  </section>
+  <div class="tools"><p><strong>38 courriers</strong> en traitement, triés par date butoir</p><div class="seg"><a class="on">Tous</a><a>En retard</a><a>Cette semaine</a><a>Urgents</a></div><div class="sel">Sens : tous</div><div class="sel">Destinataire : tous</div></div>
+  <div class="tbl"><table>
+    <thead><tr><th style="width:164px">N° enregistrement</th><th>Objet et correspondant</th><th style="width:200px">Destinataire</th><th style="width:290px">Parcours</th><th style="width:176px" class="sort">Date butoir</th><th style="width:66px"></th></tr></thead>
+    <tbody>
+    <tr class="late"><td class="no"><i>A</i>2026-1836</td><td class="obj"><b>Demande d'attestation de propriété, TF 104 552</b><small>Étude notariale de la Riviera</small></td><td>Service juridique</td><td><span class="legs"><i class="ok">E</i><i class="ok">I</i><i class="now">T</i><i>V</i><i>D</i></span><span class="leg">Traitement</span></td><td class="due">19/11<i>retard 3 j</i></td><td><a class="fi" aria-label="Fiche d'imputation"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6"/></svg></a></td></tr>
+    <tr class="late"><td class="no"><i>A</i>2026-1828</td><td class="obj"><b>Devis de raccordement du lotissement d'Anyama</b><small>Société des eaux</small></td><td>Direction technique</td><td><span class="legs"><i class="ok">E</i><i class="now">I</i><i>T</i><i>V</i><i>D</i></span><span class="leg">Imputation</span></td><td class="due">20/11<i>retard 2 j</i></td><td><a class="fi"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6"/></svg></a></td></tr>
+    <tr class="late"><td class="no"><i>A</i>2026-1843</td><td class="obj"><b>Dépôt du dossier technique de bornage, lot 318</b><small>Cabinet de géomètres-experts du Plateau</small></td><td>Service du cadastre</td><td><span class="legs"><i class="ok">E</i><i class="ok">I</i><i class="now">T</i><i>V</i><i>D</i></span><span class="leg">Traitement</span></td><td class="due">21/11<i>retard 1 j</i></td><td><a class="fi"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6"/></svg></a></td></tr>
+    <tr><td class="no"><i>A</i>2026-1839</td><td class="obj"><b>Convocation à la commission d'attribution du 2 décembre<em class="u">Urgent</em></b><small>Préfecture d'Abidjan</small></td><td>Direction générale</td><td><span class="legs"><i class="ok">E</i><i class="ok">I</i><i class="ok">T</i><i class="now">V</i><i>D</i></span><span class="leg">Validation</span></td><td class="due">24/11<i>dans 2 j</i></td><td><a class="fi"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6"/></svg></a></td></tr>
+    <tr><td class="no"><i>A</i>2026-1846</td><td class="obj"><b>Demande de régularisation foncière, îlot 42</b><small>Mairie de Cocody</small></td><td>Service juridique</td><td><span class="legs"><i class="ok">E</i><i class="now">I</i><i>T</i><i>V</i><i>D</i></span><span class="leg">Imputation</span></td><td class="due">25/11<i>dans 3 j</i></td><td><a class="fi"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6"/></svg></a></td></tr>
+    <tr><td class="no"><i>A</i>2026-1847</td><td class="obj"><b>Transmission du projet d'arrêté de lotissement de Songon<em class="u">Urgent</em></b><small>Ministère de la Construction</small></td><td>Direction technique</td><td><span class="legs"><i class="ok">E</i><i class="now">I</i><i>T</i><i>V</i><i>D</i></span><span class="leg">Imputation</span></td><td class="due">27/11<i>dans 5 j</i></td><td><a class="fi"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6"/></svg></a></td></tr>
+    <tr><td class="no"><i>D</i>2026-0412</td><td class="obj"><b>Réponse à la réclamation sur la délivrance d'un ACD</b><small>Particulier, dossier 7731</small></td><td>Direction commerciale</td><td><span class="legs"><i class="ok">E</i><i class="ok">I</i><i class="ok">T</i><i class="now">V</i><i>D</i></span><span class="leg">Validation</span></td><td class="due">28/11<i>dans 6 j</i></td><td><a class="fi"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6"/></svg></a></td></tr>
+    <tr><td class="no"><i>I</i>2026-0097</td><td class="obj"><b>Note de service : clôture de l'exercice 2026</b><small>Direction financière</small></td><td>Toutes directions</td><td><span class="legs"><i class="ok">E</i><i class="ok">I</i><i class="ok">T</i><i class="ok">V</i><i class="now">D</i></span><span class="leg">Décharge</span></td><td class="due">30/11<i>dans 8 j</i></td><td><a class="fi"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6"/></svg></a></td></tr>
+    <tr class="void"><td class="no"><i>A</i>2026-1815</td><td class="obj"><b>Circulaire budgétaire 2027 (doublon)</b><small>Ministère de l'Économie</small></td><td>Direction financière</td><td><span class="legs"><i>E</i><i>I</i><i>T</i><i>V</i><i>D</i></span><span class="vd">Supprimé</span></td><td>sans objet</td><td></td></tr>
+    </tbody>
+  </table></div>
+  <div class="foot"><span>Lignes 1 à 9 sur 38. Parcours : E enregistré, I imputé, T traité, V validé, D déchargé.</span><div class="pg"><a>Précédent</a><a class="on">1</a><a>2</a><a>3</a><a>4</a><a>5</a><a>Suivant</a></div></div>
+</main>
+</body></html>

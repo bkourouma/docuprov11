@@ -37,40 +37,39 @@ export function fmtDateFr(iso: string | null | undefined): string {
   return `${d}/${m}/${y}`;
 }
 
-// --- Thème des graphiques, dérivé du design system « Plus Admin » (relook 002) ---
+// --- Thème des graphiques, dérivé du design system « Registre » ---
 
 /**
- * Palette catégorielle compatible daltonisme (rouge/vert non adjacents).
- * Palette étendue Plus Admin, corrigée par thème pour rester ≥ 3:1 sur la
- * surface de carte (ratios calculés dans specs/002-relook/design-tokens.md §7 :
- * en clair, orange/jaune/vert/sarcelle/cyan/rouge sont des dérivés assombris ;
- * en sombre, bleu/indigo/violet sont éclaircis).
+ * Palette catégorielle, dans un ORDRE FIXE (la couleur suit l'entité, jamais son rang).
+ * Validée par calcul, en clair sur le papier blanc et en sombre sur la carte sombre :
+ * séparation daltonisme entre voisines, plancher de chroma, contraste >= 3:1 sur la surface.
+ * Le rouge n'y figure pas : il est réservé au retard et à l'erreur (rouge de marge).
  */
 const CATEGORICAL_LIGHT = [
-  '#0033c4', // bleu roi (primaire)
-  '#de7c11', // orange (dérivé de #f2a654)
-  '#37a94e', // vert (dérivé de #46c35f)
-  '#2da3b1', // cyan (dérivé de #57c7d4)
-  '#e91e63', // rose
-  '#6a008a', // violet
-  '#a39608', // jaune (dérivé de #f6e84e)
-  '#687480', // gris
+  '#17855E', // vert (série principale)
+  '#2a78d6', // bleu
+  '#e0752d', // orange
+  '#6250d6', // violet
+  '#a8672f', // brun
+  '#1aa3a3', // sarcelle
+  '#b98500', // ambre
+  '#d0609a', // magenta
 ];
 const CATEGORICAL_DARK = [
-  '#5a85ff', // bleu (primaire sombre)
-  '#f2a654', // orange
-  '#46c35f', // vert
-  '#57c7d4', // cyan
-  '#e91e63', // rose
-  '#8743f5', // indigo (dérivé de #6610f2)
-  '#f6e84e', // jaune
-  '#8e94a9', // gris
+  '#199e70', // vert
+  '#3987e5', // bleu
+  '#d95926', // orange
+  '#9085e9', // violet
+  '#b0703c', // brun
+  '#1aa3a3', // sarcelle
+  '#c98500', // ambre
+  '#d55181', // magenta
 ];
 
 export interface ChartTheme {
   isDark: boolean;
   palette: string[];
-  /** Couleur des séries principales (encre/teal). */
+  /** Couleur des séries principales (vert de série). */
   primary: string;
   /** Couleur de texte des axes/légendes. */
   label: string;
@@ -90,10 +89,10 @@ export function useChartTheme(): ChartTheme {
     return {
       isDark,
       palette: isDark ? CATEGORICAL_DARK : CATEGORICAL_LIGHT,
-      primary: isDark ? '#5a85ff' : '#0033c4',
+      primary: isDark ? '#199e70' : '#17855E',
       // Texte des axes/légendes en quasi-noir en mode clair (pas de gris, cf. demande dashboards).
-      label: isDark ? '#dee2e6' : '#1f1f1f',
-      grid: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,51,196,0.06)',
+      label: isDark ? '#E3EAE6' : '#12201B',
+      grid: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(18,32,27,0.08)',
       animate: !reduced,
     };
   }, [mode]);

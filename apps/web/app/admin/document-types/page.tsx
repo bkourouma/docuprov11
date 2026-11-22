@@ -28,10 +28,14 @@ export default function DocumentTypesPage() {
   const [busy, setBusy] = useState(false);
   const [highlightId, setHighlightId] = useState<number | null>(null);
 
+  // Échec du chargement : le référentiel ne doit pas s'annoncer vide (cf. RefLayout).
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     try {
       setRows(await apiJson<DocType[]>('/referentials/document-types'));
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     }
   }, [message]);
@@ -125,6 +129,8 @@ export default function DocumentTypesPage() {
 
   return (
     <RefLayout
+      loadFailed={loadFailed && rows.length === 0}
+      onRetry={load}
       icon="documentType"
       title="Types de document"
       exportPath="/referentials/document-types/export"

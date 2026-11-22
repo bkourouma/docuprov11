@@ -63,12 +63,16 @@ export default function GeolocalisationPage() {
   const [busy, setBusy] = useState(false);
   const [highlightId, setHighlightId] = useState<number | null>(null);
 
+  // Échec du chargement : le référentiel ne doit pas s'annoncer vide (cf. RefLayout).
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     try {
       const data = await apiJson<Loc[]>('/referentials/locations');
       setRows(data);
       setExpandedKeys(data.map((r) => r.locationId)); // org-chart view: fully expanded
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     }
   }, [message]);
@@ -189,6 +193,8 @@ export default function GeolocalisationPage() {
 
   return (
     <RefLayout
+      loadFailed={loadFailed && rows.length === 0}
+      onRetry={load}
       icon="geolocalisation"
       title="Gestion de la géolocalisation"
       // Écran hors menu : rien d'autre ne signale à l'utilisateur arrivé par lien direct où il se

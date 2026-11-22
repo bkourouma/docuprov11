@@ -1,8 +1,9 @@
 'use client';
 
 import type { CSSProperties, ReactNode } from 'react';
-import { Skeleton, Tag, Typography } from 'antd';
-import { colors, fontSize, space } from '../../theme/tokens';
+import { Skeleton, Typography } from 'antd';
+import { fontSize, space } from '../../theme/tokens';
+import { StateMark, type MarkTone } from '../StateMark';
 
 const { Text } = Typography;
 
@@ -13,32 +14,12 @@ const { Text } = Typography;
  * d'écrans plutôt qu'un seul.
  */
 
-/**
- * Teintes des badges d'état.
- *
- * Les fonds sont CONSTANTS entre les deux thèmes : les dérivés sombres de la palette
- * (`#00d284`, `#00cff4`…) sont calibrés pour porter du TEXTE sur une surface sombre, pas pour
- * recevoir du blanc — en fond de badge ils retomberaient sous 2:1. Ce sont donc les dérivés
- * FORTS AA (design-tokens.md §3.1) qui remplissent, le blanc y passant à ≥ 4,7:1.
- */
-export type StateTone = 'brand' | 'info' | 'success' | 'warning' | 'danger' | 'neutral';
-
-const TONE_BG: Record<StateTone, string> = {
-  brand: colors.menuActiveBg, // 6,08:1 — le bleu roi #0033c4 s'effacerait sur carte sombre
-  info: colors.info, // 4,75:1
-  success: colors.success, // 4,75:1
-  warning: colors.warning, // 4,77:1
-  danger: colors.danger, // 4,75:1
-  neutral: colors.secondaryStrong, // 4,74:1
-};
+export type StateTone = MarkTone;
 
 /**
- * Badge d'état PLEIN, en remplacement des presets de couleur d'AntD (`red`/`green`/`gold`/
- * `blue`/`geekblue`/`orange`) qui posaient un libellé teinté sur un fond très pâle, sous AA et
- * sans hiérarchie. Une couleur hors preset suffit à faire basculer AntD en remplissage plein à
- * texte blanc (`ant-tag-has-color`).
- *
- * Rayon 4 px et corps 11 px viennent du thème (`Tag`) : seule la graisse reste ici.
+ * État d'un élément de la fiche document : pastille + libellé à l'encre de l'état
+ * (`StateMark`), à la place des étiquettes pleines. Le nom `StateTag` est conservé pour ne
+ * toucher aucun des onglets qui le consomment.
  */
 export function StateTag({
   tone,
@@ -50,9 +31,9 @@ export function StateTag({
   style?: CSSProperties;
 }) {
   return (
-    <Tag color={TONE_BG[tone]} style={{ fontWeight: 600, ...style }}>
+    <StateMark tone={tone} style={style}>
       {children}
-    </Tag>
+    </StateMark>
   );
 }
 

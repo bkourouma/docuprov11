@@ -85,12 +85,16 @@ export default function ClassificationPlansPage() {
   const [busy, setBusy] = useState(false);
   const [highlightId, setHighlightId] = useState<number | null>(null);
 
+  // Échec du chargement : le référentiel ne doit pas s'annoncer vide (cf. RefLayout).
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     try {
       const data = await apiJson<Plan[]>('/referentials/plans');
       setRows(data);
       setExpandedKeys(data.map((r) => r.planId)); // org-chart view: fully expanded
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     }
   }, [message]);
@@ -206,6 +210,8 @@ export default function ClassificationPlansPage() {
 
   return (
     <RefLayout
+      loadFailed={loadFailed && rows.length === 0}
+      onRetry={load}
       icon="classification"
       title="Plan de classement"
       exportPath="/referentials/plans/export"

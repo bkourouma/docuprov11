@@ -90,7 +90,7 @@ export function NotificationsBell() {
         maxWidth: '100%',
         background: 'var(--ant-color-bg-elevated, #fff)',
         borderRadius: radii.card,
-        border: '1px solid var(--ant-color-border-secondary, #eef1f6)',
+        border: '1px solid var(--ant-color-border-secondary, #d9e2ea)',
         boxShadow: 'var(--da-shadow-popover, 0 3px 21px rgba(0,0,0,0.2))',
         overflow: 'hidden',
       }}
@@ -137,7 +137,7 @@ export function NotificationsBell() {
               style={{
                 cursor: href || !n.isRead ? 'pointer' : 'default',
                 padding: '10px 12px',
-                background: n.isRead ? undefined : 'var(--ant-color-primary-bg, #e8eefc)',
+                background: n.isRead ? undefined : 'var(--ant-color-primary-bg, #e3efe7)',
               }}
             >
               <List.Item.Meta

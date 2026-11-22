@@ -28,7 +28,7 @@
   /* Sans cela, `height: 100%` + bordure font 1 px de trop et débordent du conteneur hôte. */
   box-sizing: border-box;
   background: var(--ant-color-bg-container, #ffffff);
-  border: 1px solid var(--ant-color-border, #e4e9f0);
+  border: 1px solid var(--ant-color-border, #c6d3df);
   border-radius: var(--da-pdf-radius-card);
   overflow: hidden;
 }
@@ -49,7 +49,7 @@
   gap: 8px;
   flex-wrap: wrap;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--ant-color-border-secondary, #eef1f6);
+  border-bottom: 1px solid var(--ant-color-border-secondary, #d9e2ea);
   background: var(--ant-color-bg-container, #ffffff);
 }
 
@@ -91,9 +91,9 @@
   flex: none;
   overflow: auto;
   padding: 8px;
-  border-right: 1px solid var(--ant-color-border-secondary, #eef1f6);
+  border-right: 1px solid var(--ant-color-border-secondary, #d9e2ea);
   /* Rail en retrait : le fond de layout le distingue de la surface de la barre. */
-  background: var(--ant-color-bg-layout, #f8f9fb);
+  background: var(--ant-color-bg-layout, #eff4f0);
 }
 
 .da-pdf__thumb {
@@ -113,13 +113,13 @@
   height: auto;
   border-radius: var(--ant-border-radius-sm, 2px);
   /* Design plat : un filet, pas une ombre portée. */
-  box-shadow: 0 0 0 1px var(--ant-color-border, #e4e9f0);
+  box-shadow: 0 0 0 1px var(--ant-color-border, #c6d3df);
 }
 
 /* Page courante : marquée par l'accent d'état actif, comme l'item de menu actif. */
 .da-pdf__thumb[data-active='true'] {
-  border-color: var(--da-accent-strong, #1a55e3);
-  background: var(--da-accent-soft, #e8eefc);
+  border-color: var(--da-accent-strong, #17513f);
+  background: var(--da-accent-soft, #e3efe7);
 }
 
 .da-pdf__thumb-label {
@@ -127,7 +127,7 @@
   font-size: var(--ant-font-size-sm, 12px);
   line-height: 16px;
   text-align: center;
-  color: var(--ant-color-text-secondary, #687480);
+  color: var(--ant-color-text-secondary, #4d5e56);
 }
 
 .da-pdf__scroll {
@@ -137,7 +137,7 @@
   /* CONTRAINTE : valeur dupliquée dans `SCROLL_PADDING` (PdfViewer.tsx), qui la
      déduit de la largeur utile pour « ajuster » et du décalage de défilement. */
   padding: 16px;
-  background: var(--ant-color-bg-layout, #f8f9fb);
+  background: var(--ant-color-bg-layout, #eff4f0);
   scroll-behavior: smooth;
 }
 
@@ -188,7 +188,7 @@
 }
 
 .da-pdf__page .textLayer ::selection {
-  background: color-mix(in srgb, var(--ant-color-primary, #0033c4) 25%, transparent);
+  background: color-mix(in srgb, var(--ant-color-primary, #0e3b2e) 25%, transparent);
 }
 
 /* Résultats de recherche : le texte reste transparent, seul le fond marque la zone. */
@@ -204,7 +204,7 @@
  */
 .da-pdf__page .textLayer mark[data-current='true'] {
   background: var(--da-pdf-highlight-active);
-  box-shadow: 0 0 0 1px var(--ant-color-warning, #dd2a00);
+  box-shadow: 0 0 0 1px var(--ant-color-warning, #8a5200);
 }
 
 .da-pdf__empty {

@@ -16,82 +16,107 @@
 }
 
 /* =========================================================================
-   Design system « Plus Admin » (relook 002) — styles globaux
-   - Variables sur-mesure (marque, top bar, ombres) ; les couleurs AntD
+   Design system « Registre » — styles globaux
+   - Variables sur-mesure (chrome, registre, ombres) ; les couleurs AntD
      sont disponibles via var(--ant-color-*) grâce à cssVar:true.
    - data-theme="dark" est posé sur <html> par le ThemeProvider.
+   Les valeurs reprennent celles de theme/tokens.ts, source de vérité.
    ========================================================================= */
 
 :root {
-  /* Polices : Open Sans posée par next/font (--font-sans) ; les anciennes
+  /* Polices : Archivo posée par next/font (--font-sans) ; les anciennes
      variables restent des ALIAS pour ne casser aucun consommateur. */
   --font-display: var(--font-sans);
   --font-geist-sans: var(--font-sans);
 
-  /* Compat transitoire (phase 3 renommera les consommateurs) : l'« accent »
-     historique ocre est re-mappé sur le primaire Plus Admin. */
-  --da-accent: #0033c4;
-  --da-accent-strong: #1a55e3;
-  --da-accent-soft: #e8eefc;
-  --da-accent-border: #c7d6f7;
+  /* Accent : la toile vert bouteille. */
+  --da-accent: #0e3b2e;
+  --da-accent-strong: #17513f;
+  --da-accent-soft: #e3efe7;
+  --da-accent-border: #b5d0c1;
 
-  /* Dégradé signature cyan → bleu roi (texte toujours sur la moitié bleue). */
-  --da-brand-from: #00cff4;
-  --da-brand-to: #0033c4;
+  /* Panneau de marque : aplat de toile, sans dégradé. */
+  --da-brand-from: #0e3b2e;
+  --da-brand-to: #0e3b2e;
   --da-on-brand: #ffffff;
-  --da-on-brand-muted: #c9d7ff;
+  --da-on-brand-muted: #bdd3c9;
 
-  /* Top bar BLANCHE. Le chrome ne porte plus de couleur : l'accent est réservé à
-     l'item de menu courant. Les voiles qui l'habillaient étaient blancs — pensés
-     pour un fond bleu — et disparaissaient sur blanc : ils passent en sombre. */
-  --da-topbar-bg: #ffffff;
-  --da-on-topbar: #030303;
-  --da-on-topbar-muted: #313131;
+  /* Barre supérieure : posée sur le fond de page, séparée par un filet. */
+  --da-topbar-bg: #eff4f0;
+  --da-on-topbar: #12201b;
+  --da-on-topbar-muted: #4d5e56;
   /* Survol des boutons de la barre. */
-  --da-topbar-soft: rgba(3, 3, 3, 0.05);
-  /* Filets : limite basse de la barre, faux champ de recherche, touche Ctrl K. */
-  --da-topbar-line: #e4e9f0;
-  /* Le faux champ s'ASSOMBRIT là où il s'éclaircissait sur la barre bleue : dans
-     les deux cas il doit se détacher du fond de la barre. */
-  --da-topbar-field: #f4f6f9;
-  /* Seule touche de couleur de la barre — le bleu de marque, comme l'item de menu
-     courant. Le vert AGEF ne sort pas de l'écran de connexion. */
-  --da-topbar-avatar-bg: #0033c4;
+  --da-topbar-soft: rgba(18, 32, 27, 0.07);
+  /* Filet bas de la barre, touche Ctrl K. */
+  --da-topbar-line: #d2ded6;
+  /* Faux champ de recherche : papier blanc, bordure de contrôle (3,4:1). */
+  --da-topbar-field: #ffffff;
+  --da-topbar-field-line: #7c9086;
+  --da-topbar-avatar-bg: #0e3b2e;
   --da-topbar-avatar-fg: #ffffff;
 
-  /* Design plat : les cartes n'ont AUCUNE ombre ; popovers/modales seulement. */
+  /* Chrome : rail des modules (toile) et panneau des écrans (papier). */
+  --da-rail-bg: #0e3b2e;
+  --da-on-rail: #bdd3c9;
+  --da-rail-hover: #17513f;
+  --da-rail-active-bg: #ffffff;
+  --da-rail-active-fg: #0e3b2e;
+  --da-panel-bg: #f9fbf9;
+  --da-chrome-edge: #d2ded6;
+
+  /* Registre : réglure, filet d'encre, marge. */
+  --da-rule: #c6d3df;
+  --da-ink: #12201b;
+  --da-margin-rule: #b3261e;
+  --da-margin-bg: #f9fbf9;
+
+  /* Design plat : les cartes n'ont AUCUNE ombre ; surfaces flottantes seulement. */
   --da-shadow-card: none;
-  --da-shadow-raised: 0 1px 15px 1px rgba(230, 234, 236, 0.35);
-  --da-shadow-popover: 0 3px 21px rgba(0, 0, 0, 0.2);
-  --da-grid-line: rgba(0, 51, 196, 0.06);
+  --da-shadow-raised: 0 1px 2px rgba(18, 32, 27, 0.08);
+  --da-shadow-popover: 0 8px 24px rgba(18, 32, 27, 0.16);
+  --da-grid-line: rgba(18, 32, 27, 0.06);
 
   --da-radius-pill: 999px;
 }
 
+/* Le mode sombre est désactivé dans l'application : valeurs non vérifiées à l'écran. */
 [data-theme='dark'] {
-  --da-accent: #5a85ff;
-  --da-accent-strong: #7a9cff;
-  --da-accent-soft: #2c3247;
-  --da-accent-border: #3d4666;
+  --da-accent: #7cc7a6;
+  --da-accent-strong: #98d6ba;
+  --da-accent-soft: #1c3229;
+  --da-accent-border: #2f5546;
 
-  --da-brand-from: #00829a;
-  --da-brand-to: #00279a;
+  --da-brand-from: #0e3b2e;
+  --da-brand-to: #0e3b2e;
   --da-on-brand: #ffffff;
-  --da-on-brand-muted: #c9d7ff;
+  --da-on-brand-muted: #bdd3c9;
 
-  /* Inchangé : le mode sombre est désactivé dans l'application. */
-  --da-topbar-bg: #0033c4;
-  --da-on-topbar: #ffffff;
-  --da-on-topbar-muted: #b9c0d4;
-  --da-topbar-soft: rgba(255, 255, 255, 0.14);
-  --da-topbar-line: rgba(255, 255, 255, 0.35);
-  --da-topbar-field: rgba(255, 255, 255, 0.12);
-  --da-topbar-avatar-bg: #ffffff;
-  --da-topbar-avatar-fg: #0033c4;
+  --da-topbar-bg: #0d1512;
+  --da-on-topbar: #e3eae6;
+  --da-on-topbar-muted: #9fb0a7;
+  --da-topbar-soft: rgba(255, 255, 255, 0.1);
+  --da-topbar-line: #22302a;
+  --da-topbar-field: #16211c;
+  --da-topbar-field-line: #6e8279;
+  --da-topbar-avatar-bg: #7cc7a6;
+  --da-topbar-avatar-fg: #0d1512;
+
+  --da-rail-bg: #0a2c22;
+  --da-on-rail: #bdd3c9;
+  --da-rail-hover: #17513f;
+  --da-rail-active-bg: #e3efe7;
+  --da-rail-active-fg: #0e3b2e;
+  --da-panel-bg: #111b17;
+  --da-chrome-edge: #22302a;
+
+  --da-rule: #2b3a34;
+  --da-ink: #e3eae6;
+  --da-margin-rule: #f0776c;
+  --da-margin-bg: #111b17;
 
   --da-shadow-card: none;
   --da-shadow-raised: none;
-  --da-shadow-popover: 0 3px 21px rgba(0, 0, 0, 0.45);
+  --da-shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.5);
   --da-grid-line: rgba(255, 255, 255, 0.05);
 }
 
@@ -104,7 +129,7 @@ body {
 body {
   font-family:
     var(--font-sans),
-    'Open Sans',
+    'Archivo',
     system-ui,
     -apple-system,
     'Segoe UI',
@@ -114,13 +139,16 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Chiffres alignés sur la ligne de base partout : un registre se lit en colonnes. */
+  font-variant-numeric: lining-nums;
 }
 
-/* Display : alias d'Open Sans (la distinction des titres se fait par la graisse). */
+/* Display : Archivo en largeur étroite et en gras — la voix des titres d'écran. */
 .da-display {
   font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
-  letter-spacing: 0;
-  font-weight: 600;
+  font-stretch: 86%;
+  letter-spacing: -0.01em;
+  font-weight: 700;
 }
 
 /* Mono = Geist Mono (cotes, références, N° pièce, identifiants QR). */
@@ -131,27 +159,24 @@ body {
 
 /* Chiffres tabulaires partout dans les tableaux : alignement net. */
 .ant-table-cell {
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 /* Focus net et visible partout (accessibilité WCAG). */
 :where(a, button, [role='button'], input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--ant-color-primary, #0033c4);
+  outline: 2px solid var(--ant-color-primary, #0e3b2e);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
 /* =========================================================================
-   Îlot top bar (PRD relook §4.4) : barre bleu roi constante, contenus blancs.
-   Les popovers (cloche, menu utilisateur, palette) sont portalés hors de
-   .da-topbar et restent sous le thème ambiant.
+   Barre supérieure : fil d'Ariane, recherche, cloche, utilisateur. Posée sur le
+   fond de page ; le filet bas porte seul la limite. Les popovers (cloche, menu
+   utilisateur, palette) sont portalés hors de .da-topbar.
    ========================================================================= */
 .da-topbar {
   background: var(--da-topbar-bg);
   color: var(--da-on-topbar);
-  font-weight: 300;
-  /* La barre bleue se détachait seule du fond de page ; blanche sur un fond de page
-     #f8f9fb, elle n'en diffère quasiment plus — ce filet porte seul la limite. */
   border-bottom: 1px solid var(--da-topbar-line);
 }
 .da-topbar .ant-btn-text {
@@ -162,17 +187,144 @@ body {
   background: var(--da-topbar-soft) !important;
   color: var(--da-on-topbar) !important;
 }
-/* Focus ring blanc sur fond bleu roi (9,25:1). */
 .da-topbar :where(a, button, [role='button'], input, [tabindex]):focus-visible {
-  outline-color: var(--da-on-topbar);
+  outline-color: var(--da-accent);
 }
 
-/* Barre laterale : bandeau du logo fige, seul le menu defile (AuthShell). AntD interpose
-   `.ant-layout-sider-children` entre le `Sider` et nos deux blocs — sans colonne flex ici,
-   ils ne peuvent pas se partager la hauteur et l'ascenseur remonte derriere le logo. */
-.da-sider .ant-layout-sider-children {
+/* Fil d'Ariane de la barre : module / geste / écran. Seul l'écran courant est à l'encre. */
+.da-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--da-on-topbar-muted);
+  white-space: nowrap;
+}
+.da-crumbs > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.da-crumbs > .da-crumb-sep {
+  flex: none;
+  color: var(--da-topbar-field-line);
+}
+.da-crumbs > .da-crumb-here {
+  color: var(--da-on-topbar);
+  font-weight: 600;
+}
+
+/* =========================================================================
+   Chrome de navigation : rail des modules (toile) + panneau des écrans (papier).
+   Le rail ne porte que les modules ; le panneau liste les écrans du module
+   courant, regroupés par geste. Même structure dans le tiroir mobile.
+   ========================================================================= */
+.da-nav {
+  display: flex;
+  flex: none;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+}
+.da-nav.da-nav-drawer {
+  height: 100%;
+  position: static;
+}
+.da-rail {
+  width: 80px;
+  flex: none;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 0;
+  background: var(--da-rail-bg);
+  overflow-y: auto;
+}
+.da-rail-btn {
+  position: relative;
+  width: 64px;
+  min-height: 58px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--da-on-rail);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  font-stretch: 88%;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
+}
+.da-rail-btn:hover {
+  background: var(--da-rail-hover);
+  color: #ffffff;
+}
+.da-rail-btn[aria-current='true'] {
+  background: var(--da-rail-active-bg);
+  color: var(--da-rail-active-fg);
+}
+.da-rail-btn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+/* Cumul des compteurs d'un module : sans lui, quitter le module masquerait l'alerte. */
+.da-rail-count {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--da-radius-pill);
+  background: #ffffff;
+  color: var(--da-rail-active-fg);
+  box-shadow: 0 0 0 2px var(--da-rail-bg);
+  font-size: 11px;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.da-rail-btn[aria-current='true'] .da-rail-count {
+  background: var(--da-rail-bg);
+  color: #ffffff;
+  box-shadow: 0 0 0 2px var(--da-rail-active-bg);
+}
+
+.da-panel {
+  width: 216px;
+  flex: none;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--da-panel-bg);
+  border-right: 1px solid var(--da-chrome-edge);
+}
+.da-panel-brand {
+  flex: none;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+}
+/* SEULE partie du panneau qui défile : l'ascenseur commence sous le logo. `min-height: 0`
+   est indispensable, sans lui un enfant flex refuse de rétrécir sous son contenu. */
+.da-panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 14px 20px;
 }
 
 /* Utilitaire pilule (badges pilule, puces de filtres). */
@@ -182,7 +334,7 @@ body {
 
 /* Badges pleins en thème sombre : leur fond vient des dérivés AA de la palette
    CLAIRE (seuls fonds sur lesquels du texte blanc passe, cf. design-tokens §3.1),
-   si bien que les teintes les plus sombres — « brand » #1a55e3 — ne contrastent
+   si bien que les teintes les plus sombres ne contrastent
    qu'à 2,51:1 avec la carte #252529, sous le seuil non-texte de 3:1. Le filet
    clair redonne une limite discernable sans toucher au fond ni au texte. */
 [data-theme='dark'] .ant-tag.ant-tag-has-color {
@@ -192,7 +344,7 @@ body {
 /* Barres de défilement discrètes. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--ant-color-border, #e3e6e4) transparent;
+  scrollbar-color: var(--ant-color-border, #c6d3df) transparent;
 }
 /* Barres dessinées uniquement au pointeur fin. Sur WebKit mobile, styler
    `::-webkit-scrollbar` fait basculer les barres de superposition (qui ne consomment aucune
@@ -205,7 +357,7 @@ body {
     height: 10px;
   }
   *::-webkit-scrollbar-thumb {
-    background: var(--ant-color-border, #e3e6e4);
+    background: var(--ant-color-border, #c6d3df);
     border-radius: 999px;
     border: 3px solid transparent;
     background-clip: content-box;
@@ -217,7 +369,7 @@ body {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--ant-color-primary, #0033c4) 22%, transparent);
+  background: color-mix(in srgb, var(--ant-color-primary, #0e3b2e) 22%, transparent);
 }
 
 /* Lien rendu via <a> sans href (ouverture de document, etc.) : curseur main. */
@@ -241,7 +393,7 @@ a:not([href]) {
 /* Surbrillance transitoire d'une nouvelle ligne / ligne modifiée (édition référentiels). */
 @keyframes da-row-flash {
   from {
-    background-color: var(--ant-color-primary-bg, #e8eefc);
+    background-color: var(--ant-color-primary-bg, #e3efe7);
   }
   to {
     background-color: transparent;
@@ -281,7 +433,7 @@ a:not([href]) {
   color: var(--ant-color-text) !important;
 }
 
-/* Utilitaire : conteneur de page — padding Plus Admin 25×27 (relevé de la démo).
+/* Utilitaire : conteneur de page.
    La gouttière horizontale est exposée en variable : les barres d'action collantes
    s'en servent pour déborder pile jusqu'aux bords de la page (sans elle, elles
    restent codées sur une valeur qui se désynchronise au moindre changement). */
@@ -291,8 +443,8 @@ a:not([href]) {
 }
 @media (min-width: 768px) {
   .da-page {
-    --da-page-pad-x: 27px;
-    padding: 25px 27px;
+    --da-page-pad-x: 28px;
+    padding: 24px 28px;
   }
 }
 
@@ -416,8 +568,8 @@ a:not([href]) {
   /* h. Zoom iOS (arbitrage validé). Safari iOS zoome la page dès qu'un champ de saisie a une
         police < 16 px, et ne dézoome pas au blur : la mise en page « saute » à chaque focus.
         Surcharge CSS bornée au mobile UNIQUEMENT, sur les champs de saisie de texte seuls.
-        Les jetons (`tokens.ts`, `antdTheme.ts`) ne sont pas touchés : la charte Plus Admin
-        (13/14 px) reste intacte au-dessus de 768 px. Alternative écartée : `maximum-scale=1`
+        Les jetons (`tokens.ts`, `antdTheme.ts`) ne sont pas touchés : la charte
+        (14 px) reste intacte au-dessus de 768 px. Alternative écartée : `maximum-scale=1`
         dans le viewport, qui interdirait le zoom utilisateur — régression d'accessibilité. */
   .ant-input,
   .ant-input-number-input,
@@ -439,7 +591,7 @@ a:not([href]) {
     font-size: 12px !important; /* AntD déclare `font-size` sur `.ant-tag` (même cascade). */
   }
 
-  /* j. Cibles tactiles. `controlHeight` vaut 32 px dans la charte (densité de production,
+  /* j. Cibles tactiles. `controlHeight` vaut 36 px dans la charte (densité de production,
         dérogation PRD §4.6). 44 px est le seuil retenu par la définition de terminé — et la
         recommandation d'Apple ; l'arbitrage validé proposait 40, la valeur est portée à 44 pour
         satisfaire le critère d'acceptation. Sous `pointer: coarse` seulement, donc jamais sur un
@@ -473,7 +625,7 @@ a:not([href]) {
   margin-inline: calc(-1 * var(--da-page-pad-x, 16px));
   padding: 12px var(--da-page-pad-x, 16px);
   background: var(--ant-color-bg-container, #ffffff);
-  border-top: 1px solid var(--ant-color-border, #e4e9f0);
+  border-top: 1px solid var(--ant-color-border, #c6d3df);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -491,70 +643,130 @@ a:not([href]) {
   }
 }
 
-/* Compteur de menu (§04.7, AuthShell) : AntD pose le libellé et le badge `extra` comme deux
-   enfants flex côte à côte, sans min-width:0 ni flex-shrink sur ni l'un ni l'autre — pour les
-   libellés les plus longs du Sider (« Suivi des courriers », « Intégration décharge »)
-   associés à un compteur à deux chiffres, la marge restante tombe à quelques px à peine,
-   insuffisante pour absorber les variations de rendu de police (OS, hinting) : le compteur se
-   fait alors rogner par l'overflow:hidden du conteneur au lieu de s'afficher en entier. On
-   resserre le padding autour du badge pour redonner de la marge, sans toucher au libellé (qui
-   doit rester une chaîne — cf. commentaire dans AuthShell.tsx sur le popup de la barre
-   repliée).
-   !important partout : les styles CSS-in-JS d'AntD s'insèrent après notre feuille dans le
-   <head>, donc à spécificité égale (le sélecteur ":where(...)" d'AntD ne compte pas) c'est
-   l'ordre d'insertion qui décide et AntD gagne — cf. le commentaire cascade/@layer
-   d'AuthShell.tsx. `padding-left` (physique) plutôt que `padding-inline-start` : le build
-   (lightningcss) éclate la propriété logique en variantes `:lang()` pour le RTL et perd le
-   `!important` au passage — l'app est LTR uniquement (FR), la propriété physique évite le
-   piège. */
-.ant-layout-sider .ant-menu-item-extra {
-  padding-left: 3px !important;
-  flex-shrink: 0 !important;
-}
-.ant-layout-sider .ant-menu-item .ant-badge-count {
-  padding: 0 5px !important;
-}
+/* ---------------------------------------------------------------------------
+   Menu du panneau des écrans (AuthShell)
 
-/* Libellés de menu tronqués sur UNE seule ligne (Sider déplié + Drawer mobile), même fragilité
-   flexbox que ci-dessus : `.ant-menu-title-content` a bien `overflow:hidden`/`text-overflow:
-   ellipsis`, mais son parent flex (le <li> de l'item) n'a pas de `min-width:0` explicite — sans
-   lui, certains moteurs (WebKit mobile en particulier) laissent le libellé le plus long
-   (« Historique des communications ») repasser sur deux lignes plutôt que de le tronquer par
-   « … ». `!important` : même raison d'ordre de cascade CSS-in-JS d'AntD que le bloc ci-dessus. */
-.ant-menu-title-content {
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  min-width: 0 !important;
+   `!important` partout où AntD déclare déjà la propriété : ses styles CSS-in-JS
+   s'insèrent APRÈS cette feuille dans le <head>, donc à spécificité égale (son
+   sélecteur `:where(...)` ne compte pas) c'est l'ordre d'insertion qui décide et
+   AntD gagne. Propriétés physiques (`padding-left`) plutôt que logiques : le build
+   (lightningcss) éclate les propriétés logiques en variantes `:lang()` pour le RTL
+   et perd le `!important` au passage — l'app est LTR uniquement (FR).
+   --------------------------------------------------------------------------- */
+.da-panel .ant-menu {
+  background: transparent !important;
+  border-right: 0 !important;
 }
-.ant-menu-item,
-.ant-menu-submenu-title {
-  min-width: 0 !important;
+/* Titres de groupe (Traiter, Suivre, Expédier…) : capitales étroites, comme les
+   en-têtes de colonne du registre. */
+.da-panel .ant-menu-item-group-title {
+  padding: 18px 10px 6px !important;
+  font-size: 11.5px !important;
+  font-weight: 600;
+  font-stretch: 80%;
+  letter-spacing: 0.1em;
+  line-height: 1.2 !important;
+  text-transform: uppercase;
 }
-
-/* …SAUF les entrées du menu déplié (Sider 264px + Drawer mobile 280px), où la troncature par
-   « … » coûtait le sens : « Sécurité type document par utilisateur » et « par profil » se
-   coupaient au même endroit (« Sécurité type document … »), donc indiscernables l'une de
-   l'autre, et « Confidentialité des utilisateurs » perdait son complément. Les libellés y
-   passent sur DEUX lignes plutôt que d'être rognés ; les entrées courtes gardent leur hauteur
-   d'origine (40px = `itemHeight` AntD) puisqu'un texte qui tient ne se replie pas.
-   Portée volontairement étroite (`.ant-menu-inline`) : le menu de la barre repliée est un popup
-   `.ant-menu-vertical` rendu hors du Sider, qui se dimensionne sur son contenu et n'a donc pas
-   le problème. `line-height` normal + `padding-block` remplacent le `line-height: 40px` d'AntD,
-   qui espacerait les deux lignes de 40px chacune. */
-.ant-layout-sider .ant-menu-inline .ant-menu-item,
-.ant-drawer .ant-menu-inline .ant-menu-item {
+.da-panel .ant-menu-item-group:first-child .ant-menu-item-group-title {
+  padding-top: 6px !important;
+}
+/* Entrées : hauteur libre. Les libellés longs (« Sécurité type document par utilisateur »,
+   « Historique des communications ») passent sur DEUX lignes plutôt que d'être rognés —
+   tronqués, « … par utilisateur » et « … par rôle » devenaient indiscernables. */
+.da-panel .ant-menu-inline .ant-menu-item {
   height: auto !important;
-  min-height: 40px !important;
-  line-height: 1.35 !important;
-  padding-block: 6px !important;
+  min-height: 34px !important;
+  line-height: 1.3 !important;
+  padding: 7px 10px !important;
   align-items: center !important;
+  min-width: 0 !important;
 }
-.ant-layout-sider .ant-menu-inline .ant-menu-item .ant-menu-title-content,
-.ant-drawer .ant-menu-inline .ant-menu-item .ant-menu-title-content {
+.da-panel .ant-menu-inline .ant-menu-item .ant-menu-title-content {
   white-space: normal !important;
   overflow: visible !important;
   text-overflow: clip !important;
+  min-width: 0 !important;
+}
+.da-panel .ant-menu-item-selected {
+  font-weight: 600;
+}
+/* Compteur d'une entrée : un chiffre tabulaire, sans pastille. Il ne doit jamais se faire
+   rogner par un libellé long, d'où `flex-shrink: 0`. */
+.da-panel .ant-menu-item-extra {
+  padding-left: 8px !important;
+  flex-shrink: 0 !important;
+}
+.da-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ant-color-text-secondary, #4d5e56);
+}
+.ant-menu-item-selected .da-count {
+  color: inherit;
+}
+
+/* ---------------------------------------------------------------------------
+   Le registre : tableaux
+
+   En-têtes de colonne en capitales étroites, soulignés d'un filet d'encre ; les
+   lignes sont séparées par la réglure bleu-gris (jeton `Table.borderColor`).
+   --------------------------------------------------------------------------- */
+.ant-table-wrapper .ant-table-thead > tr > th,
+.ant-table-wrapper .ant-table-thead > tr > td {
+  font-size: 11.5px;
+  font-weight: 600 !important; /* AntD pose la graisse de l'en-tête. */
+  font-stretch: 80%;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1.5px solid var(--da-ink) !important; /* AntD pose le filet de l'en-tête. */
+}
+
+/* Signature : la marge numérotée. La colonne d'identifiant d'une liste (classe `da-marge`
+   posée sur la colonne) se cale à droite, à gauche d'un double filet rouge — le numéro
+   d'ordre d'un registre. Le double filet est dessiné en ombres internes : le blanc entre
+   les deux traits suit le fond de la ligne (survol, sélection) grâce à `--da-margin-fill`. */
+.ant-table-wrapper .ant-table-thead > tr > th.da-marge,
+.ant-table-wrapper .ant-table-tbody > tr > td.da-marge,
+.ant-table-wrapper .ant-table-summary > tr > td.da-marge {
+  --da-margin-fill: var(--da-margin-bg);
+  text-align: right;
+  padding-right: 18px !important; /* AntD pose le padding des cellules. */
+  background: var(--da-margin-fill);
+  box-shadow:
+    inset -1px 0 0 var(--da-margin-rule),
+    inset -3px 0 0 var(--da-margin-fill),
+    inset -4px 0 0 var(--da-margin-rule);
+}
+.ant-table-wrapper .ant-table-tbody > tr > td.da-marge {
+  font-weight: 700;
+}
+.ant-table-wrapper .ant-table-tbody > tr.ant-table-row:hover > td.da-marge,
+.ant-table-wrapper .ant-table-tbody > tr.ant-table-row-selected > td.da-marge {
+  --da-margin-fill: var(--ant-color-primary-bg, #e3efe7);
+}
+
+/* Pied de totaux reportés : filet d'encre au-dessus, comme sous l'en-tête. */
+.ant-table-wrapper .ant-table-summary > tr > td {
+  border-top: 1.5px solid var(--da-ink);
+  border-bottom: 0 !important; /* AntD pose un filet bas sur chaque cellule. */
+  font-weight: 600;
+  background: var(--da-margin-bg);
+}
+.da-totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 22px;
+}
+.da-totals > span {
+  font-weight: 500;
+  color: var(--ant-color-text-secondary, #4d5e56);
+}
+.da-totals > .da-totals-late {
+  color: var(--ant-color-error, #b3261e);
+  font-weight: 600;
 }
 
 /* ---------------------------------------------------------------------------
@@ -624,14 +836,14 @@ a:not([href]) {
    opaque : mieux vaut perdre l'effet que la lisibilité des champs.
    --------------------------------------------------------------------------- */
 .da-login-card {
-  border-radius: 12px; /* radii.card */
+  border-radius: 6px; /* radii.card */
   /* Dosage : à 0,58 d'opacité le motif restait lisible SOUS le texte (la carte
      occupe presque toute la largeur sur mobile) et les libellés secondaires
      devenaient pénibles. 0,66 avec un flou plus large garde l'effet de verre
      — formes et couleurs du logo restent perceptibles — sans gêner la saisie. */
   background: rgba(255, 255, 255, 0.66);
   border: 1px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 8px 32px rgba(0, 30, 90, 0.1);
+  box-shadow: 0 8px 32px rgba(18, 32, 27, 0.12);
   -webkit-backdrop-filter: blur(22px) saturate(1.35);
   backdrop-filter: blur(22px) saturate(1.35);
 }
@@ -704,21 +916,146 @@ a:not([href]) {
   opacity: 1;
 }
 
-/* ---------------------------------------------------------------------------
-   Item de menu sélectionné
+/* Menu utilisateur. Au pied du rail (poste de bureau) : `margin-top: auto` le cale en bas,
+   l'anneau de focus est blanc sur la toile. Dans la barre supérieure (mobile) : cible de 44 px. */
+.da-rail-user,
+.da-bar-user {
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--da-radius-pill);
+  background: transparent;
+  cursor: pointer;
+}
+.da-rail-user {
+  margin-top: auto;
+  padding: 4px;
+}
+.da-rail-user:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+.da-bar-user {
+  width: 44px;
+  height: 44px;
+}
 
-   Le repère « vous êtes ici » ne tient plus à un aplat plein à texte blanc mais,
-   comme dans la référence du client, à un remplissage très pâle dont le LIBELLÉ
-   et l'ICÔNE portent l'accent — le bleu de marque, 7,96:1 sur ce remplissage.
-
-   Le remplissage seul ne tranche que de 1,21:1 sur le rail blanc : il ne peut
-   donc pas être le seul signal. La graisse vient en renfort de la couleur — un
-   indice non chromatique, lisible même sans percevoir la teinte (WCAG 1.4.1).
-
-   Rien ici pour l'icône : ce sont des glyphes lucide sans couleur propre, elles
-   héritent de `currentColor` — donc d'`itemSelectedColor`. Une règle qui les
-   viserait attraperait au passage les badges de comptage logés dans l'item.
-   --------------------------------------------------------------------------- */
-.ant-menu-item-selected {
+/* Marque d'état (StateMark) : pastille ou glyphe + libellé, à l'encre de l'état. */
+.da-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.da-state-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Chiffre clé (tuiles, cartes d'indicateur) : Archivo étroit, tabulaire — le chiffre du
+   récapitulatif en tête de registre. */
+.da-figure {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-stretch: 72%;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* L'écran courant est un aplat de toile : son compteur passe en blanc (AntD teinte `extra`
+   en gris, illisible sur la toile). */
+.da-panel .ant-menu-item-selected .da-count {
+  color: #ffffff;
+}
+
+/* Liste de registre posée bord à bord dans sa carte (`da-registre`) : la pagination, elle,
+   garde une gouttière. */
+.da-registre .ant-table-pagination.ant-pagination {
+  padding: 0 16px;
+}
+/* Cellule d'action de ligne : le bouton porte déjà la cible de 40 px, sa cellule lui rend le
+   padding vertical — sans quoi la ligne passe de 40 à 55 px. `!important` : AntD pose le
+   padding des cellules après cette feuille. */
+.da-registre .ant-table-tbody > tr > td:has(.ant-btn) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  vertical-align: middle;
+}
+
+/* Ligne en retard : son numéro de marge passe au rouge. C'est le seul signal de retard qui
+   vit dans la colonne signature — il reste visible quand le tableau défile ou se resserre. */
+.ant-table-wrapper .ant-table-tbody > tr.da-row-late > td.da-marge {
+  color: var(--ant-color-error, #b3261e);
+}
+
+/* Tête de liste : le total, puis les retards de la page. */
+.da-list-head {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 20px;
+}
+.da-list-late {
+  color: var(--ant-color-error, #b3261e);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Objet d'une ligne : une ligne tronquée ; le rappel d'échéance dessous n'existe que sous
+   768 px, où la colonne « Date butoir » est hors écran. */
+.da-objet-line {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.da-objet-due {
+  display: none;
+}
+@media (max-width: 767px) {
+  .da-objet-due {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12.5px;
+    line-height: 1.35;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Référentiels (RefLayout) : le tableau court bord à bord dans sa carte, comme le
+   registre des courriers — même papier, même finition. La carte n'a plus de marge
+   intérieure ; ce qui n'est PAS le tableau la retrouve :
+   - un enfant direct autre que le tableau (squelette, état vide ou d'échec) ;
+   - dans une pile (`Space` vertical), chaque élément qui ne contient pas le tableau
+     (barre de lot, filtre, alerte).
+   --------------------------------------------------------------------------- */
+.da-ref-card > .ant-card-body > :not(.ant-table-wrapper):not(.ant-space) {
+  margin: 16px 24px;
+}
+.da-ref-card > .ant-card-body > .ant-space {
+  padding-top: 16px;
+}
+.da-ref-card > .ant-card-body > .ant-space > .ant-space-item:not(:has(> .ant-table-wrapper)) {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+.da-ref-card .ant-table-pagination.ant-pagination {
+  padding: 0 16px;
+}
+
+/* Bord à bord, mais aligné : la première et la dernière cellule reprennent la gouttière de la
+   carte, pour que le contenu du tableau tombe à l'aplomb du titre. `!important` : AntD pose
+   le padding des cellules après cette feuille. */
+.da-ref-card .ant-table-thead > tr > th:first-child,
+.da-ref-card .ant-table-tbody > tr > td:first-child {
+  padding-left: 24px !important;
+}
+.da-ref-card .ant-table-thead > tr > th:last-child,
+.da-ref-card .ant-table-tbody > tr > td:last-child {
+  padding-right: 24px !important;
 }

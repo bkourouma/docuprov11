@@ -5,9 +5,9 @@
  * - tokens globaux (theme.token) + tokens par composant (theme.components).
  * - darkAlgorithm en mode sombre, defaultAlgorithm sinon.
  *
- * Grille de rondeur Plus Admin (PRD relook §4.2) : champs 2 · cartes 3 ·
- * boutons/badges 4 · modales/dropdowns/tooltips 5. Les champs re-épinglent
- * leurs trois rayons pour que le 2 px tienne aussi en size="large".
+ * Design « Registre » : coins nets (badges 4 · tout le reste 6), aucune ombre de carte,
+ * réglure bleu-gris. Les champs re-épinglent leurs trois rayons pour que la valeur tienne
+ * à toutes les tailles.
  */
 import { theme as antdAlgorithm, type ThemeConfig } from 'antd';
 import { colors, colorsDark, fonts, fontSize, radii, shadows, type ColorScheme } from './tokens';
@@ -23,6 +23,12 @@ function buildToken(c: ColorScheme, mode: Mode): ThemeConfig['token'] {
     colorError: c.danger,
     colorLink: c.primary,
     colorLinkHover: c.primaryHover,
+    // La toile est très sombre : les dérivés calculés par l'algorithme d'AntD (survol, fonds
+    // pâles) partiraient vers des verts éteints. On les épingle sur la palette.
+    colorPrimaryHover: c.primaryHover,
+    colorPrimaryActive: c.primaryActive,
+    colorPrimaryBg: c.primarySoft,
+    colorPrimaryBgHover: mode === 'dark' ? c.primarySoft : '#D3E5DA',
 
     colorBgLayout: c.bgLayout,
     colorBgContainer: c.bgContainer,
@@ -45,12 +51,12 @@ function buildToken(c: ColorScheme, mode: Mode): ThemeConfig['token'] {
     fontSizeHeading3: fontSize.lg,
 
     borderRadius: radii.base, // 4
-    borderRadiusLG: radii.lg, // 5
+    borderRadiusLG: radii.lg, // 6
     borderRadiusSM: radii.xs, // 2
 
     controlHeight: 36,
-    // Plus aucun `size`/`componentSize` « large » dans l'app (densite de champs UNIQUE a 36 px,
-    // PRD §4.6 n°10) : ce token n'est plus consomme, il n'est garde que pour rester coherent si
+    // Plus aucun `size`/`componentSize` « large » dans l'app (densite de champs UNIQUE a 36 px) :
+    // ce token n'est plus consomme, il n'est garde que pour rester coherent si
     // un composant AntD interne demande la variante haute.
     controlHeightLG: 46,
     controlHeightSM: 28,
@@ -63,20 +69,23 @@ function buildToken(c: ColorScheme, mode: Mode): ThemeConfig['token'] {
     boxShadowTertiary: 'none',
 
     // Focus net (accessibilité) — anneau primaire.
-    colorPrimaryBorder: mode === 'dark' ? c.primaryActive : '#9ec5fe',
+    colorPrimaryBorder: mode === 'dark' ? c.primaryActive : '#8FBBA6',
   };
 }
 
-function buildComponents(c: ColorScheme): ThemeConfig['components'] {
+function buildComponents(c: ColorScheme, mode: Mode): ThemeConfig['components'] {
   return {
     Button: {
       controlHeight: 36,
       fontWeight: 600,
-      contentFontSize: 12,
+      contentFontSize: fontSize.sm,
       primaryShadow: 'none',
       defaultShadow: 'none',
+      // Un bouton secondaire est un contrôle : sa bordure doit se voir (3:1), comme celle
+      // d'un champ. Le filet décoratif des cartes ne suffit pas.
+      defaultBorderColor: c.borderControl,
       // `radii.field` à toutes les tailles : les boutons suivent les champs auxquels ils sont
-      // collés (grille §4.2 assouplie, cf. `radii.field`).
+      // collés.
       borderRadius: radii.field,
       borderRadiusLG: radii.field,
       borderRadiusSM: radii.field,
@@ -91,16 +100,24 @@ function buildComponents(c: ColorScheme): ThemeConfig['components'] {
       colorBorderSecondary: c.border,
     },
     Table: {
+      // Le registre : en-tête sur papier blanc, souligné d'un filet d'encre (globals.css),
+      // lignes séparées par la réglure bleu-gris.
       headerBg: c.theadBg,
-      headerColor: c.textStrong,
+      headerColor: c.textSecondary,
       headerSplitColor: 'transparent',
-      borderColor: c.borderSecondary,
+      headerSortActiveBg: c.theadBg,
+      headerSortHoverBg: c.panelBg,
+      bodySortBg: 'transparent',
+      borderColor: c.border,
       rowHoverBg: c.primarySoft,
-      // Densité « consultation » par défaut (padding Plus Admin 15px) ;
-      // les tables de production passent en size="small" (7px) — plan §5.
-      cellPaddingBlock: 15,
+      rowSelectedBg: c.primarySoft,
+      rowSelectedHoverBg: c.primarySoft,
+      footerBg: c.panelBg,
+      // Pas de ligne du registre : 11 px de garde, soit une ligne d'environ 44 px ;
+      // les tables de production passent en size="small" (7 px).
+      cellPaddingBlock: 11,
       cellPaddingBlockSM: 7,
-      headerBorderRadius: radii.sm,
+      headerBorderRadius: radii.card,
       fontWeightStrong: 700,
     },
     // Champs : rayon `radii.field` à TOUTES les tailles, bordure neutre calibrée AA
@@ -112,7 +129,7 @@ function buildComponents(c: ColorScheme): ThemeConfig['components'] {
       controlHeight: 36,
       activeShadow: 'none',
       colorBorder: c.borderControl,
-      inputFontSize: 13,
+      inputFontSize: fontSize.base,
     },
     InputNumber: {
       borderRadius: radii.field,
@@ -149,24 +166,33 @@ function buildComponents(c: ColorScheme): ThemeConfig['components'] {
     Modal: { borderRadiusLG: radii.card, titleFontSize: fontSize.lg, headerBg: 'transparent' },
     Form: { labelFontSize: fontSize.base, verticalLabelPadding: '0 0 8px' },
     Menu: {
-      // Item actif « rempli pleine largeur » Plus Admin : aucun rayon ni marge,
-      // le remplissage court d'un bord à l'autre de la barre.
-      itemBorderRadius: 0,
+      // Panneau des écrans : l'écran courant est un aplat de toile à libellé blanc, aux coins
+      // nets ; les titres de groupe (Traiter, Suivre…) sont stylés dans globals.css.
+      itemBorderRadius: radii.field,
       itemMarginInline: 0,
-      itemMarginBlock: 0,
-      itemHeight: 40,
+      itemMarginBlock: 2,
+      itemHeight: 34,
+      itemBg: 'transparent',
+      subMenuItemBg: 'transparent',
       itemColor: c.sidebarLabel,
+      itemHoverColor: c.sidebarLabel,
       itemSelectedBg: c.menuSelectedBg,
       itemSelectedColor: c.menuSelectedColor,
       itemActiveBg: c.primarySoft,
-      itemHoverBg: c.bgLayout,
+      itemHoverBg: c.primarySoft,
       iconSize: 18,
       collapsedIconSize: 20,
-      groupTitleColor: c.textTertiary,
-      groupTitleFontSize: 11,
+      groupTitleColor: c.textSecondary,
+      groupTitleFontSize: 11.5,
     },
     Tabs: { titleFontSize: fontSize.base, horizontalItemPadding: '10px 0', inkBarColor: c.primary },
-    Segmented: { borderRadius: radii.base, itemSelectedBg: c.bgContainer, trackBg: c.bgLayout },
+    // La piste doit se détacher du fond de page (lui-même teinté) : un cran plus soutenu.
+    Segmented: {
+      borderRadius: radii.field,
+      itemSelectedBg: c.bgContainer,
+      itemSelectedColor: c.primary,
+      trackBg: mode === 'dark' ? c.bgElevated : '#DCE7E0',
+    },
     Collapse: { borderRadiusLG: radii.base, headerPadding: '10px 0' },
     // Surfaces flottantes, infobulle comprise : toutes au rayon des cartes.
     // `Tooltip` consomme le rayon de BASE, pas `borderRadiusLG` — d'ou la cle differente.
@@ -186,8 +212,8 @@ function buildComponents(c: ColorScheme): ThemeConfig['components'] {
     Layout: {
       bodyBg: c.bgLayout,
       headerBg: c.topbarBg,
-      siderBg: c.bgContainer,
-      headerHeight: 60,
+      siderBg: c.panelBg,
+      headerHeight: 56,
       headerPadding: '0 16px',
     },
   };
@@ -200,6 +226,6 @@ export function buildTheme(mode: Mode): ThemeConfig {
     hashed: true,
     algorithm: mode === 'dark' ? antdAlgorithm.darkAlgorithm : antdAlgorithm.defaultAlgorithm,
     token: buildToken(c, mode),
-    components: buildComponents(c),
+    components: buildComponents(c, mode),
   };
 }
