@@ -22,6 +22,7 @@ import {
   bigIntIdSchema,
   createEvalCaseSchema,
   createEvalSetSchema,
+  evalStatusQuerySchema,
   intIdSchema,
   listEvalCasesQuerySchema,
   listEvalSetsQuerySchema,
@@ -30,6 +31,7 @@ import {
   updateEvalSetSchema,
   type CreateEvalCaseInput,
   type CreateEvalSetInput,
+  type EvalStatusResponse,
   type RunEvalSetInput,
   type UpdateEvalCaseInput,
   type UpdateEvalSetInput,
@@ -46,6 +48,15 @@ const idPipe = new ZodValidationPipe(intIdSchema);
 @UseGuards(MenuPermissionGuard)
 export class EvalController {
   constructor(private readonly service: EvalService) {}
+
+  /** Éligibilité de chaque étape agent de la dernière version à l'autonomie (lecture seule). */
+  @Get('eval-status')
+  @RequireMenu(WORKFLOWS_MENUS.design)
+  evalStatus(
+    @Query(new ZodValidationPipe(evalStatusQuerySchema)) query: { definitionId: number },
+  ): Promise<EvalStatusResponse> {
+    return this.service.getEligibilityStatus(query.definitionId);
+  }
 
   @Get('eval-sets')
   @RequireMenu(WORKFLOWS_MENUS.design)

@@ -9,6 +9,9 @@ import {
 } from '@archivage/types';
 import type { WfToolCatalogEntry } from '../../../../lib/workflows-api';
 import { AUTONOMY_OPTIONS, autonomyAvailability } from '../../../_lib/autonomy';
+import { AgentGuardrailLinks, EligibilityNote } from './AgentGuardrailLinks';
+import { AutonomyBanner } from './AutonomyBanner';
+import type { StepGuardrails } from './editor-guardrails';
 import { PanelField } from './PanelField';
 
 export interface AgentSpecFieldsProps {
@@ -18,6 +21,10 @@ export interface AgentSpecFieldsProps {
   hasPassedEval: boolean | null;
   tools: WfToolCatalogEntry[] | null;
   onChange(next: WfAgentStepSpec): void;
+  /** Clé de l'étape (lien d'évaluation). */
+  stepKey?: string;
+  /** Évaluation, outils autorisés et droits ; absent => seulement le sélecteur et son bandeau. */
+  guardrails?: StepGuardrails;
 }
 
 interface ToolOption {
@@ -29,12 +36,22 @@ interface ToolOption {
 
 const toPercent = (v: number) => Math.round(v * 100);
 
-export function AgentSpecFields({ spec, readOnly, isLowRisk, hasPassedEval, tools, onChange }: AgentSpecFieldsProps) {
+export function AgentSpecFields({
+  spec,
+  readOnly,
+  isLowRisk,
+  hasPassedEval,
+  tools,
+  onChange,
+  stepKey,
+  guardrails,
+}: AgentSpecFieldsProps) {
   const uid = useId();
   const [toolError, setToolError] = useState<string | null>(null);
   const availability = autonomyAvailability({ isLowRisk, hasPassedEval });
   const reasonId = `${uid}-autonomy-reason`;
-  const staleAutonomous = spec.autonomy === 'autonome' && !availability.allowed;
+  // En lecture seule, l'état d'évaluation n'est pas chargé : on n'affirme rien sur une version figée.
+  const staleAutonomous = spec.autonomy === 'autonome' && !availability.allowed && !readOnly;
 
   /** Pose ou retire (valeur undefined) un champ facultatif. */
   const setOptional = <K extends 'model' | 'maxSteps' | 'maxCostPerRun'>(key: K, value: WfAgentStepSpec[K]) => {
@@ -213,6 +230,10 @@ export function AgentSpecFields({ spec, readOnly, isLowRisk, hasPassedEval, tool
             {availability.reason}
           </div>
         ) : null}
+        {guardrails && !readOnly && !availability.allowed ? (
+          <EligibilityNote guardrails={guardrails} isLowRisk={isLowRisk} />
+        ) : null}
+        <AutonomyBanner level={spec.autonomy} />
         {staleAutonomous ? (
           <Alert
             type="warning"
@@ -221,6 +242,10 @@ export function AgentSpecFields({ spec, readOnly, isLowRisk, hasPassedEval, tool
           />
         ) : null}
       </div>
+
+      {guardrails && stepKey !== undefined && !readOnly ? (
+        <AgentGuardrailLinks stepKey={stepKey} isLowRisk={isLowRisk} guardrails={guardrails} />
+      ) : null}
 
       <Collapse
         ghost

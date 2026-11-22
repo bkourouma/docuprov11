@@ -11,8 +11,9 @@ import {
   type DelegationArgs,
   type ImputableActorsPort,
 } from '../catalog.contracts';
-import { parseStrict } from './extra/extra-applier.utils';
+import { NOTIFICATION_TITLE_MAX, parseStrict, truncate } from './extra/extra-applier.utils';
 import { IMPUTATION_MENU_KEYS } from './imputable-actors.service';
+import { lockMailInputationRow, lockMailRow } from './row-locks';
 
 /**
  * `proposer_delegation` : crée une NOUVELLE imputation vers un délégataire déclaré par le concepteur
@@ -31,6 +32,10 @@ export class DelegationApplier implements ActionApplier<DelegationArgs> {
 
   async apply(ctx: ApplierContext, args: DelegationArgs): Promise<ApplierResult> {
     await ctx.rights.requireMailReadable(args.mailId);
+
+    // Verrous AVANT lecture de la source et contrôle de doublon (ordre fixe : courrier puis imputation source).
+    await lockMailRow(ctx.tx, args.mailId);
+    await lockMailInputationRow(ctx.tx, args.mailInputationId);
 
     const source = await ctx.tx.mailInputation.findUnique({
       where: { mailInputationId: args.mailInputationId },
@@ -112,10 +117,11 @@ export class DelegationApplier implements ActionApplier<DelegationArgs> {
     });
 
     const mail = await ctx.tx.mail.findUnique({ where: { mailId: args.mailId }, select: { title: true } });
+    const title = (mail?.title ?? '').trim();
     await ctx.tx.notification.create({
       data: {
         recipientUserGroupId: args.delegateUserGroupId,
-        message: `Courrier imputé : ${mail?.title ?? `#${args.mailId}`}`,
+        message: `Courrier imputé : ${title ? truncate(title, NOTIFICATION_TITLE_MAX) : `#${args.mailId}`}`,
         targetType: 'mail',
         targetId: args.mailId,
       },

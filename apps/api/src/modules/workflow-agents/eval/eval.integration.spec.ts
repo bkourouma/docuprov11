@@ -89,8 +89,8 @@ suite(title, () => {
     const runner = { run: (input: AgentRunInput) => Promise.resolve(respond(input)) };
     const identity = { resolve: () => Promise.resolve(IDENTITY) };
     const audit = { dataChange: () => Promise.resolve() };
-    service = new EvalService(prisma as never, runner, identity, loader, audit as never);
     eligibility = new AutonomyEligibilityService(prisma as never, loader);
+    service = new EvalService(prisma as never, runner, identity, loader, audit as never, eligibility);
   });
 
   afterAll(async () => {
@@ -217,6 +217,30 @@ suite(title, () => {
       data: { definitionVersionId: versionId, stepKey: 'tri', objective: 'Classer le courrier', autonomyLevel: 0, evalSetId: set.wfEvalSetId },
     });
     await expect(eligibility.check(versionId, 'tri')).resolves.toMatchObject({ eligible: false });
+  });
+
+  it('GET eval-status : étape éligible après un run réussi, non éligible avec raison après changement de comportement', async () => {
+    const { definitionId, versionId } = await workflow('Classer le courrier');
+    const { set } = await setWithRun(definitionId, [passingCase, passingCase]);
+    await prisma.wfAgentConfig.create({
+      data: { definitionVersionId: versionId, stepKey: 'tri', objective: 'Classer le courrier', autonomyLevel: 0, evalSetId: set.wfEvalSetId },
+    });
+    await expect(service.getEligibilityStatus(definitionId)).resolves.toEqual({
+      definitionId,
+      definitionVersionId: versionId,
+      versionNumber: 1,
+      steps: [{ stepKey: 'tri', evalSetId: set.wfEvalSetId, eligible: true, reason: null }],
+    });
+
+    await prisma.wfDefinitionVersion.update({
+      where: { wfDefinitionVersionId: versionId },
+      data: { graph: graphOf('Classer le courrier ET extraire les montants') },
+    });
+    const after = await service.getEligibilityStatus(definitionId);
+    expect(after.steps[0]).toMatchObject({ stepKey: 'tri', eligible: false });
+    expect(after.steps[0]!.reason).toMatch(/a changé/);
+
+    await expect(service.getEligibilityStatus(2_000_000_000)).rejects.toThrow('Workflow introuvable.');
   });
 
   it('un run terminé n’est plus modifiable ni supprimable (déclencheur), et le service ne le réécrit pas', async () => {

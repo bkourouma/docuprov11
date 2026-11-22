@@ -23,6 +23,13 @@
 }
 .wfe-toolbar-group { display: flex; flex-wrap: wrap; gap: 8px; }
 .wfe-toolbar-reason { flex-basis: 100%; }
+.wfe-link-btn {
+  display: inline-flex; align-items: center; min-height: 32px; padding: 4px 15px;
+  color: var(--ant-color-text); background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius); text-decoration: none;
+}
+.wfe-link-btn:hover { color: var(--ant-color-primary); border-color: var(--ant-color-primary); }
+.wfe-link-btn:focus-visible { outline: 2px solid var(--ant-color-primary); outline-offset: 2px; }
 
 /* ---- Disposition ---- */
 .wfe-main { display: grid; gap: 12px; min-width: 0; }
@@ -71,6 +78,6 @@
 
 /* ---- Mobile : cibles tactiles confortables ---- */
 @media (max-width: 767px) {
-  .wfe-toolbar .ant-btn, .wfe-row-actions .ant-btn, .wfe-subbar .ant-btn { min-height: 44px; }
+  .wfe-toolbar .ant-btn, .wfe-row-actions .ant-btn, .wfe-subbar .ant-btn, .wfe-link-btn { min-height: 44px; }
   .wfe-canvas-box { height: 60vh; min-height: 360px; }
 }

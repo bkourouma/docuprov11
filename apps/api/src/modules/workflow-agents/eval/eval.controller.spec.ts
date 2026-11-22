@@ -12,6 +12,7 @@ import {
   bigIntIdSchema,
   createEvalCaseSchema,
   createEvalSetSchema,
+  evalStatusQuerySchema,
   intIdSchema,
   listEvalSetsQuerySchema,
   runEvalSetSchema,
@@ -57,13 +58,14 @@ describe('EvalController : routes et accès refusé par défaut', () => {
     expect(Reflect.getMetadata(GUARDS_METADATA, EvalController)).toEqual([MenuPermissionGuard]);
   });
 
-  it('les 11 routes attendues', () => {
+  it('les 12 routes attendues', () => {
     const G = RequestMethod.GET;
     const P = RequestMethod.POST;
     const PA = RequestMethod.PATCH;
     const D = RequestMethod.DELETE;
     expect(tableOf()).toEqual(
       [
+        `${G}:eval-status`,
         `${G}:eval-sets`,
         `${P}:eval-sets`,
         `${G}:eval-sets/:id`,
@@ -84,7 +86,7 @@ describe('EvalController : routes et accès refusé par défaut', () => {
   });
 
   it('CHAQUE route exige le menu conception', () => {
-    expect(routes).toHaveLength(11);
+    expect(routes).toHaveLength(12);
     for (const n of routes) {
       expect(Reflect.getMetadata(REQUIRE_MENU_KEY, proto[n])).toEqual([WORKFLOWS_MENUS.design]);
     }
@@ -107,6 +109,15 @@ describe('EvalController : routes et accès refusé par défaut', () => {
 
 describe('EvalController : validation des corps (zod)', () => {
   const validate = (schema: ZodSchema<unknown>, value: unknown): unknown => new ZodValidationPipe(schema).transform(value);
+
+  it('eval-status : definitionId entier positif obligatoire (chaîne numérique acceptée), inconnu refusé', () => {
+    expect(validate(evalStatusQuerySchema, { definitionId: '5' })).toEqual({ definitionId: 5 });
+    expect(() => validate(evalStatusQuerySchema, {})).toThrow(BadRequestException);
+    expect(() => validate(evalStatusQuerySchema, { definitionId: 'abc' })).toThrow(BadRequestException);
+    expect(() => validate(evalStatusQuerySchema, { definitionId: '0' })).toThrow(BadRequestException);
+    expect(() => validate(evalStatusQuerySchema, { definitionId: '1.5' })).toThrow(BadRequestException);
+    expect(() => validate(evalStatusQuerySchema, { definitionId: '5', extra: 1 })).toThrow(BadRequestException);
+  });
 
   it('création de jeu : champs requis, champs inconnus refusés, précision à 3 décimales au plus', () => {
     const ok = { definitionId: 5, name: 'Jeu', minAccuracy: 0.85 };

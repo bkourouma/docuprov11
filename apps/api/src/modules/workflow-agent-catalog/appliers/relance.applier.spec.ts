@@ -21,10 +21,16 @@ interface FakeState {
 
 function makeTx(state: FakeState) {
   const created: Array<{ recipientUserGroupId: number; message: string; targetType: string; targetId: number }> = [];
+  /** Journal ordonné des accès : verrous de ligne, lecture de l'imputation, comptages. */
+  const order: string[] = [];
   return {
     created,
+    order,
     mailInputation: {
-      findUnique: jest.fn(async () => state.inputation),
+      findUnique: jest.fn(async () => {
+        order.push('read:inputation');
+        return state.inputation;
+      }),
       update: jest.fn(async () => ({})),
     },
     appUserGroup: {
@@ -33,7 +39,10 @@ function makeTx(state: FakeState) {
       ),
     },
     notification: {
-      count: jest.fn(async () => state.targetToday),
+      count: jest.fn(async () => {
+        order.push('count:target');
+        return state.targetToday;
+      }),
       create: jest.fn(async ({ data }: { data: (typeof created)[number] }) => {
         created.push(data);
         return {};
@@ -50,7 +59,14 @@ function makeTx(state: FakeState) {
         };
       }),
     },
-    $queryRaw: jest.fn(async () => [{ n: BigInt(state.instanceToday) }]),
+    $queryRaw: jest.fn(async (query: { sql: string; values: unknown[] }) => {
+      if (/FOR UPDATE/.test(query.sql)) {
+        order.push(/FROM mail_inputation /.test(query.sql) ? 'lock:inputation' : 'lock:mail');
+        return [{}];
+      }
+      order.push('count:instance');
+      return [{ n: BigInt(state.instanceToday) }];
+    }),
   };
 }
 
@@ -104,6 +120,24 @@ describe('RelanceApplier', () => {
     ]);
     expect(JSON.stringify(res.effects)).not.toContain('Merci');
     expect(ctx.scratch.get(RELANCE_BATCH_COUNT_KEY)).toBe(1);
+  });
+
+  it('verrous de ligne : courrier PUIS imputation, avant lecture de l imputation et avant tout comptage', async () => {
+    const { applier, ctx, tx } = setup();
+    await applier.apply(ctx, applier.parse(validArgs));
+    expect(tx.order.slice(0, 3)).toEqual(['lock:mail', 'lock:inputation', 'read:inputation']);
+    expect(tx.order.indexOf('lock:inputation')).toBeLessThan(tx.order.indexOf('count:target'));
+    expect(tx.order.indexOf('lock:inputation')).toBeLessThan(tx.order.indexOf('count:instance'));
+    const locks = tx.$queryRaw.mock.calls.filter(([q]) => /FOR UPDATE/.test(q.sql));
+    expect(locks.map(([q]) => q.values)).toEqual([[3], [50]]);
+    expect(locks[0][0].sql).toMatch(/FROM mail WHERE mail_id = \? FOR UPDATE/);
+    expect(locks[1][0].sql).toMatch(/FROM mail_inputation WHERE mail_inputation_id = \? FOR UPDATE/);
+  });
+
+  it('verrous : pris même si le plafond refuse ensuite (verrou avant comptage), jamais après une écriture', async () => {
+    const { applier, ctx, tx } = setup({ targetToday: 1 });
+    await expect(applier.apply(ctx, applier.parse(validArgs))).rejects.toMatchObject({ code: 'relance_cap_target' });
+    expect(tx.order.indexOf('lock:inputation')).toBeLessThan(tx.order.indexOf('count:target'));
   });
 
   it('jamais d e-mail : le module n importe aucun service de notification et n écrit que par tx.notification', () => {

@@ -226,7 +226,7 @@ d'une confiance (0 à 1), d'une explication courte et des sources consultées.
 - **Jeu d'évaluation de départ** : 14 cas. Quatre retards simples attendant une relance ; deux cas de plafond (relance déjà envoyée
   aujourd'hui pour l'imputation, plafond du workflow atteint), deux refus de redirection (délégataire non déclaré, aucun délégataire) et un cas
   non en retard, tous attendant `aucune_action` ; deux redirections attendant
-  `redirection_proposee` vers le délégataire déclaré ; trois injections. Précision minimale : 0,8. En évaluation, les délégataires sont lus dans `evalContext.delegates` (simulation) ; cette propagation n'est pas encore branchée, voir le chapitre 9.2, point 2.
+  `redirection_proposee` vers le délégataire déclaré ; trois injections. Précision minimale : 0,8. En évaluation, les délégataires sont lus dans `evalContext.delegates` (simulation) ; cette propagation est branchée depuis le lot W7 (voir le chapitre 9.2, point 2). Le nombre de cas réussis (12 sur 14, mesuré avant ce branchement) n'a pas été remesuré.
 - **Déclencheur conseillé** : `deadline.reached`, à créer par le concepteur.
 
 ## 5. Les trois modèles sans agent
@@ -334,10 +334,11 @@ Ordre recommandé. Les étapes 1 à 4 sont faites par le concepteur, les étapes
 ### 9.2 Limites connues
 
 1. **Niveau 0 par défaut** : les modèles annoncent « niveau de départ : suggère » sans préciser qu'aucune écriture ne suit la validation (chapitre 8, étape 5).
-2. **Redirections non reproductibles en évaluation** : en `dry_run`, `proposer_delegation` lit les délégataires dans `evalContext.delegates`
-   (résultat simulé, `simulated: true`). Le champ existe dans `agent.contracts.ts`, mais le runner (`runner/agent-runner.ts`) et le service
-   d'évaluation (`eval/eval.service.ts`) ne le transmettent pas encore à l'outil. Tant que ce n'est pas fait, les deux cas de redirection du jeu
-   relanceur échouent : 12 réussis sur 14, soit 0,857, au-dessus du plancher de 0,8. À traiter avant de compter sur ce jeu.
+2. **Redirections reproductibles en évaluation (limite levée)** : en `dry_run`, `proposer_delegation` lit les délégataires dans `evalContext.delegates`
+   (résultat simulé, `simulated: true`). Le service d'évaluation (`eval/eval.service.ts`) transmet désormais le contexte du cas (`input.context`) à
+   `scope.evalContext`, et le runner (`runner/agent-runner.ts`) le pose dans le contexte d'outil (`WfToolContext.evalContext`) en `dry_run`
+   SEULEMENT : jamais en exécution réelle. Les deux cas de redirection du jeu relanceur ne sont donc plus en échec structurel. Le nombre de cas
+   réussis (12 sur 14 auparavant) n'a pas été remesuré : il dépend d'un run d'évaluation avec le modèle ; relancer le jeu avant de compter dessus.
 3. **Évaluation du rédacteur** : en `dry_run`, le brouillon est le squelette statique du modèle, sans génération. L'évaluation mesure le verdict et le
    choix du modèle de rédaction, pas la qualité du texte produit.
 4. **Bureau d'ordre** : le contrôle bureau d'ordre automatique (`autoValiderOnImputation`) n'est pas rejoué lors d'une imputation par l'agent.
@@ -349,5 +350,5 @@ Ordre recommandé. Les étapes 1 à 4 sont faites par le concepteur, les étapes
    qui est privée. À aligner si cette règle évolue.
 7. **Escalade absente du modèle relanceur** : elle exige un identifiant propre à l'installation et doit être ajoutée par le concepteur.
 8. **Runs en mémoire** : les évaluations tournent dans le processus de l'api ; un redémarrage les laisse « en cours » jusqu'au nettoyage.
-9. **Documentation voisine** : `docs/workflow-agents.md` (section 4, tableau des outils, et section 12, « pas d'applicateur d'effets »)
-    décrit l'état antérieur au lot W6. Elle doit être mise à jour séparément.
+9. **Documentation voisine (corrigée au lot W7)** : `docs/workflow-agents.md` (section 4, tableau des outils, et section 12, « pas d'applicateur d'effets »)
+    décrivait l'état antérieur au lot W6 ; ces passages ont été réécrits.

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import type { WfGraph } from '@archivage/types';
 import { MailsService } from '../../courriers/mails.service';
 import { DocumentsService } from '../../documents/documents.service';
@@ -9,18 +9,23 @@ import { WorkflowEngine } from '../../workflows/engine/engine';
 import type { WfDirectory, WfExecutorOutcome, WfPrincipal } from '../../workflows/engine/engine.types';
 import { WfExecutorRegistry } from '../../workflows/engine/executor-registry';
 import { PrincipalService } from '../../workflows/principal.service';
-import { EffectRefusedError, type ActionApplier } from '../catalog.contracts';
+import type { AuthUser } from '../../auth/auth.types';
+import { countInstanceRelancesToday } from '../shared/relance-cap';
+import { EffectRefusedError, type ActionApplier, type ApplierContext } from '../catalog.contracts';
 import { ActionApplierRegistry } from './action-applier.registry';
+import { DelegationApplier } from './delegation.applier';
 import { ApplierRightsService } from './applier-rights';
 import { EffectDispatcher } from './effect-dispatcher';
 import { ImputableActorsService } from './imputable-actors.service';
 import { ImputationBaseApplier, ImputationCourrierApplier } from './imputation.applier';
+import { RelanceApplier } from './relance.applier';
 
 // Test d'intégration PostgreSQL de l'applicateur d'effets (lot W6) : vrai moteur, vrai répartiteur, vrais
 // applicateurs d'imputation, vraie identité (lanceur relu en base), vrais droits (menus, lecture du courrier) ;
 // seul l'exécuteur d'agent est factice (il PROPOSE une imputation). Ne s'exécute que si WF_TEST_DATABASE_URL est
 // définie (JAMAIS la base de développement : refus si elle est égale à DATABASE_URL). Données de test préfixées
-// « wf6t » ; rien n'est supprimé (journal en ajout seul). À lancer en série (`-i`).
+// « wf6t » ; les courriers, imputations et notifications créés sont supprimés en fin de suite (le journal du
+// moteur est en ajout seul : ses lignes restent). À lancer en série (`-i`).
 
 const url = process.env.WF_TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
@@ -37,6 +42,8 @@ suite(title, () => {
   let engine: WorkflowEngine;
   let executors: WfExecutorRegistry;
   let seq = 0;
+  /** Courriers créés par la suite (nettoyés en fin de suite avec leurs imputations et notifications). */
+  const mailIds: number[] = [];
   let next: () => WfExecutorOutcome = () => ({ kind: 'wait' });
   const ids: Record<'V' | 'L' | 'R' | 'N' | 'V2' | 'L2', { userId: number; userGroupId: number }> = {} as never;
   const principal = (who: keyof typeof ids): WfPrincipal => ({ userGroupId: ids[who].userGroupId, userId: ids[who].userId, groupIds: [], roleId: null });
@@ -109,6 +116,8 @@ suite(title, () => {
     const actors = new ImputableActorsService(prisma as never);
     applierRegistry.register(new ImputationCourrierApplier(actors));
     applierRegistry.register(new ImputationBaseApplier(actors));
+    applierRegistry.register(new RelanceApplier());
+    applierRegistry.register(new DelegationApplier(actors));
     applierRegistry.register(writesThenThrows);
     applierRegistry.register(bumpsVersion);
     const identity = new AgentIdentityService(prisma as never, new PrincipalService(prisma as never));
@@ -124,6 +133,10 @@ suite(title, () => {
 
   afterAll(async () => {
     await engine?.whenIdle();
+    if (prisma && mailIds.length > 0) {
+      await prisma.notification.deleteMany({ where: { targetType: 'mail', targetId: { in: mailIds } } });
+      await prisma.mail.deleteMany({ where: { mailId: { in: mailIds } } }); // supprime aussi les imputations (cascade)
+    }
     await prisma?.$disconnect();
   });
 
@@ -131,15 +144,16 @@ suite(title, () => {
     compensate.mockClear();
   });
 
-  async function newMail(): Promise<number> {
+  async function newMail(mailTitle?: string): Promise<number> {
     seq += 1;
     const m = await prisma.mail.create({
-      data: { title: `${TAG} courrier ${seq}`, date: new Date('2026-11-20'), mailType: 0, status: 0, destinataireExpediteur: ids.V.userGroupId },
+      data: { title: mailTitle ?? `${TAG} courrier ${seq}`, date: new Date('2026-11-20'), mailType: 0, status: 0, destinataireExpediteur: ids.V.userGroupId },
     });
+    mailIds.push(m.mailId);
     return m.mailId;
   }
 
-  async function publish(assignee: number): Promise<number> {
+  async function publish(assignee: number, config?: Record<string, unknown>): Promise<number> {
     seq += 1;
     const graph = {
       schemaVersion: 1,
@@ -151,6 +165,7 @@ suite(title, () => {
           type: 'agent',
           assignee: { kind: 'user', id: assignee },
           agent: { objective: 'Imputer le courrier', tools: ['proposer_imputation_courrier'], confidenceThreshold: 0.8, autonomy: 'agit_avec_validation' },
+          ...(config ? { config } : {}),
           next: [{ to: 'fin' }],
         },
         { key: 'fin', name: 'Fin', type: 'checklist', assignee: { kind: 'user', id: assignee }, config: { items: [{ key: 'ok' }] }, next: [] },
@@ -178,9 +193,12 @@ suite(title, () => {
   });
 
   /** Lance une instance (agent qui propose `actions`) et renvoie l'élément kind 1 ouvert. */
-  async function startWith(actions: unknown[], opts: { assignee?: keyof typeof ids; launcher?: keyof typeof ids } = {}) {
+  async function startWith(
+    actions: unknown[],
+    opts: { assignee?: keyof typeof ids; launcher?: keyof typeof ids; config?: Record<string, unknown> } = {},
+  ) {
     next = () => proposeWith(actions);
-    const definitionId = await publish(ids[opts.assignee ?? 'V'].userGroupId);
+    const definitionId = await publish(ids[opts.assignee ?? 'V'].userGroupId, opts.config);
     const res = await engine.startInstance({ definitionId, startedBy: ids[opts.launcher ?? 'L'].userGroupId, subjectType: 'mail', subjectId: '1' });
     await engine.whenIdle();
     const instanceId = res.instance.wfInstanceId;
@@ -374,5 +392,315 @@ suite(title, () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].mailInputationTypeId).toBe(5);
     expect(rows[0].deadline).not.toBeNull(); // validation DG : +2 jours par défaut
+  });
+
+  // ---------------------------------------------------------------------------------------------------------
+  // Relance et délégation (lot W7) : mêmes règles, vrai moteur, vraie base.
+  // ---------------------------------------------------------------------------------------------------------
+
+  const DAY = 24 * 3600 * 1000;
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  /** Imputation ouverte (par défaut : à R, créée par V, en retard de 2 jours, type « Pour Suivi »). */
+  async function newInputation(
+    mailId: number,
+    over: { userId?: number; createdBy?: number | null; deadline?: Date | null; typeId?: number; instructions?: string | null } = {},
+  ) {
+    return prisma.mailInputation.create({
+      data: {
+        mailId,
+        userId: over.userId ?? ids.R.userGroupId,
+        mailInputationTypeId: over.typeId ?? 10,
+        createdBy: over.createdBy === undefined ? ids.V.userGroupId : over.createdBy,
+        deadline: over.deadline === undefined ? new Date(Date.now() - 2 * DAY) : over.deadline,
+        instructions: over.instructions === undefined ? 'Consignes' : over.instructions,
+      },
+    });
+  }
+
+  const relance = (mailId: number, mailInputationId: number, extra: Record<string, unknown> = {}) => ({
+    tool: 'proposer_relance',
+    arguments: { mailId, mailInputationId, recipientUserGroupId: ids.R.userGroupId, message: 'Merci de traiter ce courrier.', ...extra },
+    sideEffect: 1,
+    requiresValidation: true,
+    preview: `Relancer pour le courrier ${mailId}`,
+  });
+  const delegation = (mailId: number, mailInputationId: number, delegateUserGroupId: number) => ({
+    tool: 'proposer_delegation',
+    arguments: { mailId, mailInputationId, delegateUserGroupId, rationale: 'Absence du titulaire' },
+    sideEffect: 1,
+    requiresValidation: true,
+    preview: `Déléguer le courrier ${mailId}`,
+  });
+  const relanceNotes = (mailId: number, userGroupId: number) =>
+    prisma.notification.findMany({ where: { recipientUserGroupId: userGroupId, targetType: 'mail', targetId: mailId, message: { startsWith: 'Relance : ' } } });
+
+  const validate = (item: { taskId: bigint; proposal: unknown }, who: keyof typeof ids = 'V') =>
+    engine.completeTask({ taskId: item.taskId.toString(), principal: principal(who), result: item.proposal as Record<string, unknown> });
+
+  async function expectRefusedAndUntouched(
+    instanceId: string,
+    item: { wfInboxItemId: bigint; taskId: bigint; proposal: unknown },
+    code: string,
+    who: keyof typeof ids = 'V',
+  ) {
+    const before = (await events(instanceId)).length;
+    await expect(validate(item, who)).rejects.toMatchObject({ code: 'INVALID_INPUT', details: { code } });
+    await expectUntouched(instanceId, item.wfInboxItemId, before);
+  }
+
+  describe('relance (proposer_relance)', () => {
+    it('cas nominal : notification interne préfixée, lastReminderSent, effet journalisé sans contenu', async () => {
+      const mailId = await newMail();
+      const inp = await newInputation(mailId);
+      const { instanceId, item } = await startWith([relance(mailId, inp.mailInputationId)]);
+      await validate(item);
+
+      const notes = await relanceNotes(mailId, ids.R.userGroupId);
+      expect(notes.map((n) => n.message)).toEqual(['Relance : Merci de traiter ce courrier.']);
+      expect((await prisma.mailInputation.findUniqueOrThrow({ where: { mailInputationId: inp.mailInputationId } })).lastReminderSent).not.toBeNull();
+      const acted = (await events(instanceId)).find((e) => e.eventType === 'agent.acted')!;
+      expect(acted.decision).toMatchObject({
+        kind: 'effects_applied',
+        effects: [{ tool: 'proposer_relance', summary: { mailId, mailInputationId: inp.mailInputationId, recipientUserGroupId: ids.R.userGroupId, escalated: false } }],
+      });
+      expect(JSON.stringify(acted.decision)).not.toContain('Merci de traiter');
+    });
+
+    it('plafond par imputé et par jour : une seconde relance (autre instance) le même jour est refusée, rien enregistré', async () => {
+      const mailId = await newMail();
+      const inp = await newInputation(mailId);
+      const first = await startWith([relance(mailId, inp.mailInputationId)]);
+      const second = await startWith([relance(mailId, inp.mailInputationId)]);
+      await validate(first.item);
+      await expectRefusedAndUntouched(second.instanceId, second.item, 'relance_cap_target');
+      expect(await relanceNotes(mailId, ids.R.userGroupId)).toHaveLength(1);
+    });
+
+    it('plafond par instance : 5 relances du lot passent (journal = 5), la 6e refuse TOUT le lot', async () => {
+      const six: unknown[] = [];
+      const mails: number[] = [];
+      for (let i = 0; i < 6; i++) {
+        const mailId = await newMail();
+        mails.push(mailId);
+        const inp = await newInputation(mailId);
+        six.push(relance(mailId, inp.mailInputationId));
+      }
+      const refused = await startWith(six);
+      await expectRefusedAndUntouched(refused.instanceId, refused.item, 'relance_cap_instance');
+      for (const m of mails) expect(await relanceNotes(m, ids.R.userGroupId)).toHaveLength(0);
+
+      const ok = await startWith(six.slice(0, 5));
+      await validate(ok.item);
+      for (const m of mails.slice(0, 5)) expect(await relanceNotes(m, ids.R.userGroupId)).toHaveLength(1);
+      expect(await relanceNotes(mails[5], ids.R.userGroupId)).toHaveLength(0);
+      expect(await countInstanceRelancesToday(prisma as never, ok.instanceId, new Date())).toBe(5);
+    });
+
+    it('escalade : seul l’auteur de l’imputation peut être prévenu en plus (un tiers est refusé, l’auteur reçoit une copie)', async () => {
+      const mailId = await newMail();
+      const inp = await newInputation(mailId); // auteur = V
+      const bad = await startWith([relance(mailId, inp.mailInputationId, { escalateToUserGroupId: ids.L.userGroupId })]);
+      await expectRefusedAndUntouched(bad.instanceId, bad.item, 'escalation_not_author');
+      expect(await relanceNotes(mailId, ids.R.userGroupId)).toHaveLength(0);
+      expect(await relanceNotes(mailId, ids.L.userGroupId)).toHaveLength(0);
+
+      const good = await startWith([relance(mailId, inp.mailInputationId, { escalateToUserGroupId: ids.V.userGroupId })]);
+      await validate(good.item);
+      expect(await relanceNotes(mailId, ids.R.userGroupId)).toHaveLength(1);
+      const copy = await relanceNotes(mailId, ids.V.userGroupId);
+      expect(copy).toHaveLength(1);
+      expect(copy[0].message).toContain('copie à l’auteur de l’imputation');
+    });
+
+    it('sans menu d’imputation (valideur non auteur) : refus `relance_not_allowed`, rien enregistré', async () => {
+      const mailId = await newMail();
+      const inp = await newInputation(mailId); // auteur = V ; le valideur ici est V2 (suivi seul)
+      const { instanceId, item } = await startWith([relance(mailId, inp.mailInputationId)], { assignee: 'V2' });
+      await expectRefusedAndUntouched(instanceId, item, 'relance_not_allowed', 'V2');
+      expect(await relanceNotes(mailId, ids.R.userGroupId)).toHaveLength(0);
+    });
+
+    it('auteur de l’imputation sans menu d’imputation : accepté (règle « menu OU auteur »)', async () => {
+      const mailId = await newMail();
+      const inp = await newInputation(mailId, { createdBy: ids.V2.userGroupId });
+      const { item } = await startWith([relance(mailId, inp.mailInputationId)], { assignee: 'V2' });
+      await validate(item, 'V2');
+      expect(await relanceNotes(mailId, ids.R.userGroupId)).toHaveLength(1);
+    });
+
+    it.each([
+      ['échéance dans le futur', () => new Date(Date.now() + 5 * DAY)],
+      ['sans échéance', () => null],
+    ])('imputation pas en retard (%s) : refus `not_late`, rien enregistré', async (_n, deadline) => {
+      const mailId = await newMail();
+      const inp = await newInputation(mailId, { deadline: deadline() });
+      const { instanceId, item } = await startWith([relance(mailId, inp.mailInputationId)]);
+      await expectRefusedAndUntouched(instanceId, item, 'not_late');
+      expect(await relanceNotes(mailId, ids.R.userGroupId)).toHaveLength(0);
+    });
+  });
+
+  describe('délégation (proposer_delegation)', () => {
+    const declared = (delegate: number, forUserGroupId: number) => ({ delegates: [{ userGroupId: delegate, forUserGroupId }] });
+
+    it('cas nominal : nouvelle imputation (type, consignes, échéance repris), notification, source intacte, effet sans contenu', async () => {
+      const mailId = await newMail();
+      const deadline = new Date(Math.floor((Date.now() + 3 * DAY) / 1000) * 1000); // colonne timestamptz(0) : précision à la seconde
+      const src = await newInputation(mailId, { userId: ids.N.userGroupId, deadline, instructions: 'Voir pièce jointe', typeId: 17 });
+      const { instanceId, item } = await startWith([delegation(mailId, src.mailInputationId, ids.R.userGroupId)], {
+        config: declared(ids.R.userGroupId, ids.N.userGroupId),
+      });
+      await validate(item);
+
+      const rows = await imputationsOf(mailId);
+      expect(rows).toHaveLength(2);
+      const created = rows.find((r) => r.mailInputationId !== src.mailInputationId)!;
+      expect(created).toMatchObject({ userId: ids.R.userGroupId, mailInputationTypeId: 17, instructions: 'Voir pièce jointe', createdBy: ids.V.userGroupId, dateTreated: null });
+      expect(created.deadline?.getTime()).toBe(deadline.getTime());
+      expect(rows.find((r) => r.mailInputationId === src.mailInputationId)).toMatchObject({ userId: ids.N.userGroupId, dateTreated: null });
+      const mail = await prisma.mail.findUniqueOrThrow({ where: { mailId } });
+      const notes = await prisma.notification.findMany({ where: { recipientUserGroupId: ids.R.userGroupId, targetType: 'mail', targetId: mailId } });
+      expect(notes.map((n) => n.message)).toEqual([`Courrier imputé : ${mail.title}`]);
+      const acted = (await events(instanceId)).find((e) => e.eventType === 'agent.acted')!;
+      expect(acted.decision).toMatchObject({
+        kind: 'effects_applied',
+        effects: [{ tool: 'proposer_delegation', summary: { status: 'created', mailId, sourceMailInputationId: src.mailInputationId, mailInputationId: created.mailInputationId } }],
+      });
+      expect(JSON.stringify(acted.decision)).not.toContain('Absence');
+    });
+
+    it('doublon : imputation ouverte identique chez le délégataire => `already_present`, rien créé ni notifié', async () => {
+      const mailId = await newMail();
+      const src = await newInputation(mailId, { userId: ids.N.userGroupId });
+      const dup = await newInputation(mailId, { userId: ids.R.userGroupId });
+      const { instanceId, item } = await startWith([delegation(mailId, src.mailInputationId, ids.R.userGroupId)], {
+        config: declared(ids.R.userGroupId, ids.N.userGroupId),
+      });
+      await validate(item);
+
+      expect(await imputationsOf(mailId)).toHaveLength(2);
+      expect(await prisma.notification.count({ where: { targetType: 'mail', targetId: mailId } })).toBe(0);
+      const acted = (await events(instanceId)).find((e) => e.eventType === 'agent.acted')!;
+      expect(acted.decision).toMatchObject({
+        effects: [{ tool: 'proposer_delegation', summary: { status: 'already_present', mailInputationId: dup.mailInputationId } }],
+      });
+    });
+
+    it('délégataire non imputable (sans accès aux courriers) : refus `delegate_not_imputable`, rien enregistré', async () => {
+      const mailId = await newMail();
+      const src = await newInputation(mailId, { userId: ids.R.userGroupId });
+      const { instanceId, item } = await startWith([delegation(mailId, src.mailInputationId, ids.N.userGroupId)], {
+        config: declared(ids.N.userGroupId, ids.R.userGroupId),
+      });
+      await expectRefusedAndUntouched(instanceId, item, 'delegate_not_imputable');
+      expect(await imputationsOf(mailId)).toHaveLength(1);
+    });
+
+    it('délégataire non déclaré par le concepteur : refus `delegate_not_declared`', async () => {
+      const mailId = await newMail();
+      const src = await newInputation(mailId, { userId: ids.N.userGroupId });
+      const { instanceId, item } = await startWith([delegation(mailId, src.mailInputationId, ids.R.userGroupId)]);
+      await expectRefusedAndUntouched(instanceId, item, 'delegate_not_declared');
+    });
+
+    it('titre du courrier tronqué à 300 caractères dans la notification', async () => {
+      const mailId = await newMail(`${TAG} ${'x'.repeat(400)}`);
+      const src = await newInputation(mailId, { userId: ids.N.userGroupId });
+      const { item } = await startWith([delegation(mailId, src.mailInputationId, ids.R.userGroupId)], {
+        config: declared(ids.R.userGroupId, ids.N.userGroupId),
+      });
+      await validate(item);
+      const notes = await prisma.notification.findMany({ where: { recipientUserGroupId: ids.R.userGroupId, targetType: 'mail', targetId: mailId } });
+      expect(notes).toHaveLength(1);
+      const shown = notes[0].message.replace('Courrier imputé : ', '');
+      expect(Array.from(shown)).toHaveLength(300);
+      expect(shown.endsWith('…')).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------------------
+  // Concurrence : deux transactions RÉELLEMENT concurrentes (instances ou valideurs différents) visant la même
+  // imputation / le même courrier. La transaction A applique puis GARDE sa transaction ouverte 700 ms ; B démarre
+  // dès que A a appliqué. Sans verrou de ligne, B compte / cherche pendant que A n'a rien validé et les deux
+  // réussissent ; avec `SELECT … FOR UPDATE` (courrier puis imputation), B attend la fin de A puis voit son écriture.
+  // ---------------------------------------------------------------------------------------------------------
+  describe('concurrence entre transactions de validation (verrous de ligne)', () => {
+    const authUser = (k: keyof typeof ids): AuthUser => ({ userId: ids[k].userId, username: `${TAG}-${k}`, isAdmin: false, userGroupId: ids[k].userGroupId });
+
+    function rawCtx(tx: Prisma.TransactionClient, instanceId: string, stepConfig: Record<string, unknown>): ApplierContext {
+      return {
+        tx,
+        now: new Date(),
+        instanceId,
+        taskId: '1',
+        stepKey: 'aiguiller',
+        definitionVersionId: 1,
+        subject: { type: 'mail', id: '1' },
+        input: {},
+        stepConfig,
+        validatorPrincipal: principal('V'),
+        rights: {
+          validator: authUser('V'),
+          launcher: authUser('L'),
+          requireAnyMenu: async () => undefined,
+          requireMailReadable: async () => undefined,
+        },
+        scratch: new Map<string, unknown>(),
+      } as unknown as ApplierContext;
+    }
+
+    type Outcome<T> = { ok: true; v: T } | { ok: false; e: unknown };
+    const settle = <T>(p: Promise<T>): Promise<Outcome<T>> => p.then((v) => ({ ok: true as const, v }), (e: unknown) => ({ ok: false as const, e }));
+
+    /** A applique puis tient sa transaction ouverte ; B démarre dès que A a appliqué. Renvoie les deux issues. */
+    async function race<T>(run: (ctx: ApplierContext) => Promise<T>, stepConfig: Record<string, unknown> = {}): Promise<[Outcome<T>, Outcome<T>]> {
+      let appliedA!: () => void;
+      const aApplied = new Promise<void>((resolve) => (appliedA = resolve));
+      const options = { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 20_000, maxWait: 20_000 };
+      const a = prisma.$transaction(async (tx) => {
+        try {
+          return await run(rawCtx(tx, '910001', stepConfig));
+        } finally {
+          appliedA();
+          await sleep(700); // A garde sa transaction (et ses verrous) ouverte
+        }
+      }, options);
+      const b = aApplied.then(() => prisma.$transaction((tx) => run(rawCtx(tx, '910002', stepConfig)), options));
+      return Promise.all([settle(a), settle(b)]);
+    }
+
+    it('(a) plafond de relances par imputé et par jour : deux validations concurrentes => UNE seule relance', async () => {
+      const mailId = await newMail();
+      const inp = await newInputation(mailId);
+      const applier = new RelanceApplier();
+      const args = applier.parse({ mailId, mailInputationId: inp.mailInputationId, recipientUserGroupId: ids.R.userGroupId, message: 'Relance concurrente' });
+      const [a, b] = await race((ctx) => applier.apply(ctx, args));
+      expect(a.ok).toBe(true);
+      expect(b).toMatchObject({ ok: false, e: { code: 'relance_cap_target' } });
+      expect(await relanceNotes(mailId, ids.R.userGroupId)).toHaveLength(1);
+    });
+
+    it('(b) imputation en doublon : deux validations concurrentes vers le même acteur => UNE seule imputation', async () => {
+      const mailId = await newMail();
+      const imputer = new ImputationCourrierApplier(new ImputableActorsService(prisma as never));
+      const args = imputer.parse({ mailId, recipients: [{ userGroupId: ids.R.userGroupId, mailInputationTypeId: 10 }], rationale: 'Concurrence' });
+      const [a, b] = await race((ctx) => imputer.apply(ctx, args));
+      const statuses = [a, b].map((r) => (r.ok ? (r.v.effects[0].summary as { status: string }).status : 'refus'));
+      expect(statuses).toEqual(['applied', 'already_present']);
+      expect(await imputationsOf(mailId)).toHaveLength(1);
+      expect(await prisma.notification.count({ where: { targetType: 'mail', targetId: mailId } })).toBe(1);
+    });
+
+    it('(b) délégation en doublon : deux validations concurrentes vers le même délégataire => UNE seule nouvelle imputation', async () => {
+      const mailId = await newMail();
+      const src = await newInputation(mailId, { userId: ids.N.userGroupId });
+      const delegator = new DelegationApplier(new ImputableActorsService(prisma as never));
+      const args = delegator.parse({ mailId, mailInputationId: src.mailInputationId, delegateUserGroupId: ids.R.userGroupId, rationale: 'Concurrence' });
+      const [a, b] = await race((ctx) => delegator.apply(ctx, args), { delegates: [{ userGroupId: ids.R.userGroupId }] });
+      const statuses = [a, b].map((r) => (r.ok ? (r.v.effects[0].summary as { status: string }).status : 'refus'));
+      expect(statuses).toEqual(['created', 'already_present']);
+      expect(await imputationsOf(mailId)).toHaveLength(2); // source + une seule délégation
+    });
   });
 });

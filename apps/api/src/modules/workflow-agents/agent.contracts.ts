@@ -93,6 +93,8 @@ export interface WfToolContext {
   subject: { type: string | null; id: string | null };
   /** Évaluation : aucun effet de bord, aucune écriture (les outils d'écriture ne font que préparer). */
   dryRun: boolean;
+  /** Contexte du cas d'évaluation : posé par le runner en `dry_run` SEULEMENT, jamais en exécution réelle. */
+  evalContext?: Readonly<Record<string, unknown>>;
 }
 
 export interface WfToolResult {

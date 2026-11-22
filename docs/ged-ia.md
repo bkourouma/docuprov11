@@ -325,3 +325,7 @@ pnpm test                                                # tous les paquets (Tur
 - Une erreur réseau n'est pas recopiée dans le message journalisé (`injoignable (erreur réseau)`).
 - `apiKeyConfigured` suit exactement la résolution réelle (une configuration qui lèverait `AiConfigurationError` donne `false`).
 - L'extraction courrier teste `ai.status()` avant l'OCR local : IA coupée, aucun OCR n'est lancé.
+
+## 14. Docu-Flow (agents de workflow)
+
+Les agents de workflow passent par ce socle (`AiService.run`). Vue d'ensemble, agents et garde-fous : [`workflow.md`](workflow.md).

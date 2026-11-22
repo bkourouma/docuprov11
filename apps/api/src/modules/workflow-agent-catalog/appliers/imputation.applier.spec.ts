@@ -23,7 +23,13 @@ function setup(opts: {
     { mailInputationTypeId: 14, label: 'Validation Direction' },
     { mailInputationTypeId: 17, label: 'En copie' },
   ];
+  /** Journal ordonné des accès : verrous de ligne, recherche de doublon, écritures. */
+  const order: string[] = [];
   const tx = {
+    $queryRaw: jest.fn(async (query: { sql: string; values: unknown[] }) => {
+      order.push(/FROM mail WHERE mail_id = \? FOR UPDATE/.test(query.sql) ? `lock:mail:${String(query.values[0])}` : 'lock:unexpected');
+      return [{ mail_id: 5 }];
+    }),
     mail: { findFirst: jest.fn(async () => (opts.mail === undefined ? { mailId: 5, title: 'Demande de congé' } : opts.mail)) },
     mailInputationType: {
       findMany: jest.fn(async ({ where }: { where: { mailInputationTypeId?: { in: number[] }; isActive: boolean } }) =>
@@ -31,8 +37,12 @@ function setup(opts: {
       ),
     },
     mailInputation: {
-      findFirst: jest.fn(async ({ where }: { where: { userId: number; mailInputationTypeId: number } }) => opts.existing?.(where) ?? null),
+      findFirst: jest.fn(async ({ where }: { where: { userId: number; mailInputationTypeId: number } }) => {
+        order.push('find-duplicate');
+        return opts.existing?.(where) ?? null;
+      }),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        order.push('create');
         writes.push(`imputation:${String(data.userId)}`);
         return { mailInputationId: nextId++ };
       }),
@@ -70,7 +80,7 @@ function setup(opts: {
     rights,
     scratch: new Map(),
   };
-  return { tx, rights, actors, ctx, writes, courrier: new ImputationCourrierApplier(actors), base: new ImputationBaseApplier(actors) };
+  return { tx, rights, actors, ctx, writes, order, courrier: new ImputationCourrierApplier(actors), base: new ImputationBaseApplier(actors) };
 }
 
 const args = (recipients: Array<Record<string, unknown>>) => ({ mailId: 5, recipients, rationale: 'Compétence du service' });
@@ -134,6 +144,13 @@ describe('ImputationCourrierApplier', () => {
     });
   });
 
+  it('verrou du courrier pris AVANT la recherche de doublon et avant toute création', async () => {
+    const { courrier, ctx, order, tx } = setup();
+    await courrier.apply(ctx, courrier.parse(args([{ userGroupId: 30, mailInputationTypeId: 10 }, { userGroupId: 31, mailInputationTypeId: 10 }])));
+    expect(order).toEqual(['lock:mail:5', 'find-duplicate', 'create', 'find-duplicate', 'create']);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
   it('un destinataire non imputable (par le valideur OU le lanceur) : refus de TOUTE l’action, rien écrit', async () => {
     for (const blocked of [validator, launcher]) {
       const { courrier, ctx, writes } = setup({ imputable: (u, id) => !(u === blocked && id === 31) });
@@ -169,6 +186,7 @@ describe('ImputationCourrierApplier', () => {
       code: 'menu_denied',
     });
     expect(noMenu.tx.mail.findFirst).not.toHaveBeenCalled();
+    expect(noMenu.tx.$queryRaw).not.toHaveBeenCalled();
 
     const blind = setup({
       rights: { requireMailReadable: jest.fn(async () => Promise.reject(new EffectRefusedError('Illisible.', 'mail_not_readable'))) },

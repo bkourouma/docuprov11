@@ -33,6 +33,7 @@ import {
   type WfAgentRunner,
 } from '../agent.contracts';
 import { decideDisposition } from '../disposition';
+import { AutonomyEligibilityService } from './autonomy-eligibility.service';
 import {
   EVAL_CASE_MAX_BYTES,
   evalCaseByteSize,
@@ -44,6 +45,7 @@ import {
 import type {
   CreateEvalCaseInput,
   CreateEvalSetInput,
+  EvalStatusResponse,
   RunEvalSetInput,
   UpdateEvalCaseInput,
   UpdateEvalSetInput,
@@ -171,6 +173,7 @@ export class EvalService implements OnApplicationBootstrap {
     @Inject(WF_AGENT_IDENTITY) private readonly identity: WfAgentIdentityPort,
     private readonly loader: AgentConfigLoader,
     private readonly audit: AuditService,
+    private readonly eligibility: AutonomyEligibilityService,
   ) {}
 
   /** Au démarrage : clôture les runs restés « en cours » (processus arrêté). Ne bloque ni ne fait échouer le démarrage. */
@@ -351,6 +354,45 @@ export class EvalService implements OnApplicationBootstrap {
     return toEvalCaseDto(after);
   }
 
+  /**
+   * Éligibilité à l'autonomie de chaque étape agent (lignes `wf_agent_config`) de la DERNIÈRE version du workflow.
+   * Lecture seule : le calcul est celui de `AutonomyEligibilityService.check` (relu en base à chaque appel).
+   */
+  async getEligibilityStatus(definitionId: number): Promise<EvalStatusResponse> {
+    const def = await this.prisma.wfDefinition.findUnique({
+      where: { wfDefinitionId: definitionId },
+      select: { wfDefinitionId: true },
+    });
+    if (!def) throw new NotFoundException('Workflow introuvable.');
+    const latest = await this.prisma.wfDefinitionVersion.findFirst({
+      where: { definitionId },
+      orderBy: { versionNumber: 'desc' },
+      select: { wfDefinitionVersionId: true, versionNumber: true },
+    });
+    if (!latest) throw new UnprocessableEntityException('Ce workflow n’a encore aucune version.');
+    const rows = await this.prisma.wfAgentConfig.findMany({
+      where: { definitionVersionId: latest.wfDefinitionVersionId },
+      orderBy: { stepKey: 'asc' },
+      select: { stepKey: true, evalSetId: true },
+    });
+    const steps = [];
+    for (const row of rows) {
+      const res = await this.eligibility.check(latest.wfDefinitionVersionId, row.stepKey);
+      steps.push({
+        stepKey: row.stepKey,
+        evalSetId: row.evalSetId,
+        eligible: res.eligible,
+        reason: res.eligible ? null : (res.reason ?? 'Non éligible.'),
+      });
+    }
+    return {
+      definitionId,
+      definitionVersionId: latest.wfDefinitionVersionId,
+      versionNumber: latest.versionNumber,
+      steps,
+    };
+  }
+
   // =========================================================================================================
   // Runs
   // =========================================================================================================
@@ -502,6 +544,7 @@ export class EvalService implements OnApplicationBootstrap {
             definitionId: config.definitionId,
             stepKey: config.stepKey,
             subject: input.data.subject ?? { type: null, id: null },
+            ...(input.data.context !== undefined ? { evalContext: input.data.context } : {}),
           },
           spec: {
             objective: config.objective,

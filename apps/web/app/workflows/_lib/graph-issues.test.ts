@@ -6,6 +6,7 @@ import type { WfGraph } from '@archivage/types';
 import type { WfDefinitionIssue, WfDefinitionIssueCode } from '../../lib/workflows-api';
 import {
   ALL_ISSUE_CODES,
+  explainDefinitionIssue,
   explainIssue,
   groupIssuesByStep,
   mergeIssues,
@@ -97,9 +98,9 @@ test('validateLive tolère une entrée absurde', () => {
   }
 });
 
-test('explainIssue : titre, explication et correction non vides, en français, pour les 17 codes', () => {
-  assert.equal(ALL_ISSUE_CODES.length, 17);
-  assert.equal(new Set(ALL_ISSUE_CODES).size, 17);
+test('explainIssue : titre, explication et correction non vides, en français, pour les 21 codes', () => {
+  assert.equal(ALL_ISSUE_CODES.length, 21);
+  assert.equal(new Set(ALL_ISSUE_CODES).size, 21);
   const jargon = /zod|schéma|schema|bpathb|json|undefined|bnullb/i;
   for (const code of ALL_ISSUE_CODES) {
     const e = explainIssue({ code, message: 'Message du serveur', stepKey: 'a' });
@@ -115,6 +116,50 @@ test('explainIssue : titre, explication et correction non vides, en français, p
   // Code inconnu venu d'un serveur plus récent : repli propre.
   const unknown = explainIssue({ code: 'AUTRE' as WfDefinitionIssueCode, message: 'm' });
   assert.ok(unknown.title && unknown.explain && unknown.fix);
+});
+
+test('explainDefinitionIssue : chaque code a titre, explication et correction, sans jargon, sans lien', () => {
+  const jargon = /zod|schéma|schema|json|undefined|\bnull\b|prisma|http|api\b/i;
+  for (const code of ALL_ISSUE_CODES) {
+    const e = explainDefinitionIssue(code);
+    assert.equal(e.code, code);
+    for (const text of [e.title, e.explain, e.fix]) {
+      assert.ok(text.trim().length > 10, `${code} : texte vide ou trop court`);
+      assert.doesNotMatch(text, jargon, `${code} : jargon dans « ${text} »`);
+      assert.doesNotMatch(text, /[A-Z]{3,}_[A-Z_]+/, `${code} : code technique affiché`);
+    }
+  }
+  assert.ok(explainDefinitionIssue('AUTRE' as WfDefinitionIssueCode).title);
+});
+
+test('explainIssue : AGENT_TOOL_NOT_GRANTED = règle de sécurité, lien vers « Outils autorisés »', () => {
+  const issue: WfDefinitionIssue = { code: 'AGENT_TOOL_NOT_GRANTED', message: 'outils non autorisés : x', stepKey: 'tri' };
+  const e = explainIssue(issue, undefined, { definitionId: 12 });
+  assert.match(e.explain, /règle de sécurité/);
+  assert.match(e.explain, /CE workflow/);
+  assert.match(e.fix, /administrateur/);
+  assert.match(e.fix, /Outils autorisés/);
+  assert.deepEqual(e.action, { label: 'Ouvrir « Outils autorisés »', href: '/workflows/conception/12/outils' });
+  assert.equal(explainIssue(issue).action, undefined);
+  assert.equal(explainIssue(issue, undefined, { definitionId: 0 }).action, undefined);
+});
+
+test('explainIssue : AGENT_AUTONOMY_NOT_ELIGIBLE renvoie vers l’évaluation de l’étape et le faible risque', () => {
+  const issue: WfDefinitionIssue = { code: 'AGENT_AUTONOMY_NOT_ELIGIBLE', message: 'refusé', stepKey: 'tri_courrier' };
+  const e = explainIssue(issue, undefined, { definitionId: 5 });
+  assert.match(e.explain, /faible risque/);
+  assert.match(e.fix, /évaluation/);
+  assert.equal(e.action?.href, '/workflows/conception/5/evaluation?etape=tri_courrier');
+  const noStep = explainIssue({ code: 'AGENT_AUTONOMY_NOT_ELIGIBLE', message: 'm' }, undefined, { definitionId: 5 });
+  assert.equal(noStep.action?.href, '/workflows/conception/5/evaluation');
+});
+
+test('explainIssue : AGENT_CONFIG_INVALID et AGENT_TOOL_UNKNOWN n’ont pas de lien', () => {
+  for (const code of ['AGENT_CONFIG_INVALID', 'AGENT_TOOL_UNKNOWN'] as const) {
+    const e = explainIssue({ code, message: 'm', stepKey: 'a' }, undefined, { definitionId: 1 });
+    assert.equal(e.action, undefined);
+    assert.ok(e.explain.length > 40 && e.fix.length > 20);
+  }
 });
 
 test('explainIssue : AUTHORING_TO_COMPLETE (W5) cite l’étape et explique comment corriger', () => {

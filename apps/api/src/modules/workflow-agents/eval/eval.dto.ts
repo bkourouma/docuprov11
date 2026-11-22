@@ -86,6 +86,25 @@ export const runEvalSetSchema = z
 export type RunEvalSetInput = z.infer<typeof runEvalSetSchema>;
 
 export const listEvalSetsQuerySchema = z.object({ definitionId: z.coerce.number().int().positive().optional() });
+/** `GET eval-status` : le workflow dont on lit l'éligibilité à l'autonomie (dernière version). */
+export const evalStatusQuerySchema = z.object({ definitionId: z.coerce.number().int().positive() }).strict();
+
+/** Statut d'éligibilité d'une étape agent à l'autonomie « autonome » (calculé à l'instant T, lecture seule). */
+export interface EvalStepStatus {
+  stepKey: string;
+  evalSetId: number | null;
+  eligible: boolean;
+  /** Raison française quand non éligible, null sinon. */
+  reason: string | null;
+}
+
+export interface EvalStatusResponse {
+  definitionId: number;
+  definitionVersionId: number;
+  versionNumber: number;
+  steps: EvalStepStatus[];
+}
+
 export const listEvalCasesQuerySchema = z.object({ includeInactive: z.enum(['true', 'false']).optional() });
 
 /** Identifiant décimal d'un BigInt (run). */
