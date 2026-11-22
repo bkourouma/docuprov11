@@ -1,0 +1,14 @@
+{
+  "extends": "@archivage/config/tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": ["playwright.config.ts", "fixtures/**/*.ts", "support/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", ".tmp", "test-results", "playwright-report"]
+}

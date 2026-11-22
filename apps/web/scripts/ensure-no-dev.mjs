@@ -4,7 +4,9 @@
 // empoisonner le build produit.
 import net from 'node:net';
 
-const PORT = 5000;
+// Port du serveur de dev : 5000 par défaut, ARCHIVAGE_WEB_PORT pour en choisir un autre
+// (ex. machine où 5000 est déjà pris par un service système).
+const PORT = Number(process.env.ARCHIVAGE_WEB_PORT) || 5000;
 
 const probe = net.connect({ port: PORT, host: '127.0.0.1' });
 

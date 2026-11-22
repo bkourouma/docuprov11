@@ -1,0 +1,6 @@
+# Artefacts Playwright et pile E2E jetable (cluster PostgreSQL, journaux, coffre, état)
+test-results/
+playwright-report/
+blob-report/
+.tmp/
+.auth/

@@ -1,0 +1,25 @@
+{
+  "name": "@archivage/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tests de bout en bout Playwright (Chromium) sur une pile complète et jetable : PostgreSQL, Redis, API, worker, web.",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:up": "tsx support/cli.ts up",
+    "e2e:build": "tsx support/cli.ts build",
+    "e2e:down": "tsx support/cli.ts down",
+    "e2e:status": "tsx support/cli.ts status",
+    "e2e:restart": "tsx support/cli.ts restart",
+    "e2e:report": "playwright show-report",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint \"**/*.ts\" && tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@archivage/config": "workspace:*",
+    "@playwright/test": "1.65.1",
+    "@types/node": "^22.10.2",
+    "ioredis": "^5.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -14,7 +14,9 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
-const PORT = 5000;
+// Port du serveur de dev : 5000 par défaut, ARCHIVAGE_WEB_PORT pour en choisir un autre
+// (ex. machine où 5000 est déjà pris par un service système).
+const PORT = Number(process.env.ARCHIVAGE_WEB_PORT) || 5000;
 const require = createRequire(import.meta.url);
 
 const probe = net.connect({ port: PORT, host: '127.0.0.1' });
