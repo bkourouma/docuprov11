@@ -576,7 +576,9 @@ interface SubjectAccessChecker {
 ```
 
 Enregistrer le contrôleur via `SubjectAccessRegistry.register(checker)` (module propriétaire de l'objet). Sans contrôleur,
-le type est refusé. W1 ne déclare aucun contrôleur.
+le type est refusé. W1 ne déclare aucun contrôleur ; W3 enregistre `mail` et `document` (`workflow-triggers/access/`, voir
+`docs/workflow-declencheurs.md` section 4). Un contrôleur peut aussi fournir `resolveOwner(subjectId)` (propriétaire de l'objet,
+compte actif ou `null`), utilisé par `PrincipalService.resolveSubjectOwner` via `SubjectAccessRegistry.resolveOwner`.
 
 ### 7.4 Événements et notifications
 
@@ -605,7 +607,8 @@ La suggestion ne fait que **proposer** : elle devient un élément kind 1 que l'
 ### 7.6 Annuaire (`WfDirectory`)
 
 `PrincipalService` implémente `WfDirectory` : `isUserGroupActive`, `describeUserGroup` (libellé « lancé par … »). La méthode
-facultative `resolveSubjectOwner` n'est **pas** implémentée en W1 : voir section 9.
+facultative `resolveSubjectOwner` est implémentée depuis W3 : elle délègue au `resolveOwner` du contrôleur d'accès de l'objet
+(courrier : destinataire nominatif, à défaut créateur ; document : créateur ; compte actif seulement, sinon `null`).
 
 ## 8. Tests
 
@@ -681,8 +684,9 @@ pnpm --filter @archivage/types build      # après toute modification de package
   branches simultanées.
 - **Pas d'outbox.** Les notifications et événements sont publiés après commit. Un arrêt du processus entre le commit et la
   publication fait perdre cette notification. Aucune relance n'est prévue en W1.
-- **`subject_owner` n'est pas résolu en W1.** `PrincipalService` n'implémente pas `resolveSubjectOwner` : l'étape retombe
-  sur le lanceur (`subject_owner_fallback`) tant qu'un annuaire ne fournit pas la méthode.
+- **`subject_owner` (résolu depuis W3).** Pour un courrier ou un document, `PrincipalService.resolveSubjectOwner` renvoie le
+  propriétaire ; pour un autre type d'objet, un propriétaire introuvable ou désactivé, l'étape retombe sur le lanceur
+  (`subject_owner_fallback`). Un courrier destiné à un rôle n'a pas de propriétaire nominatif : on prend son créateur.
 - **Aucune étape ne crée de minuterie de nature 0 ou 3.** Les gestionnaires `registerTimerHandler` existent, mais aucun producteur
   n'est branché en W1.
 - **Autonomie non appliquée par le moteur.** La règle « autonome » est contrôlée à la publication

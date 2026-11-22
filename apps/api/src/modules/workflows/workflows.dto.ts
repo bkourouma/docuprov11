@@ -1,6 +1,7 @@
 import { z, type ZodTypeAny } from 'zod';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe';
 import { WF_INSTANCE_STATUS_VALUES } from '@archivage/types';
+import { isReservedTriggerIdempotencyKey } from './extension/trigger-idempotency';
 
 /** Identifiant BigInt décimal (instance, tâche, élément de boîte) transmis comme chaîne. */
 export const bigintIdSchema = z.string().regex(/^\d{1,18}$/, 'identifiant invalide');
@@ -26,6 +27,10 @@ export const launchInstanceSchema = z
   .refine((v) => (v.subjectType === undefined) === (v.subjectId === undefined), {
     message: 'subjectType et subjectId vont ensemble',
     path: ['subjectId'],
+  })
+  .refine((v) => v.idempotencyKey === undefined || !isReservedTriggerIdempotencyKey(v.idempotencyKey), {
+    message: "Ce préfixe de clé d'idempotence est réservé aux déclencheurs.",
+    path: ['idempotencyKey'],
   });
 export type LaunchInstanceBody = z.infer<typeof launchInstanceSchema>;
 

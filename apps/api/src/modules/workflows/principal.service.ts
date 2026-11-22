@@ -1,8 +1,9 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, Optional } from '@nestjs/common';
 import { effectiveMenuKeys } from '../auth/menu-access';
 import type { AuthUser } from '../auth/auth.types';
 import { PrismaService } from '../prisma/prisma.service';
 import type { WfDirectory, WfPrincipal } from './engine/engine.types';
+import { SubjectAccessRegistry } from './extension/subject-access';
 import { WORKFLOWS_MENUS } from './workflows.menus';
 
 /**
@@ -12,7 +13,10 @@ import { WORKFLOWS_MENUS } from './workflows.menus';
  */
 @Injectable()
 export class PrincipalService implements WfDirectory {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly subjects?: SubjectAccessRegistry,
+  ) {}
 
   /**
    * Refuse (403) l'identité machine, tout jeton sans `userGroupId`, un acteur inexistant, ne
@@ -71,6 +75,13 @@ export class PrincipalService implements WfDirectory {
       select: { user: { select: { isDisabled: true } } },
     });
     return !!row && !row.user.isDisabled;
+  }
+
+  /** Propriétaire actif de l'objet lié (via le registre des objets) ; null si inconnu ou compte désactivé. */
+  async resolveSubjectOwner(subjectType: string, subjectId: string): Promise<number | null> {
+    const owner = (await this.subjects?.resolveOwner(subjectType, subjectId)) ?? null;
+    if (owner == null) return null;
+    return (await this.isUserGroupActive(owner)) ? owner : null;
   }
 
   /** Libellé affichable de l'acteur (« lancé par … » dans l'explication de la boîte). */
