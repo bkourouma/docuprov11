@@ -1,0 +1,83 @@
+/* Panneaux de propriétés de l'éditeur Docu-Flow (préfixe wfp-). Variables AntD uniquement : clair et sombre. */
+.wfp-panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.wfp-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--ant-color-text); }
+.wfp-sentence { margin: 0; overflow-wrap: anywhere; }
+.wfp-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wfp-label { font-size: 12px; font-weight: 600; color: var(--ant-color-text-secondary); }
+.wfp-hint { font-size: 12px; line-height: 1.5; color: var(--ant-color-text-secondary); overflow-wrap: anywhere; }
+.wfp-error { font-size: 12px; color: var(--ant-color-error); overflow-wrap: anywhere; }
+.wfp-warning { margin-top: 4px; font-size: 12px; color: var(--ant-color-warning-text, var(--ant-color-warning)); }
+.wfp-group, .wfp-stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wfp-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wfp-inline > .ant-input, .wfp-inline > .ant-input-affix-wrapper { flex: 1; min-width: 120px; }
+.wfp-switch-row { display: flex; align-items: center; gap: 10px; }
+.wfp-section {
+  display: flex; flex-direction: column; gap: 12px; min-width: 0; margin: 0; padding: 12px;
+  border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius);
+}
+.wfp-legend { padding: 0 6px; font-size: 13px; font-weight: 600; color: var(--ant-color-text); }
+.wfp-examples { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.wfp-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.wfp-row {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px;
+  background: var(--ant-color-fill-quaternary); border-radius: var(--ant-border-radius);
+}
+.wfp-row-fields { display: flex; flex-direction: column; gap: 6px; }
+.wfp-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.wfp-radios { display: flex; flex-direction: column; gap: 8px; }
+.wfp-radio { display: flex; flex-direction: column; gap: 2px; }
+.wfp-radio-desc { padding-left: 24px; }
+.wfp-tool { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.wfp-tool-off { opacity: 0.55; }
+.wfp-lowrisk { display: flex; flex-direction: column; gap: 6px; }
+.wfp-triggers { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.wfp-trigger { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--ant-color-border-secondary); border-radius: var(--ant-border-radius); }
+.wfp-trigger-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+fieldset.wfp-section[disabled] { opacity: 1; }
+
+/* Bandeau d'autonomie : icône + mot-clé + texte ; fonds et bordures AntD (clair et sombre), texte en couleur principale. */
+.wfp-banner {
+  display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; min-width: 0;
+  color: var(--ant-color-text); border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius);
+}
+.wfp-banner--warning { background: var(--ant-color-warning-bg); border-color: var(--ant-color-warning-border); }
+.wfp-banner--info { background: var(--ant-color-info-bg); border-color: var(--ant-color-info-border); }
+.wfp-banner--success { background: var(--ant-color-success-bg); border-color: var(--ant-color-success-border); }
+.wfp-banner-icon { flex: none; font-size: 16px; line-height: 20px; font-weight: 700; }
+.wfp-banner--warning .wfp-banner-icon { color: var(--ant-color-warning-text, var(--ant-color-warning)); }
+.wfp-banner--info .wfp-banner-icon { color: var(--ant-color-info-text, var(--ant-color-info)); }
+.wfp-banner--success .wfp-banner-icon { color: var(--ant-color-success-text, var(--ant-color-success)); }
+.wfp-banner-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wfp-banner-title { margin: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.wfp-banner-text { margin: 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* Garde-fous de l'étape agent : évaluation et outils autorisés. */
+.wfp-guardrails { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wfp-guard-block { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.wfp-guard-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--ant-color-text); }
+.wfp-link-btn {
+  display: inline-flex; align-items: center; min-height: 32px; padding: 4px 12px; max-width: 100%;
+  color: var(--ant-color-primary); border: 1px solid var(--ant-color-primary); border-radius: var(--ant-border-radius);
+  text-decoration: none; overflow-wrap: anywhere;
+}
+.wfp-link-btn:hover { background: var(--ant-color-primary-bg); }
+.wfp-link-btn:focus-visible, .wfp-refresh:focus-visible { outline: 2px solid var(--ant-color-primary); outline-offset: 2px; }
+.wfp-refresh { padding-inline: 0; height: auto; white-space: normal; text-align: left; }
+.wfp-eligibility { margin: 0; min-width: 0; }
+.wfp-eligibility > .wfp-hint { margin: 0; }
+.wfp-tone-word { font-weight: 600; color: var(--ant-color-text); }
+.wfp-checklist { margin-top: 4px; }
+.wfp-checklist summary { cursor: pointer; padding: 4px 0; }
+.wfp-checklist ul { margin: 4px 0 0; padding-left: 4px; list-style: none; }
+.wfp-checklist li { padding: 2px 0; }
+.wfp-sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+/* Cibles tactiles confortables sur mobile. */
+@media (max-width: 767px) {
+  .wfp-panel .ant-btn, .wfp-section .ant-btn { min-height: 44px; }
+  .wfp-panel .ant-input-number, .wfp-panel .ant-select-selector { min-height: 44px; }
+  .wfp-link-btn { min-height: 44px; }
+  .wfp-checklist summary { min-height: 44px; display: flex; align-items: center; }
+}

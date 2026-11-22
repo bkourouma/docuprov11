@@ -31,6 +31,17 @@ import { DraftingModule } from './modules/drafting/drafting.module';
 import { SemanticSearchModule } from './modules/semantic-search/semantic-search.module';
 import { SpacesModule } from './modules/spaces/spaces.module';
 import { UsersModule } from './modules/users/users.module';
+// --- Docu-Flow W1 ---
+import { WorkflowsModule } from './modules/workflows/workflows.module';
+import { WorkflowAgentsModule } from './modules/workflow-agents/workflow-agents.module';
+import { WorkflowAgentCatalogModule } from './modules/workflow-agent-catalog/workflow-agent-catalog.module';
+// --- fin Docu-Flow W1 ---
+// --- Docu-Flow W3 ---
+import { WorkflowTriggersModule } from './modules/workflow-triggers/workflow-triggers.module';
+// --- fin Docu-Flow W3 ---
+// --- Docu-Flow W5 ---
+import { WorkflowAuthoringModule } from './modules/workflow-authoring/workflow-authoring.module';
+// --- fin Docu-Flow W5 ---
 import { HealthController } from './health.controller';
 
 @Module({
@@ -77,6 +88,17 @@ import { HealthController } from './health.controller';
     // --- Lot 4c : rédaction assistée ---
     DraftingModule,
     // --- fin Lot 4c ---
+    // --- Docu-Flow W1 ---
+    WorkflowsModule,
+    WorkflowAgentsModule, // Docu-Flow W2 : agents
+    WorkflowAgentCatalogModule, // Docu-Flow W6 : catalogue d'agents et modèles prêts à l'emploi
+    // --- fin Docu-Flow W1 ---
+    // --- Docu-Flow W3 ---
+    WorkflowTriggersModule,
+    // --- fin Docu-Flow W3 ---
+    // --- Docu-Flow W5 ---
+    WorkflowAuthoringModule,
+    // --- fin Docu-Flow W5 ---
   ],
   providers: [
     // Deny-by-default at the transport layer: every route needs a JWT unless @Public().

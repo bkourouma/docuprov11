@@ -17,5 +17,6 @@ import { DraftingService } from './drafting.service';
   imports: [AiModule, CollabModule],
   controllers: [DraftingController],
   providers: [DraftingService, DraftingContextService, DraftingRateLimitGuard, DocumentsService],
+  exports: [DraftingService, DraftingContextService],
 })
 export class DraftingModule {}

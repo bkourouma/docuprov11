@@ -114,6 +114,56 @@ export const NAV: NavSection[] = [
       },
     ],
   },
+  // Docu-Flow (lot W4). Les clés de menu SONT les routes ET les permissions du catalogue des rôles
+  // (apps/api/src/modules/roles/menu-catalog.ts, section « Docu-Flow »). La boîte de tâches et le suivi n'ont
+  // pas de menu propre : ils s'ouvrent dès que l'utilisateur détient l'un des menus Docu-Flow (altKeys).
+  {
+    label: 'Docu-Flow',
+    icon: 'organigramme',
+    items: [
+      {
+        key: '/workflows/boite',
+        label: 'Boîte de tâches',
+        icon: 'validated',
+        keywords: ['workflow', 'tâche', 'validation', 'à faire', 'agent', 'docu-flow'],
+        altKeys: ['/workflows/lancer', '/workflows/conception', '/workflows/administration'],
+      },
+      {
+        key: '/workflows/instances',
+        label: 'Suivi des workflows',
+        icon: 'pending',
+        keywords: ['workflow', 'instance', 'suivi', 'journal', 'docu-flow'],
+        altKeys: ['/workflows/lancer', '/workflows/administration'],
+      },
+      {
+        key: '/workflows/lancer',
+        label: 'Lancer un workflow',
+        icon: 'send',
+        keywords: ['workflow', 'démarrer', 'lancement', 'docu-flow'],
+      },
+      {
+        key: '/workflows/conception',
+        label: 'Conception des workflows',
+        icon: 'tune',
+        keywords: ['workflow', 'éditeur', 'graphe', 'définition', 'publier', 'docu-flow'],
+      },
+      {
+        key: '/workflows/administration',
+        label: 'Administration des workflows',
+        icon: 'admin',
+        keywords: ['workflow', 'toutes les instances', 'annuler', 'suspendre', 'docu-flow'],
+      },
+      // Sans menu propre dans le catalogue des rôles : visible exactement quand l'utilisateur détient le menu
+      // « administration » (le filtre accepte altKeys), qui est celui qu'exigent les routes de budget de l'API.
+      {
+        key: '/workflows/administration/plafonds',
+        label: 'Plafonds et arrêt d’urgence',
+        icon: 'alert',
+        keywords: ['workflow', 'agent', 'plafond', 'budget', 'coût', 'arrêt d’urgence', 'stop', 'docu-flow'],
+        altKeys: ['/workflows/administration'],
+      },
+    ],
+  },
   {
     label: 'Docu-Courriers',
     icon: 'mail',

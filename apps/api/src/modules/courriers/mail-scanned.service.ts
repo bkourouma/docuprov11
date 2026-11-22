@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
@@ -6,6 +6,7 @@ import { extname, join } from 'node:path';
 import { DiskFileStore } from '@archivage/storage';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from '../auth/auth.types';
+import { WorkflowEventBus, documentDepositedEvent } from '../workflow-triggers/bus';
 
 /** Fichier déposé (multipart) — forme fournie par multer via @UploadedFile. */
 export interface UploadedScan {
@@ -88,7 +89,20 @@ export class MailScannedDocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    // Docu-Flow W3 : bus d'événements métier (facultatif).
+    @Optional() private readonly wfEvents?: WorkflowEventBus,
   ) {}
+
+  private readonly wfLogger = new Logger('MailScannedDocumentsService');
+
+  /** Docu-Flow W3 : événement « document déposé » (origine scan), après commit, jamais bloquant. */
+  private emitDocumentDeposited(documentId: number, createdBy: number | null): void {
+    try {
+      this.wfEvents?.emit(documentDepositedEvent({ documentId, createdBy }, { source: 'scan', pageCount: null }));
+    } catch (err) {
+      this.wfLogger.warn(`émission « document déposé » ignorée : ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   private get archivesPath(): string {
     return this.config.getOrThrow<string>('ARCHIVES_PATH');
@@ -234,6 +248,7 @@ export class MailScannedDocumentsService {
     });
     const store = new DiskFileStore(this.archivesPath);
     await store.write(created.fileId, ext, buffer);
+    this.emitDocumentDeposited(documentId, user.userGroupId);
     return documentId;
   }
 }

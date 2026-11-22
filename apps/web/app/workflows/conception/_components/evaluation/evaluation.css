@@ -1,0 +1,64 @@
+/* Écran d'évaluation Docu-Flow (préfixe wfev-). Variables AntD uniquement : clair et sombre. */
+.wfev-root { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.wfev-root > header { margin-bottom: 0 !important; }
+.wfev-reminder { margin: 0; }
+
+.wfev-panel {
+  min-width: 0; padding: 14px 16px; background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius-lg);
+}
+.wfev-panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 8px; }
+.wfev-h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.wfev-h3 { margin: 12px 0 6px; font-size: 15px; font-weight: 600; }
+.wfev-text { overflow-wrap: anywhere; white-space: pre-wrap; }
+.wfev-field-error { font-size: 13px; color: var(--ant-color-error-text, var(--ant-color-error)); }
+.wfev-run-error { margin: 6px 0 0; color: var(--ant-color-error-text, var(--ant-color-error)); }
+
+/* Éligibilité */
+.wfev-elig-state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
+.wfev-checklist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.wfev-checklist li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.wfev-check {
+  display: inline-block; min-width: 56px; padding: 0 8px; font-size: 12px; font-weight: 600; text-align: center;
+  border: 1px solid var(--ant-color-border); border-radius: 4px; color: var(--ant-color-text-secondary);
+}
+.wfev-check--done { border-color: var(--ant-color-success); color: var(--ant-color-success-text, var(--ant-color-success)); }
+
+/* Cartes (jeux, cas, runs sous 768 px) */
+.wfev-cards { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.wfev-card { display: flex; flex-direction: column; gap: 8px; }
+.wfev-card--selected { border-color: var(--ant-color-primary); }
+.wfev-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.wfev-set-name { margin: 0; overflow-wrap: anywhere; }
+.wfev-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.wfev-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.wfev-dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
+.wfev-dl dt { color: var(--ant-color-text-secondary); font-size: 13px; }
+.wfev-dl dd { margin: 0; }
+.wfev-verdict-detail { margin-left: 6px; }
+
+/* Tableaux */
+.wfev-table-wrap { overflow-x: auto; }
+.wfev-table { width: 100%; border-collapse: collapse; }
+.wfev-table th, .wfev-table td { padding: 8px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--ant-color-border-secondary); }
+.wfev-table thead th { font-size: 13px; color: var(--ant-color-text-secondary); font-weight: 600; }
+.wfev-rowhead { font-weight: 500; }
+
+/* Détail par cas */
+.wfev-details summary { cursor: pointer; }
+.wfev-details summary:focus-visible { outline: 2px solid var(--ant-color-primary); outline-offset: 2px; }
+.wfev-case-results { margin: 6px 0 0; padding-left: 18px; }
+
+/* Formulaires (modales) */
+.wfev-form { display: flex; flex-direction: column; gap: 12px; }
+.wfev-fieldset { margin: 0; padding: 10px 12px; border: 1px solid var(--ant-color-border-secondary); border-radius: var(--ant-border-radius); min-width: 0; }
+.wfev-fieldset legend { padding: 0 6px; font-weight: 600; font-size: 14px; }
+.wfev-block { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed var(--ant-color-border-secondary); }
+.wfev-block-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wfev-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.wfev-field-wide { min-width: 0; }
+.wfev-mono { font-family: var(--ant-font-family-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+@media (max-width: 767px) {
+  .wfev-grid2 { grid-template-columns: minmax(0, 1fr); }
+  .wfev-actions .ant-btn { min-height: 44px; }
+}

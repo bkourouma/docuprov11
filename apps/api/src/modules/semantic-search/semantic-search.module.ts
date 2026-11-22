@@ -21,6 +21,8 @@ import { SemanticSearchService } from './semantic-search.service';
   imports: [AiModule, AuthModule],
   controllers: [SemanticSearchController],
   providers: [SemanticSearchService, SemanticRateLimitGuard, SearchService, embeddingQueueProvider],
+  // Exporté pour les agents Docu-Flow (outil de recherche avec droits du lanceur).
+  exports: [SemanticSearchService],
 })
 export class SemanticSearchModule implements OnApplicationShutdown {
   constructor(@Inject(GED_EMBEDDING_QUEUE_TOKEN) private readonly queue: Queue) {}

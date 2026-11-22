@@ -1,0 +1,566 @@
+// --- Docu-Flow : fondations de données du moteur de workflow (16 tables, préfixe `wf_`) ---
+//
+// Lot W0 du chantier « Docu-Flow » : TOUT le schéma est posé ici, en une seule migration additive
+// (`20261121120000_add_workflow_foundations`), pour que les lots suivants (moteur, agents, déclencheurs,
+// interface) n'ajoutent aucun modèle Prisma.
+//
+// Conventions reprises de ged.prisma :
+//  - Mono-tenant : une installation = un client. Pas de colonne TenantId. Le « plafond de coût par
+//    client » est donc la ligne de `wf_budget` SANS `definition_id` (portée globale).
+//  - Pas d'énumération Prisma : états en `Int @db.SmallInt` + CHECK `ck_*` (SQL brut, dans la
+//    migration). Miroir TypeScript : packages/types/src/wf-*.ts. Les familles OUVERTES (type
+//    d'événement, type d'objet lié, clé d'outil) sont des chaînes `[a-z0-9_.]+` + CHECK, comme
+//    `ged_source_connector.connector_type`.
+//  - Horodatages `TIMESTAMPTZ(0)` en UTC ; tables/colonnes en snake_case via `@map`.
+//  - Contraintes non exprimables en Prisma (CHECK, uniques partiels, déclencheurs SQL) : SQL brut dans
+//    la migration, copié à l'identique dans prisma/sql/wf.sql (ré-exécutable).
+//
+// Écarts assumés :
+//  - AUCUNE clé étrangère vers les tables existantes (`app_user_group`, `app_group`, `role`, `mail`,
+//    `document`…). Prisma exige le champ inverse sur le modèle cible, ce qui obligerait à modifier
+//    security.prisma / core.prisma (hors périmètre du lot). Les acteurs sont donc des colonnes `Int`
+//    SANS FK (comme les `*_by` de ged.prisma) ; l'intégrité est garantie par l'application. Les liens
+//    entre tables `wf_*` sont, eux, de vraies FK. `*_user_group_id` désigne `app_user_group.user_group_id`
+//    (acteur effectif, comme partout dans le dépôt).
+//  - Le journal `wf_event_log` est APPEND-ONLY (déclencheurs SQL qui refusent UPDATE / DELETE /
+//    TRUNCATE) ; il n'a donc aucune FK à `ON DELETE SET NULL / CASCADE` (ils seraient refusés). Ses
+//    liens vers l'instance et la tâche sont en `RESTRICT` : une instance qui a un journal ne se supprime
+//    pas — on l'annule ou on l'archive.
+//  - Les instances ne sont JAMAIS supprimées : toutes les FK du cœur (définition → version → instance →
+//    tâche) sont en `RESTRICT` (sauf `trigger_id` et `eval_set_id`, en SET NULL :
+//    simples références). Seuls les enfants purement dépendants (cas de test, liens d'outils d'un
+//    agent) sont en `CASCADE`.
+
+// ===========================================================================
+// 1. Définitions de workflow (graphe d'étapes versionné)
+// ===========================================================================
+
+/// Workflow nommé (« l'en-tête »). Le graphe d'étapes vit dans `wf_definition_version`.
+///
+/// `status` : 0 brouillon, 1 publié, 2 archivé. `source` : 0 manuel (éditeur), 1 langage naturel
+/// (généré par l'IA à partir d'une description, puis relu par un humain).
+/// `isLowRisk` : marquage EXPLICITE par un administrateur ; sans lui, aucune étape agent ne peut être
+/// `autonome` (déclencheur `wf_agent_config_autonomy_guard`). Le repasser à false est refusé tant qu'une
+/// étape agent autonome existe.
+model WfDefinition {
+  wfDefinitionId  Int       @id @default(autoincrement()) @map("wf_definition_id")
+  name            String    @db.VarChar(200)
+  description     String?   @db.Text
+  status          Int       @default(0) @db.SmallInt // 0=brouillon,1=publié,2=archivé (CHECK raw SQL)
+  source          Int       @default(0) @db.SmallInt // 0=manuel,1=langage naturel (CHECK raw SQL)
+  isLowRisk       Boolean   @default(false) @map("is_low_risk")
+  lowRiskMarkedBy Int?      @map("low_risk_marked_by") // user_group_id, sans FK
+  lowRiskMarkedAt DateTime? @map("low_risk_marked_at") @db.Timestamptz(0)
+  createdBy       Int?      @map("created_by") // user_group_id, sans FK
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  versions   WfDefinitionVersion[]
+  instances  WfInstance[]
+  triggers   WfTrigger[]
+  toolGrants WfToolGrant[]
+  budget     WfBudget?
+  evalSets   WfEvalSet[]
+
+  @@index([status])
+  @@map("wf_definition")
+}
+
+/// Version d'un workflow : graphe JSON d'étapes + métadonnées de publication.
+///
+/// `status` : 0 brouillon (modifiable), 1 publiée (IMMUABLE : le graphe ne change plus, déclencheur SQL),
+/// 2 archivée. Une seule version publiée par définition (unique partiel). Les instances se rattachent
+/// à une version précise : publier une version neuve n'altère pas les instances en cours.
+/// `graph` : voir `WfGraph` (packages/types/src/wf-graph.ts). `graphHash` : SHA-256 hex du graphe
+/// canonique, pour détecter une dérive. `sourcePrompt` : description en langage naturel d'origine.
+model WfDefinitionVersion {
+  wfDefinitionVersionId Int       @id @default(autoincrement()) @map("wf_definition_version_id")
+  definitionId          Int       @map("definition_id")
+  versionNumber         Int       @map("version_number")
+  status                Int       @default(0) @db.SmallInt // 0=brouillon,1=publiée,2=archivée (CHECK raw SQL)
+  graph                 Json      @db.JsonB
+  graphHash             String?   @map("graph_hash") @db.VarChar(64)
+  sourcePrompt          String?   @map("source_prompt") @db.Text
+  changeNote            String?   @map("change_note") @db.VarChar(500)
+  publishedBy           Int?      @map("published_by") // user_group_id, sans FK
+  publishedAt           DateTime? @map("published_at") @db.Timestamptz(0)
+  createdBy             Int?      @map("created_by") // user_group_id, sans FK
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  definition   WfDefinition    @relation(fields: [definitionId], references: [wfDefinitionId], onDelete: Restrict)
+  instances    WfInstance[]
+  agentConfigs WfAgentConfig[]
+  evalRuns     WfEvalRun[]
+
+  @@unique([definitionId, versionNumber])
+  @@map("wf_definition_version")
+}
+
+// ===========================================================================
+// 2. Exécution : instances, tâches, minuteries
+// ===========================================================================
+
+/// Instance d'une version de workflow en cours d'exécution (ou terminée).
+///
+/// `status` : 0 en cours, 1 en attente (d'une tâche humaine, d'une minuterie), 2 terminée, 3 échouée,
+/// 4 annulée, 5 suspendue (arrêt d'urgence, budget, reprise manuelle). `finishedAt` est renseignée
+/// ssi le statut est terminal (2,3,4) — CHECK.
+/// `startedBy` : l'utilisateur DONT LES DROITS S'APPLIQUENT à toute l'exécution (acteur effectif,
+/// `user_group_id`) ; pour un déclencheur automatique, c'est `wf_trigger.run_as_user_group_id`.
+/// Objet lié polymorphe : `subjectType` (clé ouverte : `mail`, `document`, `dossier`…) + `subjectId`.
+/// `idempotencyKey` : empêche de créer deux instances pour le même événement (unique partiel par
+/// définition). `rowVersion` : verrou optimiste du moteur.
+model WfInstance {
+  wfInstanceId        BigInt    @id @default(autoincrement()) @map("wf_instance_id")
+  definitionId        Int       @map("definition_id")
+  definitionVersionId Int       @map("definition_version_id")
+  status              Int       @default(0) @db.SmallInt // 0=en cours,1=en attente,2=terminée,3=échouée,4=annulée,5=suspendue (CHECK raw SQL)
+  context             Json      @default("{}") @db.JsonB
+  startedBy           Int       @map("started_by") // user_group_id dont les droits s'appliquent, sans FK
+  triggerId           Int?      @map("trigger_id")
+  parentInstanceId    BigInt?   @map("parent_instance_id")
+  subjectType         String?   @map("subject_type") @db.VarChar(50)
+  subjectId           BigInt?   @map("subject_id")
+  idempotencyKey      String?   @map("idempotency_key") @db.VarChar(200)
+  dueAt               DateTime? @map("due_at") @db.Timestamptz(0)
+  errorMessage        String?   @map("error_message") @db.Text
+  rowVersion          Int       @default(0) @map("row_version")
+  startedAt           DateTime  @default(now()) @map("started_at") @db.Timestamptz(0)
+  finishedAt          DateTime? @map("finished_at") @db.Timestamptz(0)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  definition        WfDefinition        @relation(fields: [definitionId], references: [wfDefinitionId], onDelete: Restrict)
+  definitionVersion WfDefinitionVersion @relation(fields: [definitionVersionId], references: [wfDefinitionVersionId], onDelete: Restrict)
+  trigger           WfTrigger?          @relation(fields: [triggerId], references: [wfTriggerId], onDelete: SetNull)
+  parent            WfInstance?         @relation("WfInstanceParent", fields: [parentInstanceId], references: [wfInstanceId], onDelete: Restrict)
+  children          WfInstance[]        @relation("WfInstanceParent")
+
+  tasks      WfTask[]
+  timers     WfTimer[]
+  events     WfEventLog[]
+  inboxItems WfInboxItem[]
+
+  @@index([status, dueAt])
+  @@index([startedBy, status])
+  @@index([subjectType, subjectId])
+  @@index([definitionId, status])
+  @@index([definitionVersionId])
+  @@index([triggerId])
+  @@index([parentInstanceId])
+  @@map("wf_instance")
+}
+
+/// Étape en cours (ou passée) d'une instance — une ligne par passage dans une étape du graphe.
+///
+/// `taskType` : 0 formulaire, 1 génération, 2 checklist, 3 affectation, 4 validation, 5 décision, 6 agent.
+/// `status` : 0 à faire, 1 en cours, 2 terminée, 3 annulée, 4 expirée, 5 échouée.
+/// Assignation : au plus UN bénéficiaire parmi utilisateur (`assigneeUserGroupId`), groupe
+/// (`assigneeGroupId` = `app_group.group_id`) ou rôle (`assigneeRoleId`) — CHECK ; aucun = tâche
+/// système / agent. `attempt` : n° de passage (boucles de correction, relances) — unique par
+/// (instance, étape, passage). `result` : saisie / décision / sortie produite.
+model WfTask {
+  wfTaskId            BigInt    @id @default(autoincrement()) @map("wf_task_id")
+  instanceId          BigInt    @map("instance_id")
+  stepKey             String    @map("step_key") @db.VarChar(100)
+  taskType            Int       @map("task_type") @db.SmallInt // 0..6 (CHECK raw SQL)
+  status              Int       @default(0) @db.SmallInt // 0=à faire,1=en cours,2=terminée,3=annulée,4=expirée,5=échouée (CHECK raw SQL)
+  title               String    @db.VarChar(300)
+  instructions        String?   @db.Text
+  priority            Int       @default(1) @db.SmallInt // 0=basse,1=normale,2=haute (CHECK raw SQL)
+  assigneeUserGroupId Int?      @map("assignee_user_group_id") // sans FK
+  assigneeGroupId     Int?      @map("assignee_group_id") // sans FK
+  assigneeRoleId      Int?      @map("assignee_role_id") // sans FK
+  dueAt               DateTime? @map("due_at") @db.Timestamptz(0)
+  attempt             Int       @default(1)
+  input               Json?     @db.JsonB
+  result              Json?     @db.JsonB
+  startedAt           DateTime? @map("started_at") @db.Timestamptz(0)
+  completedAt         DateTime? @map("completed_at") @db.Timestamptz(0)
+  completedBy         Int?      @map("completed_by") // user_group_id, sans FK
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  instance   WfInstance    @relation(fields: [instanceId], references: [wfInstanceId], onDelete: Restrict)
+  timers     WfTimer[]
+  events     WfEventLog[]
+  inboxItems WfInboxItem[]
+
+  @@unique([instanceId, stepKey, attempt])
+  @@index([status, dueAt])
+  @@index([assigneeUserGroupId, status])
+  @@index([assigneeGroupId, status])
+  @@index([assigneeRoleId, status])
+  @@index([instanceId, status])
+  @@map("wf_task")
+}
+
+/// Minuterie durable : attente, relance, échéance, reprise. Survit au redémarrage (c'est une ligne,
+/// pas un `setTimeout`) : le moteur relit `status = 0 AND fire_at <= now()`.
+///
+/// `kind` : 0 attente, 1 relance, 2 échéance, 3 reprise (retry après échec).
+/// `status` : 0 active, 1 déclenchée, 2 annulée. UNICITÉ PARTIELLE : une seule minuterie ACTIVE par
+/// (instance, étape, nature) — `ux_wf_timer_active` ; une relance récurrente se ré-arme (nouvelle ligne
+/// une fois la précédente déclenchée). `lockedBy` / `lockedUntil` : bail d'un worker (reprise si le
+/// worker meurt avant d'avoir fini).
+model WfTimer {
+  wfTimerId   BigInt    @id @default(autoincrement()) @map("wf_timer_id")
+  instanceId  BigInt    @map("instance_id")
+  taskId      BigInt?   @map("task_id")
+  stepKey     String    @map("step_key") @db.VarChar(100)
+  kind        Int       @db.SmallInt // 0=attente,1=relance,2=échéance,3=reprise (CHECK raw SQL)
+  status      Int       @default(0) @db.SmallInt // 0=active,1=déclenchée,2=annulée (CHECK raw SQL)
+  fireAt      DateTime  @map("fire_at") @db.Timestamptz(0)
+  firedAt     DateTime? @map("fired_at") @db.Timestamptz(0)
+  attempts    Int       @default(0)
+  payload     Json?     @db.JsonB
+  lockedBy    String?   @map("locked_by") @db.VarChar(100)
+  lockedUntil DateTime? @map("locked_until") @db.Timestamptz(0)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  instance WfInstance @relation(fields: [instanceId], references: [wfInstanceId], onDelete: Restrict)
+  task     WfTask?    @relation(fields: [taskId], references: [wfTaskId], onDelete: Restrict)
+
+  @@index([status, fireAt])
+  @@index([instanceId, status])
+  @@index([taskId])
+  @@map("wf_timer")
+}
+
+// ===========================================================================
+// 3. Journal append-only
+// ===========================================================================
+
+/// Journal d'événements du workflow — APPEND-ONLY : les déclencheurs SQL `wf_event_log_no_update`,
+/// `wf_event_log_no_delete` et `wf_event_log_no_truncate` refusent toute modification. Toute
+/// correction est un NOUVEL événement qui en référence un autre (`correctsEventId`).
+///
+/// Une ligne = « qui a décidé quoi, sur quelle instruction, à partir de quelles sources, avec quelle
+/// confiance, validé par qui et quand ». Aucune FK à SET NULL / CASCADE (elles seraient refusées par
+/// le déclencheur) : les acteurs et la décision IA sont des identifiants SANS FK (la trace survit
+/// aux comptes) ; l'instance et la tâche sont en RESTRICT.
+///
+/// `eventType` : clé ouverte `[a-z0-9_.]+` (`instance.started`, `task.created`, `agent.proposed`,
+/// `agent.acted`, `task.validated`, `timer.fired`, `budget.stopped`…). Catalogue : wf-events.ts.
+/// `actorKind` : 0 système, 1 utilisateur, 2 agent. `autonomyLevel` : niveau d'autonomie EN VIGUEUR au
+/// moment de l'événement (0 suggère, 1 agit avec validation, 2 autonome) — figé.
+/// Cohérence de validation : `validatedBy` renseigné ⇒ `validatedAt` renseigné (CHECK).
+model WfEventLog {
+  wfEventLogId     BigInt    @id @default(autoincrement()) @map("wf_event_log_id")
+  instanceId       BigInt    @map("instance_id")
+  taskId           BigInt?   @map("task_id")
+  stepKey          String?   @map("step_key") @db.VarChar(100)
+  eventType        String    @map("event_type") @db.VarChar(80)
+  actorKind        Int       @default(0) @map("actor_kind") @db.SmallInt // 0=système,1=utilisateur,2=agent (CHECK raw SQL)
+  actorUserGroupId Int?      @map("actor_user_group_id") // sans FK
+  /// Instruction donnée à l'agent / à l'étape (texte du prompt MASQUÉ et tronqué par l'appelant).
+  instruction      String?   @db.Text
+  /// Sources consultées : [{ kind: 'document', id, label, excerpt? }…].
+  sources          Json?     @db.JsonB
+  /// Décision / proposition / sortie (le « quoi »).
+  decision         Json?     @db.JsonB
+  /// Explication lisible de la proposition (pourquoi).
+  explanation      String?   @db.Text
+  confidence       Decimal?  @db.Decimal(4, 3)
+  autonomyLevel    Int?      @map("autonomy_level") @db.SmallInt
+  model            String?   @db.VarChar(200)
+  /// Lien vers `ged_ai_decision.ged_ai_decision_id` quand l'appel IA y est journalisé — sans FK.
+  aiDecisionId     BigInt?   @map("ai_decision_id")
+  promptTokens     Int?      @map("prompt_tokens")
+  completionTokens Int?      @map("completion_tokens")
+  costAmount       Decimal?  @map("cost_amount") @db.Decimal(14, 4)
+  validatedBy      Int?      @map("validated_by") // user_group_id, sans FK
+  validatedAt      DateTime? @map("validated_at") @db.Timestamptz(0)
+  correctsEventId  BigInt?   @map("corrects_event_id")
+  occurredAt       DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(0)
+
+  instance WfInstance @relation(fields: [instanceId], references: [wfInstanceId], onDelete: Restrict)
+  task     WfTask?    @relation(fields: [taskId], references: [wfTaskId], onDelete: Restrict)
+
+  @@index([instanceId, occurredAt])
+  @@index([taskId])
+  @@index([eventType, occurredAt])
+  @@index([occurredAt])
+  @@map("wf_event_log")
+}
+
+// ===========================================================================
+// 4. Déclencheurs
+// ===========================================================================
+
+/// Déclencheur par événement : démarre une instance de la version publiée de `definitionId`.
+///
+/// `eventType` : clé ouverte `[a-z0-9_.]+` — `mail.arrived`, `document.deposited`, `deadline.reached`,
+/// `threshold.crossed`… (catalogue : wf-events.ts). `conditions` : filtre JSON évalué par le moteur
+/// (type de courrier, type de document, seuil…). `runAsUserGroupId` : l'utilisateur dont les droits
+/// s'appliquent aux instances créées (jamais « tout-puissant » par défaut).
+model WfTrigger {
+  wfTriggerId      Int       @id @default(autoincrement()) @map("wf_trigger_id")
+  definitionId     Int       @map("definition_id")
+  name             String    @db.VarChar(200)
+  eventType        String    @map("event_type") @db.VarChar(80)
+  conditions       Json      @default("{}") @db.JsonB
+  runAsUserGroupId Int       @map("run_as_user_group_id") // sans FK
+  isActive         Boolean   @default(true) @map("is_active")
+  lastFiredAt      DateTime? @map("last_fired_at") @db.Timestamptz(0)
+  createdBy        Int?      @map("created_by") // sans FK
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  definition WfDefinition @relation(fields: [definitionId], references: [wfDefinitionId], onDelete: Restrict)
+  instances  WfInstance[]
+
+  @@index([eventType, isActive])
+  @@index([definitionId])
+  @@map("wf_trigger")
+}
+
+// ===========================================================================
+// 5. Agents, outils, autonomie
+// ===========================================================================
+
+/// Registre des outils qu'un agent peut appeler (lecture GED, création de tâche, envoi de courriel…).
+///
+/// `toolKey` : identifiant stable `[a-z0-9_.]+` (unique). `sideEffect` : 0 lecture seule, 1 écriture
+/// réversible, 2 externe / irréversible. Un outil `sideEffect = 2` exige TOUJOURS une validation
+/// humaine (`requiresValidation`, CHECK) quel que soit le niveau d'autonomie.
+model WfTool {
+  wfToolId           Int      @id @default(autoincrement()) @map("wf_tool_id")
+  toolKey            String   @unique @map("tool_key") @db.VarChar(100)
+  label              String   @db.VarChar(200)
+  description        String?  @db.Text
+  sideEffect         Int      @default(0) @map("side_effect") @db.SmallInt // 0=lecture,1=écriture réversible,2=externe/irréversible (CHECK raw SQL)
+  requiresValidation Boolean  @default(false) @map("requires_validation")
+  inputSchema        Json?    @map("input_schema") @db.JsonB
+  isEnabled          Boolean  @default(true) @map("is_enabled")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  grants       WfToolGrant[]
+  agentConfigs WfAgentConfigTool[]
+
+  @@map("wf_tool")
+}
+
+/// Autorisation d'un outil pour UN workflow (liste blanche : sans ligne, l'outil est interdit).
+/// `maxCallsPerInstance` : plafond d'appels par instance (null = illimité dans le budget).
+model WfToolGrant {
+  wfToolGrantId       Int      @id @default(autoincrement()) @map("wf_tool_grant_id")
+  definitionId        Int      @map("definition_id")
+  toolId              Int      @map("tool_id")
+  maxCallsPerInstance Int?     @map("max_calls_per_instance")
+  grantedBy           Int?     @map("granted_by") // sans FK
+  grantedAt           DateTime @default(now()) @map("granted_at") @db.Timestamptz(0)
+
+  definition WfDefinition @relation(fields: [definitionId], references: [wfDefinitionId], onDelete: Restrict)
+  tool       WfTool       @relation(fields: [toolId], references: [wfToolId], onDelete: Restrict)
+
+  @@unique([definitionId, toolId])
+  @@index([toolId])
+  @@map("wf_tool_grant")
+}
+
+/// Configuration d'une étape AGENT d'une version de workflow.
+///
+/// `autonomyLevel` : 0 suggère (propose, un humain agit), 1 agit avec validation (agit après accord
+/// humain), 2 autonome (agit seul). DÉFAUT 0, le plus prudent. `confidenceThreshold` : sous ce seuil,
+/// la proposition est forcée vers un humain quel que soit le niveau. Garde-fous SQL
+/// (`wf_agent_config_autonomy_guard`) : le niveau 2 n'est accepté que si la définition est marquée
+/// faible risque ET si un jeu d'évaluation lié (`evalSetId`) a un run RÉUSSI pour cette version.
+/// `model` : null = modèle de la configuration IA (ged_ai_setting). `maxCostPerRun` : plafond de coût
+/// d'une exécution de l'étape.
+model WfAgentConfig {
+  wfAgentConfigId     Int      @id @default(autoincrement()) @map("wf_agent_config_id")
+  definitionVersionId Int      @map("definition_version_id")
+  stepKey             String   @map("step_key") @db.VarChar(100)
+  objective           String   @db.Text
+  autonomyLevel       Int      @default(0) @map("autonomy_level") @db.SmallInt // 0=suggère,1=agit avec validation,2=autonome (CHECK raw SQL)
+  confidenceThreshold Decimal  @default(0.800) @map("confidence_threshold") @db.Decimal(4, 3)
+  model               String?  @db.VarChar(200)
+  maxSteps            Int      @default(10) @map("max_steps")
+  maxCostPerRun       Decimal? @map("max_cost_per_run") @db.Decimal(14, 4)
+  timeoutSeconds      Int      @default(120) @map("timeout_seconds")
+  evalSetId           Int?     @map("eval_set_id")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  definitionVersion WfDefinitionVersion @relation(fields: [definitionVersionId], references: [wfDefinitionVersionId], onDelete: Restrict)
+  evalSet           WfEvalSet?          @relation(fields: [evalSetId], references: [wfEvalSetId], onDelete: SetNull)
+  tools             WfAgentConfigTool[]
+
+  @@unique([definitionVersionId, stepKey])
+  @@index([evalSetId])
+  @@map("wf_agent_config")
+}
+
+/// Outils autorisés pour UNE étape agent (sous-ensemble des `wf_tool_grant` du workflow ; la
+/// cohérence est vérifiée par l'application à la publication).
+model WfAgentConfigTool {
+  agentConfigId Int @map("agent_config_id")
+  toolId        Int @map("tool_id")
+
+  agentConfig WfAgentConfig @relation(fields: [agentConfigId], references: [wfAgentConfigId], onDelete: Cascade)
+  tool        WfTool        @relation(fields: [toolId], references: [wfToolId], onDelete: Restrict)
+
+  @@id([agentConfigId, toolId])
+  @@index([toolId])
+  @@map("wf_agent_config_tool")
+}
+
+// ===========================================================================
+// 6. Budget et arrêt d'urgence
+// ===========================================================================
+
+/// Plafond de coût et arrêt d'urgence. UNE ligne GLOBALE (`definitionId` NULL = plafond du client,
+/// unique partiel) et au plus une ligne par workflow (`definitionId` unique).
+///
+/// `periodKind` : 0 mensuel, 1 journalier, 2 cumulé (sans remise à zéro). `consumedAmount` est remis à
+/// zéro par le moteur quand `periodStart` change ; l'historique fin est dans `wf_event_log.cost_amount`.
+/// `capAmount` NULL = pas de plafond. `emergencyStop` actif ⇒ plus aucune étape agent ne démarre
+/// (global : tout le client ; par workflow : ce workflow) — `emergencyStopAt` obligatoire (CHECK).
+/// Devise : un code ISO 4217 ; une seule devise cohérente par installation.
+model WfBudget {
+  wfBudgetId          Int       @id @default(autoincrement()) @map("wf_budget_id")
+  definitionId        Int?      @unique @map("definition_id")
+  periodKind          Int       @default(0) @map("period_kind") @db.SmallInt // 0=mensuel,1=journalier,2=cumulé (CHECK raw SQL)
+  periodStart         DateTime  @default(now()) @map("period_start") @db.Date
+  capAmount           Decimal?  @map("cap_amount") @db.Decimal(14, 4)
+  consumedAmount      Decimal   @default(0) @map("consumed_amount") @db.Decimal(14, 4)
+  consumedTokens      BigInt    @default(0) @map("consumed_tokens")
+  alertThreshold      Decimal   @default(0.800) @map("alert_threshold") @db.Decimal(4, 3)
+  currency            String    @default("XOF") @db.VarChar(3)
+  emergencyStop       Boolean   @default(false) @map("emergency_stop")
+  emergencyStopAt     DateTime? @map("emergency_stop_at") @db.Timestamptz(0)
+  emergencyStopBy     Int?      @map("emergency_stop_by") // sans FK
+  emergencyStopReason String?   @map("emergency_stop_reason") @db.VarChar(500)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+  updatedBy           Int?      @map("updated_by") // sans FK
+
+  definition WfDefinition? @relation(fields: [definitionId], references: [wfDefinitionId], onDelete: Restrict)
+
+  @@map("wf_budget")
+}
+
+// ===========================================================================
+// 7. Évaluation (jeux de test et précision mesurée)
+// ===========================================================================
+
+/// Jeu de test d'évaluation d'une étape agent (ou du workflow entier si `stepKey` NULL).
+/// `minAccuracy` : précision minimale (0..1) pour qu'un run soit « réussi ».
+model WfEvalSet {
+  wfEvalSetId  Int      @id @default(autoincrement()) @map("wf_eval_set_id")
+  definitionId Int      @map("definition_id")
+  stepKey      String?  @map("step_key") @db.VarChar(100)
+  name         String   @db.VarChar(200)
+  description  String?  @db.Text
+  minAccuracy  Decimal  @default(0.900) @map("min_accuracy") @db.Decimal(4, 3)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdBy    Int?     @map("created_by") // sans FK
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  definition   WfDefinition    @relation(fields: [definitionId], references: [wfDefinitionId], onDelete: Restrict)
+  cases        WfEvalCase[]
+  runs         WfEvalRun[]
+  agentConfigs WfAgentConfig[]
+
+  @@index([definitionId])
+  @@map("wf_eval_set")
+}
+
+/// Cas de test : entrée + sortie attendue. `weight` est indicatif (affichage, priorité) : la précision d'un run est `passed_cases / total_cases`, non pondérée.
+model WfEvalCase {
+  wfEvalCaseId Int     @id @default(autoincrement()) @map("wf_eval_case_id")
+  evalSetId    Int     @map("eval_set_id")
+  label        String  @db.VarChar(300)
+  input        Json    @db.JsonB
+  expected     Json    @db.JsonB
+  weight       Int     @default(1)
+  sortOrder    Int     @default(0) @map("sort_order")
+  isActive     Boolean @default(true) @map("is_active")
+
+  evalSet WfEvalSet @relation(fields: [evalSetId], references: [wfEvalSetId], onDelete: Cascade)
+
+  @@index([evalSetId, sortOrder])
+  @@map("wf_eval_case")
+}
+
+/// Exécution d'un jeu d'évaluation sur une VERSION de workflow.
+///
+/// `status` : 0 en cours, 1 terminé, 2 en erreur. `passed` = `accuracy >= requiredAccuracy` (CHECK :
+/// jamais vrai sans run terminé ni précision suffisante). `requiredAccuracy` fige le seuil du jeu au
+/// moment du run. Seul un run `passed` sur la version concernée autorise l'autonomie 'autonome'.
+model WfEvalRun {
+  wfEvalRunId         BigInt    @id @default(autoincrement()) @map("wf_eval_run_id")
+  evalSetId           Int       @map("eval_set_id")
+  definitionVersionId Int       @map("definition_version_id")
+  status              Int       @default(0) @db.SmallInt // 0=en cours,1=terminé,2=en erreur (CHECK raw SQL)
+  totalCases          Int       @default(0) @map("total_cases")
+  passedCases         Int       @default(0) @map("passed_cases")
+  accuracy            Decimal?  @db.Decimal(4, 3)
+  requiredAccuracy    Decimal   @map("required_accuracy") @db.Decimal(4, 3)
+  passed              Boolean   @default(false)
+  model               String?   @db.VarChar(200)
+  results             Json?     @db.JsonB
+  costAmount          Decimal?  @map("cost_amount") @db.Decimal(14, 4)
+  errorMessage        String?   @map("error_message") @db.Text
+  runBy               Int?      @map("run_by") // sans FK
+  startedAt           DateTime  @default(now()) @map("started_at") @db.Timestamptz(0)
+  finishedAt          DateTime? @map("finished_at") @db.Timestamptz(0)
+
+  evalSet           WfEvalSet           @relation(fields: [evalSetId], references: [wfEvalSetId], onDelete: Restrict)
+  definitionVersion WfDefinitionVersion @relation(fields: [definitionVersionId], references: [wfDefinitionVersionId], onDelete: Restrict)
+
+  @@index([evalSetId, definitionVersionId, passed])
+  @@index([definitionVersionId])
+  @@map("wf_eval_run")
+}
+
+// ===========================================================================
+// 8. Boîte de tâches unifiée
+// ===========================================================================
+
+/// Entrée de la boîte de tâches unifiée : tâches humaines ET validations demandées par des agents.
+///
+/// `kind` : 0 tâche humaine, 1 validation d'une proposition d'agent. Pour `kind = 1`, `proposal` et
+/// `explanation` sont OBLIGATOIRES (CHECK) : un humain ne valide jamais une proposition sans en voir le
+/// contenu et le raisonnement. `status` : 0 ouverte, 1 prise en charge, 2 traitée, 3 rejetée,
+/// 4 expirée, 5 annulée. Assignation (copie de celle de la tâche, indexée pour la boîte) : au plus un
+/// bénéficiaire (CHECK). `resolution` : { outcome: 'accepted'|'modified'|'rejected', … }.
+/// `agentEventId` : événement `agent.proposed` du journal à l'origine de la demande (sans FK).
+model WfInboxItem {
+  wfInboxItemId       BigInt    @id @default(autoincrement()) @map("wf_inbox_item_id")
+  taskId              BigInt    @map("task_id")
+  instanceId          BigInt    @map("instance_id")
+  kind                Int       @default(0) @db.SmallInt // 0=tâche humaine,1=validation agent (CHECK raw SQL)
+  status              Int       @default(0) @db.SmallInt // 0=ouverte,1=prise,2=traitée,3=rejetée,4=expirée,5=annulée (CHECK raw SQL)
+  priority            Int       @default(1) @db.SmallInt // 0=basse,1=normale,2=haute (CHECK raw SQL)
+  title               String    @db.VarChar(300)
+  summary             String?   @db.Text
+  proposal            Json?     @db.JsonB
+  explanation         String?   @db.Text
+  sources             Json?     @db.JsonB
+  confidence          Decimal?  @db.Decimal(4, 3)
+  agentEventId        BigInt?   @map("agent_event_id")
+  assigneeUserGroupId Int?      @map("assignee_user_group_id") // sans FK
+  assigneeGroupId     Int?      @map("assignee_group_id") // sans FK
+  assigneeRoleId      Int?      @map("assignee_role_id") // sans FK
+  dueAt               DateTime? @map("due_at") @db.Timestamptz(0)
+  claimedBy           Int?      @map("claimed_by") // sans FK
+  claimedAt           DateTime? @map("claimed_at") @db.Timestamptz(0)
+  resolvedBy          Int?      @map("resolved_by") // sans FK
+  resolvedAt          DateTime? @map("resolved_at") @db.Timestamptz(0)
+  resolution          Json?     @db.JsonB
+  resolutionComment   String?   @map("resolution_comment") @db.Text
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  task     WfTask     @relation(fields: [taskId], references: [wfTaskId], onDelete: Restrict)
+  instance WfInstance @relation(fields: [instanceId], references: [wfInstanceId], onDelete: Restrict)
+
+  @@index([status, dueAt])
+  @@index([assigneeUserGroupId, status])
+  @@index([assigneeGroupId, status])
+  @@index([assigneeRoleId, status])
+  @@index([taskId])
+  @@index([instanceId])
+  @@map("wf_inbox_item")
+}
