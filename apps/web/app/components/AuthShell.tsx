@@ -11,6 +11,15 @@ import { NAV, activeItem } from './nav';
 import { Logo, LogoIcon } from './BrandMark';
 import { TopBar } from './TopBar';
 import { CommandPalette } from './CommandPalette';
+import dynamic from 'next/dynamic';
+import { hasAssistantMenu } from './assistant/_lib/access';
+import { pageContextFromPath } from './assistant/_lib/page-context';
+import { useAssistantShortcut } from './assistant/useAssistantShortcut';
+
+// Panneau de l'assistant : chargé à la demande, côté client seulement (jamais pour qui n'a pas le menu).
+const AssistantDrawer = dynamic(() => import('./assistant/AssistantDrawer').then((m) => m.AssistantDrawer), {
+  ssr: false,
+});
 
 const { Sider, Content } = Layout;
 
@@ -206,6 +215,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const isLogin = pathname === '/login';
 
   // Ensemble des menus autorisés (null tant que /auth/me n'a pas répondu ou si le
@@ -301,6 +311,15 @@ export function AuthShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Assistant : bouton, raccourci et panneau n'existent que si le menu `/assistant` est détenu (refus par défaut).
+  const assistantEnabled = hasAssistantMenu(me?.menuKeys);
+  const assistantContext = useMemo(() => pageContextFromPath(pathname), [pathname]);
+  useEffect(() => {
+    if (!assistantEnabled) setAssistantOpen(false);
+  }, [assistantEnabled]);
+  const toggleAssistant = useCallback(() => setAssistantOpen((o) => !o), []);
+  useAssistantShortcut(assistantEnabled && !isLogin, toggleAssistant);
+
   const navigate = useCallback(
     (key: string) => {
       router.push(key);
@@ -311,6 +330,9 @@ export function AuthShell({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     window.localStorage.removeItem('token');
+    // L'assistant ne survit pas à la déconnexion : panneau fermé, état du chat (propre à l'utilisateur) détruit.
+    setAssistantOpen(false);
+    setMe(null);
     router.replace('/login');
   }, [router]);
 
@@ -387,6 +409,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           onOpenMenu={() => setDrawerOpen(true)}
           onOpenPalette={() => setPaletteOpen(true)}
           onLogout={logout}
+          onOpenAssistant={assistantEnabled ? () => setAssistantOpen(true) : undefined}
         />
         <Content>
           <div className="da-page">{children}</div>
@@ -412,6 +435,15 @@ export function AuthShell({ children }: { children: ReactNode }) {
         onClose={() => setPaletteOpen(false)}
         allowedKeys={me?.menuKeys ?? null}
       />
+
+      {assistantEnabled && (
+        <AssistantDrawer
+          key={me?.username}
+          open={assistantOpen}
+          onClose={() => setAssistantOpen(false)}
+          pageContext={assistantContext}
+        />
+      )}
     </Layout>
   );
 }

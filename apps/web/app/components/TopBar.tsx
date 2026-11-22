@@ -42,6 +42,7 @@ export function TopBar({
   onOpenMenu,
   onOpenPalette,
   onLogout,
+  onOpenAssistant,
 }: {
   me: Me | null;
   /** État replié de la sidebar (desktop) — pilote le libellé de la languette. */
@@ -50,6 +51,8 @@ export function TopBar({
   onOpenMenu: () => void;
   onOpenPalette: () => void;
   onLogout: () => void;
+  /** Ouvre l'assistant ; fourni seulement si l'utilisateur détient le menu `/assistant` (sinon pas de bouton). */
+  onOpenAssistant?: () => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -213,6 +216,16 @@ export function TopBar({
             Ctrl K
           </kbd>
         </button>
+      )}
+
+      {onOpenAssistant && (
+        <Button
+          type="text"
+          aria-label="Ouvrir l’assistant (Alt+Maj+A)"
+          title="Assistant (Alt+Maj+A)"
+          icon={<icons.sparkle size={20} strokeWidth={1.75} />}
+          onClick={onOpenAssistant}
+        />
       )}
 
       <NotificationsBell />

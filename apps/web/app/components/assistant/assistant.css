@@ -1,0 +1,131 @@
+/* Panneau de l'assistant : liste, fil, bulles, saisie, bandeaux, état vide.
+   Uniquement des variables AntD / design system (clair et sombre). La carte de confirmation est dans assistant-card.css. */
+
+/* Utilitaire : lisible par les lecteurs d'écran seulement. */
+.asst-sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Bouton commun (cible >= 44 px). */
+.asst-btn.ant-btn { min-height: 44px; min-width: 44px; }
+
+/* Focus visible sur les contrôles natifs. */
+.asst-item-open:focus-visible,
+.asst-item-delete:focus-visible,
+.asst-thread:focus-visible {
+  outline: 2px solid var(--ant-color-primary);
+  outline-offset: 2px;
+}
+
+/* ---- Liste des échanges ---- */
+.asst-list { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; color: var(--ant-color-text); }
+.asst-list-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.asst-list-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--ant-color-text); }
+.asst-list-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; }
+.asst-item {
+  display: flex; align-items: stretch; gap: 4px; min-width: 0;
+  border: 1px solid var(--ant-color-border-secondary); border-radius: var(--ant-border-radius);
+  background: var(--ant-color-bg-container);
+}
+.asst-item--selected { border-color: var(--ant-color-primary); background: var(--ant-color-primary-bg); }
+.asst-item-open {
+  flex: 1 1 auto; min-width: 0; min-height: 44px; display: flex; flex-direction: column; gap: 2px;
+  padding: 10px 12px; text-align: left; font: inherit; color: var(--ant-color-text);
+  background: transparent; border: 0; border-radius: var(--ant-border-radius); cursor: pointer;
+}
+.asst-item-open:hover { background: var(--ant-color-fill-quaternary); }
+.asst-item-title { font-weight: 600; overflow-wrap: anywhere; }
+.asst-item-meta, .asst-item-purge { font-size: 12px; color: var(--ant-color-text-secondary); overflow-wrap: anywhere; }
+.asst-item-delete {
+  flex: 0 0 auto; min-width: 44px; min-height: 44px; padding: 0 12px; font: inherit; font-size: 13px;
+  color: var(--ant-color-error); background: transparent; border: 0; border-radius: var(--ant-border-radius); cursor: pointer;
+}
+.asst-item-delete:hover { background: var(--ant-color-error-bg); }
+.asst-list-total { margin: 0; font-size: 12px; color: var(--ant-color-text-secondary); }
+.asst-list-loading { padding: 4px 0; }
+
+/* ---- État vide ---- */
+.asst-empty { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 12px 0; color: var(--ant-color-text); overflow-wrap: anywhere; }
+.asst-empty-title { margin: 0; font-size: 16px; font-weight: 700; }
+.asst-empty-text { margin: 0; color: var(--ant-color-text-secondary); }
+.asst-examples { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.asst-example {
+  padding: 8px 12px; border: 1px dashed var(--ant-color-border); border-radius: var(--ant-border-radius);
+  background: var(--ant-color-fill-quaternary); color: var(--ant-color-text); overflow-wrap: anywhere;
+}
+
+/* ---- Fil de la conversation ---- */
+.asst-thread {
+  flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column; gap: 12px; padding: 12px;
+  background: var(--ant-color-bg-layout); color: var(--ant-color-text);
+}
+.asst-thread-context {
+  margin: 0; align-self: flex-start; padding: 4px 10px; font-size: 12px;
+  border: 1px solid var(--ant-color-border-secondary); border-radius: var(--da-radius-pill, 999px);
+  background: var(--ant-color-fill-quaternary); color: var(--ant-color-text-secondary); overflow-wrap: anywhere;
+}
+.asst-thread-end { height: 1px; flex: 0 0 auto; }
+.asst-msg-wrap { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+/* ---- Bulles ---- */
+.asst-msg {
+  max-width: 92%; min-width: 0; padding: 8px 12px; border-radius: var(--ant-border-radius-lg, 10px);
+  border: 1px solid var(--ant-color-border-secondary); overflow-wrap: anywhere;
+}
+.asst-msg--user { align-self: flex-end; background: var(--ant-color-primary-bg); color: var(--ant-color-text); }
+.asst-msg--assistant { align-self: flex-start; background: var(--ant-color-bg-container); color: var(--ant-color-text); }
+.asst-msg--pending { opacity: 0.75; }
+.asst-msg-head { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; margin-bottom: 2px; font-size: 12px; }
+.asst-msg-who { font-weight: 700; }
+.asst-msg-time { color: var(--ant-color-text-secondary); }
+/* Texte brut : retours à la ligne conservés, jamais interprété. */
+.asst-msg-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.asst-thinking { margin: 0; align-self: flex-start; font-size: 13px; color: var(--ant-color-text-secondary); }
+
+/* ---- Saisie (collée en bas) ---- */
+.asst-composer {
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
+  border-top: 1px solid var(--ant-color-border-secondary); background: var(--ant-color-bg-container);
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
+.asst-composer-input.ant-input { min-height: 44px; font-size: 16px; overflow-wrap: anywhere; }
+.asst-composer-meta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.asst-composer-help, .asst-composer-counter { margin: 0; font-size: 12px; color: var(--ant-color-text-secondary); }
+.asst-composer-counter--over { color: var(--ant-color-error); font-weight: 600; }
+.asst-composer-error { margin: 0; font-size: 13px; color: var(--ant-color-error); }
+.asst-composer-blocked {
+  margin: 0; padding: 8px 10px; font-size: 13px; border-radius: var(--ant-border-radius);
+  background: var(--ant-color-warning-bg); color: var(--ant-color-text); overflow-wrap: anywhere;
+}
+.asst-composer-buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+
+/* ---- Bandeaux d'erreur ---- */
+.asst-banner {
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 10px 12px;
+  border: 1px solid var(--ant-color-error-border); border-radius: var(--ant-border-radius);
+  background: var(--ant-color-error-bg); color: var(--ant-color-text); overflow-wrap: anywhere;
+}
+.asst-banner--rate_limited, .asst-banner--not_implemented, .asst-banner--unavailable {
+  border-color: var(--ant-color-warning-border); background: var(--ant-color-warning-bg);
+}
+.asst-banner-text, .asst-banner-wait { margin: 0; }
+
+/* ---- Mobile : plein écran, fil défilant, saisie en bas ---- */
+@media (max-width: 640px) {
+  .asst-msg { max-width: 100%; }
+  .asst-thread { padding: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .asst-item-open, .asst-item-delete, .asst-thread { transition: none; scroll-behavior: auto; }
+}
+
+/* Panneau (AssistantDrawer) : colonne flex, le fil défile, la saisie reste en bas. */
+.asst-panel { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: 12px 16px 8px; gap: 8px; }
+.asst-panel > .asst-list { flex: 1 1 auto; overflow-y: auto; }
+.asst-panel-banner, .asst-panel-loading { flex: none; }
+.asst-panel-hint { flex: none; margin: 0; font-size: 12px; color: var(--ant-color-text-secondary); }
+.asst-drawer-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.asst-drawer-actions { display: flex; gap: 4px; }
