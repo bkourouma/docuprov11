@@ -152,6 +152,26 @@ export type AsstProposalDto = {
   rowVersion: number;
 };
 
+export const ASST_CLARIFICATION_CHOICES_MIN = 2;
+export const ASST_CLARIFICATION_CHOICES_MAX = 6;
+export const ASST_CLARIFICATION_CHOICE_MAX_CHARS = 80;
+
+/**
+ * Question de précision posée par l'assistant (au lieu de deviner) : texte brut, 2 à 6 choix distincts de 80
+ * caractères au plus. Chaque choix peut être renvoyé tel quel comme message utilisateur.
+ */
+export const asstClarificationSchema = z
+  .object({
+    question: z.string().trim().min(1).max(500).optional(),
+    choices: z
+      .array(z.string().trim().min(1).max(ASST_CLARIFICATION_CHOICE_MAX_CHARS))
+      .min(ASST_CLARIFICATION_CHOICES_MIN)
+      .max(ASST_CLARIFICATION_CHOICES_MAX)
+      .refine((c) => new Set(c).size === c.length, { message: 'Choix en double.' }),
+  })
+  .strict();
+export type AsstClarificationDto = z.infer<typeof asstClarificationSchema>;
+
 /** Aucun jeton n'est exposé. */
 export type AsstMessageDto = {
   messageId: string;
@@ -161,6 +181,8 @@ export type AsstMessageDto = {
   position: number;
   createdAt: string;
   proposals: AsstProposalDto[];
+  /** Optionnel : présent quand l'assistant pose une question de précision (message assistant seulement). */
+  clarification?: AsstClarificationDto | null;
 };
 
 /** Corps de TOUTE erreur de /assistant/**. */

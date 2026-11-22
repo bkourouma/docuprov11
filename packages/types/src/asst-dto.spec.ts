@@ -3,6 +3,7 @@ import {
   ASST_ROUTES,
   ASST_ROUTE_MENU,
   asstBrouillonArgsSchema,
+  asstClarificationSchema,
   asstCanonicalActionsJson,
   asstIdSchema,
   asstImputationArgsSchema,
@@ -221,5 +222,21 @@ describe('ASST_ROUTES', () => {
       expect(new Set(route.errors).size).toBe(route.errors.length);
       for (const code of route.errors) expect(ASST_ERROR_CODE_VALUES).toContain(code);
     }
+  });
+});
+
+describe('asstClarificationSchema', () => {
+  it('accepte 2 à 6 choix distincts de 80 caractères au plus, avec ou sans question', () => {
+    expect(asstClarificationSchema.safeParse({ choices: ['DAF Nord', 'DAF Sud'] }).success).toBe(true);
+    expect(asstClarificationSchema.safeParse({ question: 'Lequel ?', choices: ['a', 'b', 'c', 'd', 'e', 'f'] }).success).toBe(true);
+  });
+
+  it('refuse 1 ou 7 choix, un doublon, un choix vide ou trop long, une clé inconnue', () => {
+    expect(asstClarificationSchema.safeParse({ choices: ['a'] }).success).toBe(false);
+    expect(asstClarificationSchema.safeParse({ choices: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }).success).toBe(false);
+    expect(asstClarificationSchema.safeParse({ choices: ['a', 'a'] }).success).toBe(false);
+    expect(asstClarificationSchema.safeParse({ choices: ['a', '  '] }).success).toBe(false);
+    expect(asstClarificationSchema.safeParse({ choices: ['a', 'x'.repeat(81)] }).success).toBe(false);
+    expect(asstClarificationSchema.safeParse({ choices: ['a', 'b'], extra: 1 }).success).toBe(false);
   });
 });

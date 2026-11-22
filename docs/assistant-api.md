@@ -258,6 +258,15 @@ canonique des actions, voir section 3.1) :
 }
 ```
 
+**Question de précision (`clarification`)** : quand la demande est ambiguë (plusieurs destinataires possibles, courrier non
+identifié, délai non chiffré en jours, type d'imputation incertain), l'assistant ne devine pas : il pose une question.
+`assistantMessage.proposals` est alors vide et `assistantMessage.clarification` (champ **optionnel**, absent sinon) porte
+`{ question?: string, choices: string[] }` : 2 à 6 choix distincts de 80 caractères au plus, texte brut. Chaque choix peut être
+renvoyé tel quel comme `content` d'un nouveau message utilisateur. `assistantMessage.content` contient toujours la question et
+la liste numérotée des choix (affichage de repli). Schéma : `asstClarificationSchema` (`packages/types/src/asst-dto.ts`).
+Au rechargement d'un échange (`GET /assistant/conversations/:id`), `clarification` n'est restituée que sur le DERNIER message
+de l'échange, s'il est de l'assistant et sans proposition (aucune table ne la stocke : elle est relue depuis `content`).
+
 **Erreurs** : `invalid_input` (422), `not_found` (404), `identity_refused` (403), `budget_exceeded` (429, plafond de coût
 de l'utilisateur ou global atteint), `assistant_unavailable` (503, IA désactivée ou arrêt d'urgence), `not_implemented`
 (501, voir section 6).

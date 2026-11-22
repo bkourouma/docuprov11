@@ -321,6 +321,25 @@ export class InMemoryProposalStore implements AsstProposalStore {
       .map((p) => this.proposalDto(p));
   }
 
+  /** Ajout A2 : propositions « confirmées » depuis avant `before` (balayage des exécutions interrompues). */
+  async listStaleConfirmedProposals(before: Date, limit: number): Promise<AsstProposalDto[]> {
+    return [...this.proposals.values()]
+      .filter((p) => p.status === AsstProposalStatus.Confirmed && p.confirmedAt !== null && p.confirmedAt.getTime() < before.getTime())
+      .sort((a, b) => (a.confirmedAt?.getTime() ?? 0) - (b.confirmedAt?.getTime() ?? 0) || a.id - b.id)
+      .slice(0, Math.max(0, limit))
+      .map((p) => this.proposalDto(p));
+  }
+
+  /** Ajout A2 : acteur propriétaire (même règle de visibilité que `getProposal`). */
+  async getProposalActor(userId: number, proposalId: string): Promise<{ userId: number; userGroupId: number } | null> {
+    const id = parseId(proposalId);
+    const row = id === null ? undefined : this.proposals.get(id);
+    if (!row || row.userId !== userId) return null;
+    const conv = this.conversations.get(row.conversationId);
+    if (!conv || conv.deletedAt !== null) return null;
+    return { userId: row.userId, userGroupId: row.userGroupId };
+  }
+
   // ---------------------------------------------------------------------------
   // Internes
   // ---------------------------------------------------------------------------

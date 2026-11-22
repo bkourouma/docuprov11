@@ -1,4 +1,5 @@
 import type {
+  AsstClarificationDto,
   AsstConfirmProposalBody,
   AsstConversationDto,
   AsstMessageDto,
@@ -118,6 +119,14 @@ export interface AsstProposalTransition {
   errorCode?: string;
   errorMessage?: string;
   now: Date;
+  /**
+   * AJOUT A2 (additif, optionnel) : client transactionnel (`Prisma.TransactionClient`, typé `unknown` pour garder ce
+   * contrat sans dépendance Prisma). Quand il est fourni, l'implémentation Prisma DOIT écrire la transition (CAS
+   * conditionnel sur `row_version` + statut) DANS cette transaction (`(db ?? prisma).asstProposal…`) : l'exécuteur
+   * y enchaîne les effets métier ET la transition 1->2, ce qui les rend atomiques (tout ou rien). Sans `db`,
+   * comportement inchangé. L'implémentation en mémoire l'ignore.
+   */
+  db?: unknown;
 }
 
 export interface AsstProposalStore {
@@ -146,6 +155,21 @@ export interface AsstProposalStore {
   transitionProposal(t: AsstProposalTransition): Promise<AsstProposalDto | null>;
   /** Propositions « proposées » échues (job d'expiration), triées par échéance, bornées. */
   listExpirableProposals(now: Date, limit: number): Promise<AsstProposalDto[]>;
+  /**
+   * AJOUT A2 (additif) : propositions restées « confirmées » (statut 1) depuis avant `before`
+   * (`confirmed_at`), triées par ancienneté, bornées. Une proposition qui reste en statut 1 signifie que le processus
+   * s'est arrêté pendant l'exécution ; comme les effets et la transition 1->2 sont dans UNE transaction, rien n'a été
+   * appliqué (hors brouillons, non transactionnels) : le balayage de l'exécuteur les clôt en « échec »
+   * (`execution_interrupted`). Index conseillé : (status, confirmed_at)
+   * partiel sur status = 1.
+   */
+  listStaleConfirmedProposals(before: Date, limit: number): Promise<AsstProposalDto[]>;
+  /**
+   * AJOUT A2 (additif) : acteur propriétaire de la proposition (`user_id`, `user_group_id` de la ligne : le DTO ne les
+   * porte pas). `null` si introuvable, échange masqué OU appartenant à un autre utilisateur (même règle que `getProposal`).
+   * L'exécuteur refuse (`identity_refused`) si l'acteur courant n'est pas celui de la proposition.
+   */
+  getProposalActor(userId: number, proposalId: string): Promise<{ userId: number; userGroupId: number } | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +193,11 @@ export interface AsstPlanResult {
   actions: AsstProposedAction[];
   /** Résumé lisible de ce que la confirmation déclencherait (obligatoire si `actions` n'est pas vide). */
   summary: string | null;
+  /**
+   * AJOUT A1 (additif, optionnel) : question de précision posée au lieu d'une action (`reply` en porte alors le texte
+   * de repli au format de `planner/clarification-format.ts`, `actions` est vide).
+   */
+  clarification?: AsstClarificationDto | null;
   usage: AgentUsage;
   aiDecisionId?: string | null;
 }
