@@ -20,6 +20,9 @@ import {
   ASST_PROPOSAL_STORE,
 } from './assistant.contracts';
 import { AsstConversationsService } from './conversations/asst-conversations.service';
+import { AsstConfirmLimiter } from './executor/asst-confirm-limiter';
+import { AsstExecutorService } from './executor/asst-executor.service';
+import { AsstExpirySweeper } from './executor/asst-expiry-sweeper';
 import { AsstGateService } from './gate/asst-gate.service';
 import { AsstIdentityService } from './identity/asst-identity.service';
 import { AsstActionValidatorService } from './planner/action-validator';
@@ -28,11 +31,10 @@ import { AsstPlannerDataAdapter } from './planner/planner-data.adapter';
 import { ASST_ACTION_VALIDATOR, ASST_PLANNER_DATA } from './planner/planner.types';
 import { AsstProposalStoreService } from './store/asst-proposal-store.service';
 import { AsstPurgeService } from './store/asst-purge.service';
-import { NotImplementedExecutor } from './not-implemented';
 
 /**
  * Assistant « qui agit ». `PrismaService` est global. Une ligne par jeton : les lots suivants ne modifient que
- * les lignes marquées A1 / A2. Tant qu'un port n'est pas branché, il répond 501 `not_implemented`.
+ * les lignes marquées A1 / A2.
  */
 @Module({
   imports: [
@@ -62,7 +64,10 @@ import { NotImplementedExecutor } from './not-implemented';
     AsstActionValidatorService, // A1
     { provide: ASST_ACTION_VALIDATOR, useExisting: AsstActionValidatorService }, // A1
     AsstPurgeService, // A1
-    { provide: ASST_EXECUTOR, useClass: NotImplementedExecutor }, // A2 : remplacer par l'exécuteur de propositions (AsstExecutorService)
+    AsstConfirmLimiter, // A2
+    AsstExecutorService, // A2
+    { provide: ASST_EXECUTOR, useExisting: AsstExecutorService }, // A2
+    AsstExpirySweeper, // A2
   ],
   exports: [ASST_IDENTITY, ASST_GATE, ASST_PLANNER, ASST_PROPOSAL_STORE, ASST_CONVERSATIONS, ASST_EXECUTOR],
 })

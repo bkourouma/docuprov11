@@ -10,6 +10,7 @@ import { MailsService } from '../courriers/mails.service';
 import { DraftingService } from '../drafting/drafting.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActionApplierRegistry } from '../workflow-agent-catalog/appliers/action-applier.registry';
+import { ApplierRightsService } from '../workflow-agent-catalog/appliers/applier-rights';
 import { ImputableActorsService } from '../workflow-agent-catalog/appliers/imputable-actors.service';
 import { WF_IMPUTABLE_ACTORS } from '../workflow-agent-catalog/catalog.contracts';
 import { WF_AGENT_GATE } from '../workflow-agents/agent.contracts';
@@ -22,13 +23,14 @@ import {
   ASST_IDENTITY,
   ASST_PLANNER,
   ASST_PROPOSAL_STORE,
-  AsstError,
 } from './assistant.contracts';
 import { AssistantModule } from './assistant.module';
 import { AsstConversationsService } from './conversations/asst-conversations.service';
+import { AsstConfirmLimiter } from './executor/asst-confirm-limiter';
+import { AsstExecutorService } from './executor/asst-executor.service';
+import { AsstExpirySweeper } from './executor/asst-expiry-sweeper';
 import { AsstGateService } from './gate/asst-gate.service';
 import { AsstIdentityService } from './identity/asst-identity.service';
-import { NotImplementedExecutor } from './not-implemented';
 import { AsstPlannerService } from './planner/asst-planner.service';
 import { AsstPlannerDataAdapter } from './planner/planner-data.adapter';
 import { ASST_ACTION_VALIDATOR, ASST_PLANNER_DATA } from './planner/planner.types';
@@ -63,6 +65,7 @@ async function compile() {
     { provide: ImputableActorsService, useValue: {} },
     { provide: WF_IMPUTABLE_ACTORS, useValue: {} },
     { provide: ActionApplierRegistry, useValue: { get: () => undefined } },
+    { provide: ApplierRightsService, useValue: {} },
   ];
   return Test.createTestingModule({
     controllers: meta<Type[]>('controllers'),
@@ -82,7 +85,7 @@ describe('AssistantModule : câblage', () => {
     expect(meta<unknown[]>('exports')).toEqual(expect.arrayContaining(ALL_TOKENS));
   });
 
-  it('branche les implémentations A1 (porte, planificateur, magasin, conversations) et garde l’exécuteur « non branché » tant que A2 n’est pas fusionné', async () => {
+  it('branche les implémentations A1 (porte, planificateur, magasin, conversations) et A2 (exécuteur, limiteur, balayeur)', async () => {
     const ref = await compile();
     expect(ref.get(AssistantController)).toBeInstanceOf(AssistantController);
     expect(ref.get(ASST_IDENTITY)).toBeInstanceOf(AsstIdentityService);
@@ -92,18 +95,16 @@ describe('AssistantModule : câblage', () => {
     expect(ref.get(ASST_CONVERSATIONS)).toBeInstanceOf(AsstConversationsService);
     expect(ref.get(ASST_PLANNER_DATA)).toBeInstanceOf(AsstPlannerDataAdapter);
     expect(ref.get(ASST_ACTION_VALIDATOR)).toBeDefined();
-    expect(ref.get(ASST_EXECUTOR)).toBeInstanceOf(NotImplementedExecutor);
+    expect(ref.get(ASST_EXECUTOR)).toBeInstanceOf(AsstExecutorService);
+    expect(ref.get(AsstConfirmLimiter)).toBeInstanceOf(AsstConfirmLimiter);
+    expect(ref.get(AsstExpirySweeper)).toBeInstanceOf(AsstExpirySweeper);
   });
 
-  it('chaque méthode de l’exécuteur « non branché » échoue en not_implemented', async () => {
+  it('aucun jeton ne reste « non branché » : chaque port répond par une vraie classe', async () => {
     const ref = await compile();
-    const port = ref.get<Record<string, unknown>>(ASST_EXECUTOR);
-    const methods = Object.keys(port).filter((k) => typeof port[k] === 'function');
-    expect(methods.length).toBeGreaterThan(0);
-    for (const name of methods) {
-      const err: unknown = await (port[name] as () => Promise<unknown>)().catch((e: unknown) => e);
-      expect(err).toBeInstanceOf(AsstError);
-      expect(err).toMatchObject({ errorCode: 'not_implemented', message: 'Fonction pas encore disponible.' });
+    for (const token of ALL_TOKENS) {
+      const port = ref.get<object>(token);
+      expect(port.constructor.name).not.toMatch(/^NotImplemented/);
     }
   });
 });
