@@ -11,14 +11,16 @@ import {
   type AsstConversationDto,
   type AsstMessageDto,
   type AsstPageContext,
+  AsstErrorCode,
   type AsstProposalDto,
 } from '@archivage/types';
 import { PrismaService } from '../../prisma/prisma.service';
-import type {
-  AsstNewMessage,
-  AsstNewProposal,
-  AsstProposalStore,
-  AsstProposalTransition,
+import {
+  AsstError,
+  type AsstNewMessage,
+  type AsstNewProposal,
+  type AsstProposalStore,
+  type AsstProposalTransition,
 } from '../assistant.contracts';
 import { asstArgsHash } from './asst-proposal-hash';
 import {
@@ -35,6 +37,33 @@ const EXPIRY_MARGIN_MS = 1_000;
 const MESSAGE_CONTENT_MAX = 20_000;
 const DIGITS = /^\d{1,18}$/;
 
+/** Délai maximal d'attente du verrou de ligne par `deleteConversation` (`lock_timeout` local à la transaction). */
+export const ASST_DELETE_LOCK_TIMEOUT_MS = 2_000;
+/** SQLSTATE `lock_not_available` : levé par PostgreSQL quand `lock_timeout` est dépassé. */
+const SQLSTATE_LOCK_NOT_AVAILABLE = '55P03';
+
+/**
+ * Vrai si l'erreur (ou l'une de ses causes, y compris l'enveloppe Prisma `P2010` / `meta`) est un dépassement de
+ * `lock_timeout` (SQLSTATE 55P03). Détection volontairement étroite : toute autre erreur reste inchangée.
+ */
+export function isLockNotAvailable(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  const visit = (e: unknown, depth: number): boolean => {
+    if (typeof e !== 'object' || e === null || seen.has(e) || depth > 5) return false;
+    seen.add(e);
+    const o = e as { code?: unknown; message?: unknown; meta?: unknown; cause?: unknown };
+    if (o.code === SQLSTATE_LOCK_NOT_AVAILABLE) return true;
+    if (typeof o.message === 'string' && o.message.includes(SQLSTATE_LOCK_NOT_AVAILABLE)) return true;
+    if (typeof o.meta === 'object' && o.meta !== null) {
+      const m = o.meta as { code?: unknown; message?: unknown };
+      if (m.code === SQLSTATE_LOCK_NOT_AVAILABLE) return true;
+      if (typeof m.message === 'string' && m.message.includes(SQLSTATE_LOCK_NOT_AVAILABLE)) return true;
+    }
+    return visit(o.cause, depth + 1);
+  };
+  return visit(error, 0);
+}
+
 /**
  * Magasin Prisma de l'assistant (conversations, messages, propositions). Mêmes sémantiques que l'implémentation en
  * mémoire (`testing/in-memory-proposal-store.ts`) : propriété par `userId` partout (objet d'un autre ou identifiant
@@ -43,6 +72,12 @@ const DIGITS = /^\d{1,18}$/;
  */
 @Injectable()
 export class AsstProposalStoreService implements AsstProposalStore {
+  /**
+   * Délai d'attente du verrou de `deleteConversation` (ms). Surchargeable par les tests d'intégration pour ne pas
+   * ralentir la suite ; la production garde la constante.
+   */
+  deleteLockTimeoutMs = ASST_DELETE_LOCK_TIMEOUT_MS;
+
   constructor(private readonly prisma: PrismaService) {}
 
   // ---------------------------------------------------------------------------
@@ -119,25 +154,36 @@ export class AsstProposalStoreService implements AsstProposalStore {
     // (2) UPDATE conditionnel lancé APRÈS le verrou, donc avec un instantané qui voit le statut confirmé (1) :
     // `purge_at` ne passe à `now` que si l'échange ne porte AUCUNE trace d'exécution : proposition appliquée (2) ou en
     // échec (5), ou confirmée (1), qui deviendra l'une des deux. Dans ce cas la trace est conservée jusqu'à l'échéance.
-    return this.prisma.$transaction(async (tx) => {
-      const locked = await tx.$queryRaw<{ id: bigint }[]>`
-        SELECT "asst_conversation_id" AS id FROM "asst_conversation"
-        WHERE "asst_conversation_id" = ${id} AND "user_id" = ${userId} AND "deleted_at" IS NULL
-        FOR UPDATE`;
-      if (locked.length === 0) return false;
-      const count = await tx.$executeRaw`
-        UPDATE "asst_conversation" AS c
-        SET "deleted_at" = ${now},
-            "updated_at" = ${now},
-            "purge_at" = CASE
-              WHEN EXISTS (SELECT 1 FROM "asst_proposal" p
-                           WHERE p."conversation_id" = c."asst_conversation_id" AND p."status" IN (1, 2, 5))
-              THEN c."purge_at"
-              ELSE ${now}
-            END
-        WHERE c."asst_conversation_id" = ${id} AND c."user_id" = ${userId} AND c."deleted_at" IS NULL`;
-      return count > 0;
-    });
+    // `lock_timeout` local (annulé en fin de transaction) : si la ligne reste verrouillée plus de 2 s (confirmation ou
+    // ajout de message anormalement long), la transaction est annulée SANS EFFET et l'appelant reçoit un conflit 409
+    // réessayable, au lieu d'une attente indéfinie.
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('lock_timeout', ${`${this.deleteLockTimeoutMs}ms`}, true)`;
+        const locked = await tx.$queryRaw<{ id: bigint }[]>`
+          SELECT "asst_conversation_id" AS id FROM "asst_conversation"
+          WHERE "asst_conversation_id" = ${id} AND "user_id" = ${userId} AND "deleted_at" IS NULL
+          FOR UPDATE`;
+        if (locked.length === 0) return false;
+        const count = await tx.$executeRaw`
+          UPDATE "asst_conversation" AS c
+          SET "deleted_at" = ${now},
+              "updated_at" = ${now},
+              "purge_at" = CASE
+                WHEN EXISTS (SELECT 1 FROM "asst_proposal" p
+                             WHERE p."conversation_id" = c."asst_conversation_id" AND p."status" IN (1, 2, 5))
+                THEN c."purge_at"
+                ELSE ${now}
+              END
+          WHERE c."asst_conversation_id" = ${id} AND c."user_id" = ${userId} AND c."deleted_at" IS NULL`;
+        return count > 0;
+      });
+    } catch (error) {
+      if (isLockNotAvailable(error)) {
+        throw new AsstError(AsstErrorCode.Conflict, 'L’échange est en cours de traitement : réessayez dans un instant.');
+      }
+      throw error;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -317,6 +363,9 @@ export class AsstProposalStoreService implements AsstProposalStore {
    * jour n'a lieu que si ce verrou est obtenu. Une suppression concurrente (verrou exclusif) attend la validation de
    * la confirmation puis voit le statut 1 (purge_at conservée) ; une suppression déjà validée exclut l'échange du
    * verrou après réévaluation (aucune ligne touchée). Jamais « masqué ET confirmé avec purge_at abaissée ».
+   * Pas de `lock_timeout` ici : le `FOR SHARE` ne peut attendre que derrière un `FOR UPDATE` bref (masquage ou
+   * ajout de message), et `SET LOCAL` dans `t.db` s'étendrait à toute la transaction de l'exécuteur (effets métier
+   * compris). L’attente se limite à la durée de ces verrous exclusifs.
    */
   private async confirmProposal(db: Prisma.TransactionClient, id: bigint, t: AsstProposalTransition): Promise<number> {
     return db.$executeRaw`

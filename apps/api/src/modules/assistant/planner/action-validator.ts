@@ -33,8 +33,10 @@ import {
   confirmationAnswer,
   decideDelay,
   decideInputationType,
+  directForm,
   distinctlyDesignated,
   hasIntentMark,
+  type DirectFormLexicon,
   intentAllows,
   isSignificant,
   liveUserTexts,
@@ -71,9 +73,10 @@ import {
 // modèle, d'un courrier ou d'un nom d'acteur n'est repris comme consigne. Échec fermé : au moindre doute, une
 // question (`clarify`) ou un refus (`refuse`), avec un message français construit par le code.
 //
-// Principe « échec fermé par question » (`intent-guards.ts`) : un ordre accompagné d'une marque de réserve n'est
-// JAMAIS proposé directement ; tous les contrôles ordinaires sont faits, puis la question de confirmation (résumé
-// construit par le code, deux choix) remplace `ok: true`. Le « oui » suivant rejoue la validation (preuves fraîches) et
+// Principe « échec fermé par question » (`intent-guards.ts`) : une proposition n'est DIRECTE que si les textes de
+// l'utilisateur ont la FORME d'un ordre simple en liste blanche (`directForm`, désignations connues tirées des données
+// lues) ET ne portent aucune marque de réserve (ceinture, `hasIntentMark`). Sinon, tous les contrôles ordinaires sont
+// faits, puis la question de confirmation (résumé construit par le code, deux choix) remplace `ok: true`. Le « oui » suivant rejoue la validation (preuves fraîches) et
 // n'aboutit que si le résumé recalculé est IDENTIQUE à celui de la question (`intentConfirmation`).
 
 type Failure = Extract<ActionValidationOutcome, { ok: false }>;
@@ -95,7 +98,7 @@ const MSG_CONFIRMATION_MISMATCH =
   "Ce qui serait préparé ne correspond plus exactement à ce que vous avez confirmé : rien n'est proposé. Reformulez votre demande.";
 const MSG_CONFIRMATION_INVALID = "Confirmation non reconnue : rien n'est proposé. Reformulez votre demande.";
 const MSG_CONFIRMATION_TOO_LONG =
-  "Votre message contient une réserve (négation, condition, report, question ou substitution) et la proposition est trop longue pour être confirmée en une fois : rien n'est proposé. Faites des demandes séparées, sans réserve.";
+  "Votre demande doit être confirmée avant d'être préparée, mais la proposition est trop longue pour être confirmée en une fois : rien n'est proposé. Faites des demandes séparées et simples.";
 
 /** Arrêt immédiat de la validation sur un REFUS métier (jamais propagé hors du validateur). */
 class ValidationStop extends Error {
@@ -287,8 +290,9 @@ export class AsstActionValidatorService implements AsstActionValidator {
     const current = confirmation ? (live[live.length - 1] ?? '') : message;
     const previous = confirmation ? live.slice(0, -1) : live;
     const userTexts = [current, ...previous];
-    // Niveau 2 du principe : une marque de réserve n'importe où dans les textes retenus => question de confirmation
-    // (jamais de proposition directe). Sans objet quand l'utilisateur vient de confirmer.
+    // Ceinture du principe : une marque de réserve n'importe où dans les textes retenus => question de confirmation
+    // (jamais de proposition directe). Sans objet quand l'utilisateur vient de confirmer. La liste blanche de forme
+    // (`directForm`) est évaluée après les contrôles, avec les désignations connues des données lues.
     const marked = !confirmation && userTexts.some((t) => hasIntentMark(t));
     const positive = (t: string): string => splitPolarity(t).positive;
     const ctx: Ctx = {
@@ -357,13 +361,15 @@ export class AsstActionValidatorService implements AsstActionValidator {
         : p.summary,
     );
 
-    // Principe « échec fermé par question » : message marqué => question de confirmation construite par le code, après
-    // TOUS les autres contrôles (un refus ordinaire reste un refus) et AVANT toute génération de brouillon.
-    if (marked || confirmation) {
+    // Principe « échec fermé par question » : message marqué OU hors de la liste blanche des ordres simples => question
+    // de confirmation construite par le code, après TOUS les autres contrôles (un refus ordinaire reste un refus) et
+    // AVANT toute génération de brouillon. Le motif du rejet de forme n'est ni journalisé ni montré (il cite le texte).
+    const ask = !confirmation && (marked || !directForm(userTexts, await this.formLexicon(ctx, items)).direct);
+    if (ask || confirmation) {
       for (const p of prepared) if (p.kind !== 'brouillon') this.finalCheck(p.action);
       const shown = buildConfirmationSummary(items, INTENT_CONFIRM_SUMMARY_MAX);
       if (shown === null) refuse('intent_confirmation_too_long', MSG_CONFIRMATION_TOO_LONG);
-      if (marked) {
+      if (ask) {
         const question = formatIntentConfirmation(shown);
         if (question === null) refuse('intent_confirmation_too_long', MSG_CONFIRMATION_TOO_LONG);
         return { ok: false, kind: 'clarify', reason: INTENT_CONFIRMATION_REASON, message: question };
@@ -408,6 +414,53 @@ export class AsstActionValidatorService implements AsstActionValidator {
       default:
         refuse('unknown_tool', "Action non prise en charge par l'assistant.");
     }
+  }
+
+  /**
+   * Désignations CONNUES pour la liste blanche des ordres simples (`directForm`) : uniquement des DONNÉES de
+   * référence lues par les outils ou retenues par le code (acteurs renvoyés par `acteurs_imputables` avec rôle et unité,
+   * acteurs des imputations vues, destinataires, types, modèles et espaces retenus, références des courriers), et les
+   * recherches de courrier qui ÉTABLISSENT un courrier retenu (texte donné par l'utilisateur, un seul résultat). Jamais
+   * le filtre de recherche d'acteurs ni aucun autre texte choisi par le modèle.
+   */
+  private async formLexicon(ctx: Ctx, items: readonly SummaryItem[]): Promise<DirectFormLexicon> {
+    const ev = ctx.input.evidence;
+    const labels: string[] = [];
+    const push = (s: string | null | undefined): void => {
+      if (typeof s === 'string' && s.trim()) labels.push(s);
+    };
+    for (const s of ev.actorSearches) {
+      for (const a of s.actors) {
+        push(a.label);
+        push(a.roleName);
+        push(a.organigrammeLabel);
+      }
+    }
+    for (const i of ev.inputations.values()) push(i.actorLabel);
+    const mailIds = new Set<number>();
+    for (const it of items) {
+      if (it.kind === 'imputation') {
+        for (const r of it.recipients) push(r.label);
+        push(it.typeLabel);
+      } else if (it.kind === 'relance') {
+        push(it.actorLabel);
+      } else {
+        push(it.templateLabel);
+        push(it.spaceLabel);
+      }
+      if (it.mail) mailIds.add(it.mail.mailId);
+    }
+    if (ctx.cache.types) for (const t of await ctx.cache.types) push(t.label);
+    for (const m of ev.mails.values()) {
+      const ref = safeMailReference(m.reference);
+      if (ref && /\d/.test(ref)) push(ref);
+    }
+    for (const s of ev.mailSearches) {
+      if (s.mailIds.length !== 1 || !mailIds.has(s.mailIds[0] ?? 0)) continue;
+      const q = normalizeWords(s.query, 400);
+      if (q.length >= 3 && isSignificant(q) && phraseInAny(ctx.userNorms, q)) push(q);
+    }
+    return { labels };
   }
 
   // -------------------------------------------------------------------------

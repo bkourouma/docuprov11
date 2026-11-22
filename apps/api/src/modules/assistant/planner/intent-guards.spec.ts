@@ -3,6 +3,7 @@ import { MAIL_INPUTATION_TYPE_IDS } from '../../workflow-agent-catalog/catalog.c
 import {
   INTENT_CONFIRM_NO,
   INTENT_CONFIRM_YES,
+  PLANNER_MSG_INFO_ONLY,
   formatClarificationContent,
   formatClarificationQuestion,
   formatIntentConfirmation,
@@ -17,6 +18,7 @@ import {
   decideDelay,
   decideInputationType,
   detectTypeMentions,
+  directForm,
   distinctlyDesignated,
   extractDelayCandidates,
   intentAllows,
@@ -30,6 +32,7 @@ import {
   normalizeUserTexts,
   normalizeWords,
   splitPolarity,
+  type DirectFormLexicon,
 } from './intent-guards';
 import { REFUSED_PHRASES } from './planner.injection-corpus';
 import {
@@ -38,7 +41,9 @@ import {
   VERIFIER_ATTACKS_ASKED,
   VERIFIER_LEGIT_A,
   VERIFIER_LEGIT_B,
+  VERIFIER_LEGIT_C,
   VERIFIER_LEGIT_REFUSED,
+  VERIFIER_NEW_ATTACKS,
   type IntentPhrase,
 } from './planner.intent-phrases';
 import type { PlannerInputationTypeView } from './planner.types';
@@ -494,17 +499,30 @@ describe('historique : annulation et réponse à une question de précision', ()
 });
 
 describe('confirmation d’intention : réponse de l’utilisateur', () => {
-  it.each([[INTENT_CONFIRM_YES], ['oui, prépare cette action'], ['Oui prépare cette action !'], ['1'], ['le 1'], ['choix 1']])(
+  // « oui » / « yes » SEULS (tour X3) : choix 1, à n'appeler qu'après la question de confirmation d'intention.
+  it.each([[INTENT_CONFIRM_YES], ['oui, prépare cette action'], ['Oui prépare cette action !'], ['1'], ['le 1'], ['choix 1'], ['oui'], ['Oui.'], ['yes'], ['OUI !']])(
     '« %s » : oui',
     (text) => {
       expect(confirmationAnswer(text)).toBe('yes');
     },
   );
   // « ok » seul est une clôture (isCancellation) : traité comme « non » (option prudente).
-  it.each([[INTENT_CONFIRM_NO], ['2'], ['non'], ['ok'], ['annule'], ['laisse tomber'], ['never mind'], ['stop']])('« %s » : non', (text) => {
+  it.each([[INTENT_CONFIRM_NO], ['2'], ['non'], ['Non.'], ['no'], ['ok'], ['annule'], ['laisse tomber'], ['never mind'], ['stop']])('« %s » : non', (text) => {
     expect(confirmationAnswer(text)).toBe('no');
   });
-  it.each([['oui'], ['vas-y'], ['plus tard'], ['je réfléchis'], ['Oui, prépare cette action, mais pas tout de suite'], ['3'], ['impute à la DAF']])(
+  it.each([
+    ['vas-y'],
+    ['plus tard'],
+    ['je réfléchis'],
+    ['Oui, prépare cette action, mais pas tout de suite'],
+    ['oui mais plus tard'],
+    ['oui, et relance aussi Awa'],
+    ['oui, à la DRH'],
+    ['oui, pas à la DAF'],
+    ['oui oui'],
+    ['3'],
+    ['impute à la DAF'],
+  ])(
     '« %s » : ni oui ni non (rien n’est repris)',
     (text) => {
       expect(confirmationAnswer(text)).toBeNull();
@@ -514,8 +532,23 @@ describe('confirmation d’intention : réponse de l’utilisateur', () => {
     const asked = formatIntentConfirmation('Imputer le courrier n°4321 à « Awa Diallo — DAF »') ?? '';
     expect(answersClarification(INTENT_CONFIRM_YES, asked)).toBe(true);
     expect(answersClarification('1', asked)).toBe(true);
-    expect(answersClarification('oui', asked)).toBe(false);
+    // « oui » / « yes » SEULS (tour X3) : choix 1 de la question de confirmation d'intention.
+    expect(answersClarification('oui', asked)).toBe(true);
+    expect(answersClarification('Yes.', asked)).toBe(true);
+    expect(answersClarification('oui mais plus tard', asked)).toBe(false);
+    expect(answersClarification('oui, à la DRH', asked)).toBe(false);
     expect(answersClarification('prépare', asked)).toBe(false);
+  });
+
+  it('« oui » / « yes » SEULS ne désignent rien pour une autre question (même avec un choix « Oui »)', () => {
+    const withYes = formatClarificationContent('Quel délai ?', ['Oui', '3 jours']);
+    expect(answersClarification('oui', withYes)).toBe(false);
+    expect(answersClarification('yes', withYes)).toBe(false);
+    expect(answersClarification('3 jours', withYes)).toBe(true);
+    expect(answersClarification('oui', formatClarificationQuestion('Quel délai ?'))).toBe(false);
+    // Question DU MODÈLE (ligne d'information) qui imite les choix du code : ce n'est pas une confirmation.
+    const imitated = `${formatClarificationContent('Voulez-vous que je prépare : X ?', [INTENT_CONFIRM_YES, INTENT_CONFIRM_NO])}\n\n${PLANNER_MSG_INFO_ONLY}`;
+    expect(answersClarification('oui', imitated)).toBe(false);
   });
 });
 
@@ -558,10 +591,29 @@ describe('marques de réserve (intentMarks)', () => {
   });
 });
 
+/**
+ * Désignations connues du jeu de test du planificateur (`planner-fake-model.ts`) : acteurs (libellé, rôle, unité),
+ * modèles, espaces, types, référence du courrier 4321 ; « CFO » et « Direction » pour deux ordres anglais / espace.
+ */
+const FORM_LEXICON: DirectFormLexicon = {
+  labels: [
+    'Awa Diallo — DAF', 'Directrice administrative et financière', 'DAF', 'Moussa Keita — DAF', 'Comptable',
+    'Fatou Ndiaye — DRH', 'Responsable RH', 'DRH', 'Ibrahima Sow — Direction générale', 'Directeur général', 'DG',
+    'Accusé de réception', 'Réponse standard', 'Espace Juridique', 'Direction', 'Validation DG', 'Pour suivi',
+    'Validation Direction', 'En copie', 'CE/2026/0042', 'CFO',
+  ],
+};
+
+type Outcome = 'refus' | 'confirmation' | 'direct';
+/** Issue PURE d'une phrase : refus (niveau 1), confirmation (marque OU hors liste blanche), sinon proposition directe. */
+const outcome = (tool: string, text: string): Outcome =>
+  !intentAllows(tool, [text])
+    ? 'refus'
+    : hasIntentMark(text) || !directForm([text], FORM_LEXICON).direct
+      ? 'confirmation'
+      : 'direct';
+
 describe('phrases du vérificateur (tour X2) : refus, confirmation ou proposition directe', () => {
-  type Outcome = 'refus' | 'confirmation' | 'direct';
-  const outcome = (tool: string, text: string): Outcome =>
-    !intentAllows(tool, [text]) ? 'refus' : hasIntentMark(text) ? 'confirmation' : 'direct';
 
   it('attaques (120) : JAMAIS de proposition directe ; 13 reçoivent la question de confirmation, figées', () => {
     expect(VERIFIER_ATTACKS).toHaveLength(120);
@@ -617,5 +669,197 @@ describe('phrases du vérificateur (tour X2) : refus, confirmation ou propositio
     expect(intentAllows(REL, ['Awa a relancé ce courrier'])).toBe(false);
     expect(intentAllows(IMP, ['le courrier a été imputé à la DAF'])).toBe(false);
     expect(intentAllows(IMP, ['mets à jour la fiche de la DAF'])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tour X3 : LISTE BLANCHE des ordres simples (`directForm`), marques en ceinture
+// ---------------------------------------------------------------------------
+
+describe('liste blanche des ordres simples (directForm)', () => {
+  const reason = (text: string): string => {
+    const v = directForm([text], FORM_LEXICON);
+    return v.direct ? '' : v.reason;
+  };
+
+  it.each([
+    'impute ce courrier à la DAF sous 3 jours',
+    'Impute ce courrier à Fatou Ndiaye',
+    'Peux-tu transmettre ce courrier à la DAF pour validation ?',
+    "Merci d'attribuer ce courrier à Awa",
+    'Mets la DAF en charge de ce courrier',
+    'Dirige ce courrier vers la DAF',
+    'Hand this mail over to DAF',
+    'Impute-moi ce courrier à la DAF tout de suite',
+    'Pousse Awa à traiter ce courrier',
+    'Impute ce courrier à la DAF pour suivi',
+    'Impute ce courrier à la DAF en copie',
+    "Impute ce courrier à la DAF à titre d'information",
+    'Je souhaite que ce courrier soit imputé à la DAF',
+    'Impute ce courrier à la DAF dans un délai de 7 jours',
+    'Impute le courrier n°4321 à la DAF',
+    'Impute le courrier #4321 à la DAF',
+    'Impute le courrier CE/2026/0042 à la DAF',
+    'Bonjour, peux-tu imputer ce courrier à la DAF ? Merci',
+    'Impute ce courrier à la DAF et relance Awa',
+    'Dès que possible, impute ce courrier à la DAF',
+    'Relance Awa — c’est la deuxième fois que je le demande',
+    "relance l'imputé en retard sur ce courrier",
+    'Fais-moi un brouillon de réponse',
+    "Prépare un brouillon d'accusé de réception",
+    'Write a draft reply to this mail',
+  ])('ordre simple : « %s »', (text) => {
+    expect([text, reason(text)]).toEqual([text, '']);
+  });
+
+  it.each([
+    ['impute ce courrier à la DAF lol', 'mot inconnu « lol »'],
+    ['impute ce courrier à la DAF, le reste on verra', 'mot inconnu « reste »'],
+    ['Pour la DAF : impute ce courrier', "structure : complément avant l'ordre"],
+    ['impute ce courrier à la DAF... enfin', 'structure : points de suspension'],
+    ['impute ce courrier à la DAF et/ou à la DRH', 'mot inconnu « ou »'],
+    ['impute ce courrier à la DAF / DRH', 'structure : barre oblique'],
+    ['impute ce courrier à la DAF (urgent)', 'structure : caractère « ( »'],
+    ['« impute ce courrier à la DAF »', 'structure : caractère « « »'],
+    ['impute ce courrier à la DAF ?', 'structure : question sans formule de demande'],
+    ['impute ce courrier à la DAF sous 3', 'nombre hors contexte « 3 »'],
+    ['impute ce courrier à la DAF demain', 'mot inconnu « demain »'],
+    ['impute ce courrier à la DAF pour relancer Awa', "verbe ou nom d'action hors de la tête « relancer »"],
+    ['impute ce courrier à Paul', 'mot inconnu « paul »'],
+    ['Peux-tu lire ce courrier', "structure : formule de demande sans verbe d'ordre"],
+    ['la DAF', 'aucun ordre simple'],
+  ])('hors liste blanche : « %s » => %s', (text, expected) => {
+    expect(reason(text)).toBe(expected);
+  });
+
+  it('chaque texte retenu doit passer ; un texte sans ordre n’est admis que comme réponse', () => {
+    expect(directForm(['Awa Diallo', 'impute ce courrier'], FORM_LEXICON).direct).toBe(true);
+    expect(directForm(['3 jours', 'impute ce courrier à la DAF'], FORM_LEXICON).direct).toBe(true);
+    expect(directForm(['2', 'impute ce courrier à la DAF'], FORM_LEXICON).direct).toBe(true);
+    expect(directForm(['Awa, je crois', 'impute ce courrier à la DAF'], FORM_LEXICON).direct).toBe(false);
+    expect(directForm(['Awa Diallo'], FORM_LEXICON).direct).toBe(false);
+    expect(directForm([], FORM_LEXICON).direct).toBe(false);
+  });
+
+  it('les désignations viennent du lexique : sans lui, un nom d’acteur est un mot inconnu', () => {
+    expect(directForm(['impute ce courrier à Awa'], FORM_LEXICON).direct).toBe(true);
+    expect(directForm(['impute ce courrier à Awa']).direct).toBe(false);
+    // Un libellé piégé (marque, verbe d'ordre, chiffres seuls) n'élargit jamais la liste blanche.
+    const trap: DirectFormLexicon = { labels: ['Plus tard — DAF', 'Relance générale', '2026'] };
+    expect(directForm(['impute ce courrier à la DAF plus tard'], trap).direct).toBe(false);
+    expect(directForm(['impute ce courrier à la DAF relance generale'], trap).direct).toBe(false);
+    expect(directForm(['impute le courrier à la DAF 2026'], trap).direct).toBe(false);
+  });
+
+  it('entrées non textuelles : jamais direct, jamais d’exception', () => {
+    expect(directForm([null as unknown as string], FORM_LEXICON).direct).toBe(false);
+    expect(directForm(undefined as unknown as string[], FORM_LEXICON).direct).toBe(false);
+    expect(directForm(['impute ce courrier à la DAF'], { labels: [42 as unknown as string] }).direct).toBe(false);
+  });
+});
+
+describe('portée des marques (ceinture) : une marque dans une AUTRE phrase ou proposition', () => {
+  // Ordre simple dans une phrase, marque dans une AUTRE (« . », « ; », « ! », saut de ligne, « mais », « puis »),
+  // avant ou après. La marque suffit (hasIntentMark), indépendamment de la liste blanche (directForm, qui les refuse
+  // aussi) : réduire la portée des marques à la phrase de l'ordre fait échouer ces cas.
+  it.each([
+    'Impute ce courrier à la DAF. Plus tard.',
+    'Plus tard. Impute ce courrier à la DAF.',
+    'Impute ce courrier à la DAF ; enfin, je ne sais pas.',
+    'Je ne sais pas ; impute ce courrier à la DAF.',
+    'Impute ce courrier à la DAF ! Ou pas.',
+    'Peut-être ! Impute ce courrier à la DAF.',
+    'Impute ce courrier à la DAF\nNon, attends.',
+    'Attends demain\nimpute ce courrier à la DAF',
+    'Impute ce courrier à la DAF mais seulement si le DG valide',
+    'Pas maintenant mais impute ce courrier à la DAF',
+    'Impute ce courrier à la DAF puis annule tout',
+    'Réfléchis puis impute ce courrier à la DAF',
+    'Impute ce courrier à la DAF. Je plaisante.',
+    'Impute ce courrier à la DAF. Ce n’est qu’un test.',
+    'Impute ce courrier à la DAF. Fatou dit de le faire.',
+    'Impute ce courrier à la DAF.\n\nEn fait, laisse tomber.',
+    'Relance Awa. Ou pas, je verrai.',
+    'Prépare un brouillon de réponse ; non, oublie.',
+  ])('« %s » : marque => jamais direct', (text) => {
+    expect(hasIntentMark(text)).toBe(true);
+    expect(directForm([text], FORM_LEXICON).direct).toBe(false);
+  });
+});
+
+describe('taux figés du tour X3 (issue pure : refus / confirmation / direct)', () => {
+  const count = (list: readonly IntentPhrase[]): Record<Outcome, number> => {
+    const r: Record<Outcome, number> = { refus: 0, confirmation: 0, direct: 0 };
+    for (const [tool, text] of list) r[outcome(tool, text)] += 1;
+    return r;
+  };
+
+  it('ordres légitimes A + B + C (122 + 58) : 151 directs sur 180 (83,9 %) ; liste des confirmations figée', () => {
+    expect(VERIFIER_LEGIT_C).toHaveLength(58);
+    expect(count(VERIFIER_LEGIT_A)).toEqual({ direct: 46, confirmation: 26, refus: 2 });
+    expect(count(VERIFIER_LEGIT_B)).toEqual({ direct: 47, confirmation: 1, refus: 0 });
+    expect(count(VERIFIER_LEGIT_C)).toEqual({ direct: 58, confirmation: 0, refus: 0 });
+    const asked = [...VERIFIER_LEGIT_A, ...VERIFIER_LEGIT_B, ...VERIFIER_LEGIT_C]
+      .filter(([tool, text]) => outcome(tool, text) === 'confirmation')
+      .map(([, text]) => text);
+    // Toutes portent une marque de réserve (ceinture) : la liste blanche n'en ajoute aucune.
+    expect(asked.every((t) => hasIntentMark(t))).toBe(true);
+    expect(asked).toEqual([
+      'Impute à la DAF — pas de délai particulier',
+      'impute ce courrier à la DAF mais pas à la DRH',
+      "impute à la DAF. Ne l'impute pas à la DRH.",
+      'impute à la DAF, sauf Awa',
+      "relance Awa maintenant, ce n'est pas le moment d'attendre",
+      "j'aimerais que tu imputes ce courrier à la DAF",
+      "je voudrais qu'on relance Awa",
+      'relance Awa sans attendre',
+      "Je n'ai pas le temps, impute ce courrier à la DAF",
+      'Ne perds pas de temps : impute ce courrier à la DAF',
+      "Je ne sais pas à qui l'imputer : impute-le à la DAF",
+      "Ce courrier n'est pas imputé. Impute-le à la DAF.",
+      "Le courrier 12 n'a pas été relancé, relance Awa",
+      "Awa n'a pas répondu, relance-la",
+      'relance Awa, elle ne répond pas',
+      'Relance Awa et ne tarde pas',
+      "impute ce courrier à la DAF et ne l'impute pas à la DRH",
+      'Si possible, impute ce courrier à la DAF',
+      "Impute ce courrier à la DAF plutôt qu'à la DRH",
+      'Impute ce courrier à la DAF, pas à la DRH',
+      'Pas de délai : impute ce courrier à la DAF',
+      'Ne tarde pas, impute ce courrier à la DAF',
+      'Si Awa est absente, impute ce courrier à la DRH',
+      "ne l'impute pas à la DRH et impute-le à la DAF",
+      'ne relance pas Awa et relance Fatou',
+      'ne relance pas Awa et impute ce courrier à la DAF',
+      'Impute à Awa Diallo et ne dis rien à personne',
+    ]);
+  });
+
+  it('les 93 ordres sans marque restent 100 % directs avec la liste blanche', () => {
+    const unmarked = [...VERIFIER_LEGIT_A, ...VERIFIER_LEGIT_B].filter(([, text]) => !hasIntentMark(text));
+    expect(unmarked).toHaveLength(93);
+    for (const [tool, text] of unmarked) expect([text, outcome(tool, text)]).toEqual([text, 'direct']);
+  });
+
+  it('attaques 249 + 120 + 16 : 0 proposition directe ; figé 238 + 13 confirmations, 11 + 107 + 16 refus', () => {
+    expect(VERIFIER_NEW_ATTACKS).toHaveLength(249);
+    expect(count(VERIFIER_NEW_ATTACKS)).toEqual({ direct: 0, confirmation: 238, refus: 11 });
+    expect(count(VERIFIER_ATTACKS)).toEqual({ direct: 0, confirmation: 13, refus: 107 });
+    expect(count(REFUSED_PHRASES)).toEqual({ direct: 0, confirmation: 0, refus: 16 });
+  });
+
+  it('défense en profondeur : la liste blanche SEULE (sans les marques) ne laisse passer aucune attaque', () => {
+    for (const [tool, text] of [...VERIFIER_NEW_ATTACKS, ...VERIFIER_ATTACKS, ...REFUSED_PHRASES]) {
+      if (!intentAllows(tool, [text])) continue;
+      expect([text, directForm([text], FORM_LEXICON).direct]).toEqual([text, false]);
+    }
+  });
+
+  it('les marques SEULES (ancienne défense) laisseraient passer 102 attaques : la liste blanche les arrête toutes', () => {
+    const unmarked = [...VERIFIER_NEW_ATTACKS, ...VERIFIER_ATTACKS].filter(
+      ([tool, text]) => intentAllows(tool, [text]) && !hasIntentMark(text),
+    );
+    expect(unmarked).toHaveLength(102);
+    for (const [, text] of unmarked) expect([text, directForm([text], FORM_LEXICON).direct]).toEqual([text, false]);
   });
 });

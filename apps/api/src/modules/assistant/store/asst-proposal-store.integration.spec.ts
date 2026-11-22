@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import {
   ASST_RETENTION_DAYS,
   AsstActionTool,
@@ -7,6 +7,7 @@ import {
   type AsstProposalDto,
   type AsstProposedAction,
 } from '@archivage/types';
+import { AsstError } from '../assistant.contracts';
 import { asstArgsHash } from './asst-proposal-hash';
 import { AsstProposalStoreService } from './asst-proposal-store.service';
 import { AsstPurgeService } from './asst-purge.service';
@@ -623,5 +624,138 @@ suite(title, () => {
     expect(await existsConv(conv.conversationId)).toBe(true);
     expect(await prisma.asstProposal.count({ where: { conversationId: BigInt(conv.conversationId) } })).toBe(1);
     expect((await rowOf(conv.conversationId))?.purgeAt.getTime()).toBe(expectedPurge);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Verrous (comportemental, vraie base) : le verrou partagé du CAS 0 -> 1 et le verrou exclusif du masquage.
+  // Ces tests ÉCHOUENT si le `FOR SHARE` est retiré du CAS (aucune attente, masquage non vu).
+  // ---------------------------------------------------------------------------
+  describe('verrous de ligne (FOR SHARE du CAS 0->1, FOR UPDATE et lock_timeout du masquage)', () => {
+    const HOLD_MS = 1_200;
+    const WAITED_MS = 900; // marge sous HOLD_MS (le verrou est pris avant le lancement de l'appel mesuré)
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    /**
+     * Ouvre une transaction qui verrouille l'échange (`FOR UPDATE`), signale `locked`, le tient `holdMs`, exécute
+     * `before` (ex. masquage en vol) puis valide. `done` se résout à la validation.
+     */
+    function holdConversationLock(conversationId: string, holdMs: number, before?: (tx: Prisma.TransactionClient) => Promise<void>) {
+      let signal!: () => void;
+      const locked = new Promise<void>((resolve) => {
+        signal = resolve;
+      });
+      const done = prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          await tx.$queryRaw`
+            SELECT "asst_conversation_id" FROM "asst_conversation"
+            WHERE "asst_conversation_id" = ${BigInt(conversationId)} FOR UPDATE`;
+          signal();
+          await sleep(holdMs);
+          if (before) await before(tx);
+        },
+        { timeout: 20_000, maxWait: 20_000 },
+      );
+      return { locked, done };
+    }
+
+    const timed = async <T>(fn: () => Promise<T>): Promise<{ value: T; ms: number }> => {
+      const start = Date.now();
+      const value = await fn();
+      return { value, ms: Date.now() - start };
+    };
+
+    it('CAS 0->1 : attend le verrou exclusif tenu sur l’échange, puis renvoie null si l’échange a été masqué entre-temps', async () => {
+      const userId = nextUser();
+      const { conv, proposal } = await seed(userId);
+      const holder = holdConversationLock(conv.conversationId, HOLD_MS, async (tx) => {
+        // Tentative de masquage en vol, validée à la libération du verrou.
+        await tx.$executeRaw`UPDATE "asst_conversation" SET "deleted_at" = now() WHERE "asst_conversation_id" = ${BigInt(conv.conversationId)}`;
+      });
+      await holder.locked;
+      const { value, ms } = await timed(() =>
+        store.transitionProposal(tr(proposal, AsstProposalStatus.Confirmed, at(1000))),
+      );
+      await holder.done;
+      expect(ms).toBeGreaterThanOrEqual(WAITED_MS);
+      expect(value).toBeNull();
+      const row = await prisma.asstProposal.findUnique({ where: { asstProposalId: BigInt(proposal.proposalId) } });
+      expect(row).toMatchObject({ status: 0, rowVersion: 0, confirmedAt: null });
+    });
+
+    it('CAS 0->1 : attend le verrou exclusif puis réussit si l’échange n’a pas été masqué', async () => {
+      const userId = nextUser();
+      const { conv, proposal } = await seed(userId);
+      const holder = holdConversationLock(conv.conversationId, HOLD_MS);
+      await holder.locked;
+      const { value, ms } = await timed(() =>
+        store.transitionProposal(tr(proposal, AsstProposalStatus.Confirmed, at(1000))),
+      );
+      await holder.done;
+      expect(ms).toBeGreaterThanOrEqual(WAITED_MS);
+      expect(value).toMatchObject({ status: 1, rowVersion: 1 });
+    });
+
+    it('masquage : attend la transaction de confirmation (FOR SHARE tenu dans t.db), voit le statut 1 et NE baisse PAS purge_at', async () => {
+      const userId = nextUser();
+      const { conv, proposal } = await seed(userId);
+      const expectedPurge = T0.getTime() + ASST_RETENTION_DAYS * 86_400_000;
+      let signal!: () => void;
+      const confirmed = new Promise<void>((resolve) => {
+        signal = resolve;
+      });
+      const confirmation = prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          const out = await store.transitionProposal({
+            ...tr(proposal, AsstProposalStatus.Confirmed, at(1000)),
+            db: tx,
+          });
+          signal();
+          await sleep(HOLD_MS); // exécution en cours : la transaction reste ouverte
+          return out;
+        },
+        { timeout: 20_000, maxWait: 20_000 },
+      );
+      await confirmed;
+      const { value, ms } = await timed(() => store.deleteConversation(userId, conv.conversationId, at(3000)));
+      expect(await confirmation).toMatchObject({ status: 1, rowVersion: 1 });
+      expect(ms).toBeGreaterThanOrEqual(WAITED_MS);
+      expect(value).toBe(true);
+      const conversation = await rowOf(conv.conversationId);
+      expect(conversation?.deletedAt?.getTime()).toBe(at(3000).getTime());
+      expect(conversation?.purgeAt.getTime()).toBe(expectedPurge);
+      expect(await prisma.asstProposal.findUnique({ where: { asstProposalId: BigInt(proposal.proposalId) } })).toMatchObject({
+        status: 1,
+      });
+    });
+
+    it('masquage : lock_timeout dépassé -> conflict 409, échange NON masqué et ligne inchangée', async () => {
+      const userId = nextUser();
+      const { conv } = await seed(userId);
+      const before = await rowOf(conv.conversationId);
+      const previous = store.deleteLockTimeoutMs;
+      store.deleteLockTimeoutMs = 300; // délai réduit pour ne pas ralentir la suite
+      try {
+        const holder = holdConversationLock(conv.conversationId, HOLD_MS);
+        await holder.locked;
+        const { value, ms } = await timed(() =>
+          store.deleteConversation(userId, conv.conversationId, at(3000)).catch((e: unknown) => e),
+        );
+        await holder.done;
+        expect(value).toBeInstanceOf(AsstError);
+        expect(value).toMatchObject({
+          errorCode: 'conflict',
+          message: 'L’échange est en cours de traitement : réessayez dans un instant.',
+        });
+        expect(ms).toBeGreaterThanOrEqual(250);
+        expect(ms).toBeLessThan(HOLD_MS);
+      } finally {
+        store.deleteLockTimeoutMs = previous;
+      }
+      const after = await rowOf(conv.conversationId);
+      expect(after).toEqual(before);
+      expect(after?.deletedAt).toBeNull();
+      // Verrou relâché : le masquage réessayé aboutit normalement (et le délai du lock_timeout n'a pas fui sur la connexion).
+      expect(await store.deleteConversation(userId, conv.conversationId, at(4000))).toBe(true);
+    });
   });
 });

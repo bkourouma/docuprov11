@@ -248,6 +248,24 @@ function ok(o: ActionValidationOutcome): Extract<ActionValidationOutcome, { ok: 
   return o;
 }
 
+/**
+ * Ordre hors de la liste blanche des ordres simples (tour X3) : question de confirmation d'intention, puis « Oui »
+ * qui rejoue la validation liée au résumé montré.
+ */
+async function askedThenConfirmed(over: Partial<ActionValidationRequest>): Promise<Extract<ActionValidationOutcome, { ok: true }>> {
+  const asked = expectFailure(await validate(over), 'clarify', INTENT_CONFIRMATION_REASON);
+  const summary = parseIntentConfirmation(asked)?.summary ?? '';
+  expect(summary.length).toBeGreaterThan(0);
+  return ok(
+    await validate({
+      ...over,
+      userMessage: INTENT_CONFIRM_YES,
+      previousUserMessages: [...(over.previousUserMessages ?? []), over.userMessage ?? ''],
+      intentConfirmation: { summary },
+    }),
+  );
+}
+
 function sha(actions: AsstProposedAction[]): string {
   return createHash('sha256').update(asstCanonicalActionsJson(actions)).digest('hex');
 }
@@ -580,7 +598,8 @@ describe('proposer_imputation_courrier', () => {
 
   it('motif borné à 500 caractères, message utilisateur nettoyé (une ligne, chevrons neutralisés)', async () => {
     const userMessage = `impute ce courrier à la DAF <b>\n${'très '.repeat(200)}`;
-    const o = ok(await validate({ userMessage }));
+    // Chevrons et mots hors liste blanche : confirmation d'intention d'abord (tour X3), puis le motif est vérifié.
+    const o = await askedThenConfirmed({ userMessage });
     const rationale = (o.actions[0]?.args as { rationale: string }).rationale;
     expect(Array.from(rationale).length).toBeLessThanOrEqual(500);
     expect(rationale).not.toMatch(/[<>\n]/);
@@ -602,13 +621,15 @@ describe('proposer_imputation_courrier', () => {
   });
 
   it('résumé <= 2000 caractères avec 5 destinataires aux libellés très longs', async () => {
-    const longs = [41, 42, 43, 44, 45].map((id) => actor(id, `Agent ${id} ${'Nom très long '.repeat(80)}— DAF`));
+    // Noms distincts (« Alpha »…) : la réponse « Alpha, Bravo… » reste en liste blanche (désignations connues).
+    const names = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo'];
+    const longs = [41, 42, 43, 44, 45].map((id, i) => actor(id, `${names[i] ?? ''} ${'Nom très long '.repeat(80)}— DAF`));
     for (const a of longs) data.imputable.set(a.userGroupId, a);
     const o = ok(
       await validate({
         userMessage: 'impute ce courrier à toute la DAF sous 3 jours',
-        evidence: evidence({ actorSearches: longs.map((a) => ({ search: `Agent ${a.userGroupId}`, actors: [a] })) }),
-        previousUserMessages: [longs.map((a) => `Agent ${a.userGroupId}`).join(', ')],
+        evidence: evidence({ actorSearches: longs.map((a, i) => ({ search: names[i] ?? '', actors: [a] })) }),
+        previousUserMessages: [names.join(', ')],
         rawActions: [{ tool: IMP, args: { mailId: 4321, recipients: longs.map((a) => ({ userGroupId: a.userGroupId })) } }],
       }),
     );
@@ -1208,7 +1229,7 @@ describe('confirmation d’intention (message marqué)', () => {
     );
   });
 
-  it.each([INTENT_CONFIRM_NO, 'oui', 'ok', 'Oui, prépare cette action, mais pas tout de suite', 'impute à la DAF'])(
+  it.each([INTENT_CONFIRM_NO, 'non', 'ok', 'Oui, prépare cette action, mais pas tout de suite', 'oui mais plus tard', 'oui, à la DRH', 'impute à la DAF'])(
     'confirmation non reconnue « %s » : refus',
     async (userMessage) => {
       expectFailure(await validate(confirmed({ userMessage })), 'refuse', 'intent_confirmation_invalid');
@@ -1222,5 +1243,108 @@ describe('confirmation d’intention (message marqué)', () => {
 
   it('« Oui, prépare cette action » hors confirmation : aucun ordre', async () => {
     expectFailure(await validate({ userMessage: INTENT_CONFIRM_YES }), 'refuse', 'intent_not_established');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Liste blanche des ordres simples (tour X3) : forme inconnue => confirmation d'intention, jamais une proposition
+// ---------------------------------------------------------------------------
+
+describe('liste blanche des ordres simples (directForm)', () => {
+  it.each([
+    'impute ce courrier à la DAF sous 3 jours',
+    'Impute ce courrier à Awa Diallo pour suivi',
+    'Peux-tu imputer ce courrier à la DAF ?',
+    'Mets la DAF en charge de ce courrier',
+    'Dirige ce courrier vers la DAF',
+    'Impute-moi ce courrier à la DAF tout de suite',
+    'Bonjour, impute ce courrier à la DAF, merci',
+    'Impute le courrier CE/2026/0042 à la DAF',
+  ])('ordre simple, désignations connues : proposition directe « %s »', async (userMessage) => {
+    ok(await validate({ userMessage }));
+  });
+
+  it.each([
+    'impute ce courrier à la DAF, le reste on en parle demain',
+    'impute ce courrier à la DAF lol',
+    'impute ce courrier à la DAF (comme convenu avec Paul)',
+    'Pour la DAF : impute ce courrier',
+    'impute ce courrier à la DAF... enfin bref',
+    'impute ce courrier à la DAF et/ou à la DRH',
+    'impute ce courrier à la DAF, Paul est d’accord',
+    'Ce courrier, impute-le à la DAF',
+  ])('mot ou structure hors liste blanche : question de confirmation, aucune action « %s »', async (userMessage) => {
+    const o = await validate({ userMessage });
+    const msg = expectFailure(o, 'clarify', INTENT_CONFIRMATION_REASON);
+    expect(parseIntentConfirmation(msg)).not.toBeNull();
+    // Le motif du rejet de forme (il cite le texte) n'apparaît jamais dans le message.
+    expect(msg).not.toMatch(/mot inconnu|structure|lol|Paul/);
+  });
+
+  it('le filtre de recherche d’acteurs (choisi par le modèle) n’élargit jamais la liste blanche', async () => {
+    const o = await validate({
+      userMessage: 'impute ce courrier à la DAF zorglub',
+      evidence: evidence({ actorSearches: [{ search: 'zorglub', actors: [AWA] }] }),
+    });
+    expectFailure(o, 'clarify', INTENT_CONFIRMATION_REASON);
+  });
+
+  it('un libellé d’acteur piégé (marque, verbe d’ordre) n’élargit jamais la liste blanche', async () => {
+    const trap = actor(41, 'Plus tard Relance — DAF');
+    data.imputable.set(41, trap);
+    const o = await validate({
+      userMessage: 'impute ce courrier à Plus tard Relance',
+      evidence: evidence({ actorSearches: [{ search: 'Plus tard', actors: [trap] }] }),
+      rawActions: [{ tool: IMP, args: { mailId: 4321, recipients: [{ userGroupId: 41 }] } }],
+    });
+    expect(o.ok).toBe(false);
+  });
+
+  it('« oui » / « yes » SEULS confirment ; « oui mais… », « oui, à la DRH » ne confirment pas', async () => {
+    const order = 'impute ce courrier à la DAF lol';
+    const asked = expectFailure(await validate({ userMessage: order }), 'clarify', INTENT_CONFIRMATION_REASON);
+    const summary = parseIntentConfirmation(asked)?.summary ?? '';
+    for (const yes of ['oui', 'Oui.', 'yes', 'OUI !']) {
+      const o = ok(await validate({ userMessage: yes, previousUserMessages: [order], intentConfirmation: { summary } }));
+      expect(o.actions).toHaveLength(1);
+    }
+    for (const no of ['oui mais plus tard', 'oui, et relance aussi Awa', 'oui, à la DRH', 'oui, pas à la DAF', 'non', 'no']) {
+      expectFailure(
+        await validate({ userMessage: no, previousUserMessages: [order], intentConfirmation: { summary } }),
+        'refuse',
+        'intent_confirmation_invalid',
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Portée des marques (tour X3) : une marque dans une AUTRE phrase ou proposition empêche aussi l'ordre direct
+// ---------------------------------------------------------------------------
+
+describe('portée des marques : autre phrase ou autre proposition', () => {
+  // Chaque message : un ordre simple DANS UNE PHRASE, une marque dans une AUTRE phrase ou proposition (séparée par
+  // « . », « ; », « ! », un saut de ligne, « mais » ou « puis »). Jamais de proposition directe.
+  it.each([
+    'Impute ce courrier à la DAF. Plus tard.',
+    'Plus tard. Impute ce courrier à la DAF.',
+    'Impute ce courrier à la DAF ; enfin, je ne sais pas.',
+    'Je ne sais pas ; impute ce courrier à la DAF.',
+    'Impute ce courrier à la DAF ! Ou pas.',
+    'Peut-être ! Impute ce courrier à la DAF.',
+    'Impute ce courrier à la DAF\nNon, attends.',
+    'Attends demain\nimpute ce courrier à la DAF',
+    'Impute ce courrier à la DAF mais seulement si le DG valide',
+    'Pas maintenant mais impute ce courrier à la DAF',
+    'Impute ce courrier à la DAF puis annule tout',
+    'Réfléchis puis impute ce courrier à la DAF',
+    'Impute ce courrier à la DAF. Je plaisante.',
+    'Impute ce courrier à la DAF. Ce n’est qu’un test.',
+    'Impute ce courrier à la DAF. Fatou dit de le faire.',
+    'Impute ce courrier à la DAF.\n\nEn fait, laisse tomber.',
+  ])('« %s » : aucune proposition directe', async (userMessage) => {
+    const o = await validate({ userMessage });
+    expect(o.ok).toBe(false);
+    expect('actions' in o).toBe(false);
   });
 });

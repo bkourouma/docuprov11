@@ -27,8 +27,10 @@ import {
 import { PLANNER_MSG_ACTION_CLAIM, PLANNER_MSG_INFO_ONLY, claimsActionDone } from './action-claims';
 import type { ActionValidationRequest, IntentConfirmationContext } from './action-validator';
 import {
+  CLARIFICATION_INFO_SUFFIX,
   formatClarificationContent,
   formatClarificationQuestion,
+  imitatesIntentConfirmation,
   isClarificationContent,
   parseClarificationContent,
   parseIntentConfirmation,
@@ -68,9 +70,10 @@ import {
 //     la requête, puis validateur d'actions qui recalcule tout depuis le message de l'utilisateur) ;
 //  5. la réponse qui accompagne une proposition est CONSTRUITE PAR LE CODE : le texte du modèle n'y figure jamais ;
 //  6. un texte libre du modèle qui REVENDIQUE une action (« j'ai imputé », « c'est fait ») est remplacé par une phrase
-//     fixe ; toute autre réponse libre (`answer`) se termine par la ligne fixe `PLANNER_MSG_INFO_ONLY` ; seule une
-//     question construite ici porte le marqueur de question de précision (`clarification-format.ts`), retiré de toute
-//     autre réponse ;
+//     fixe ; toute autre réponse libre (`answer`) et toute question du modèle (`clarify`) se terminent par la ligne
+//     fixe `PLANNER_MSG_INFO_ONLY` ; une question du modèle qui IMITE la question de confirmation d'intention est
+//     remplacée par une réponse neutre ; seule une question construite ici porte le marqueur de question de précision
+//     (`clarification-format.ts`), retiré de toute autre réponse ;
 //  7. historique : seul le message courant établit l'intention, sauf RÉPONSE EXACTE (choix désigné, sans aucune marque
 //     de réserve) à une question de précision marquée (`intentHistory`) ;
 //  8. principe « échec fermé par question » : un ordre accompagné d'une marque de réserve donne la question de
@@ -93,6 +96,11 @@ export const PLANNER_MSG_SUSPICION_WARNING =
 export const PLANNER_MSG_LEAK = 'Je ne peux pas afficher cette réponse. Pouvez-vous reformuler votre demande ?';
 export const PLANNER_MSG_PROPOSAL_INVALID =
   'Je ne peux pas préparer cette action (contrôle final en échec). Aucune action n’a été proposée.';
+/**
+ * Réponse neutre (sans choix, sans marqueur) qui remplace une question DU MODÈLE imitant la question de confirmation
+ * d'intention du code (`imitatesIntentConfirmation`).
+ */
+export const PLANNER_MSG_NEUTRAL_CLARIFY = 'Pouvez-vous préciser votre demande ?';
 /** Réponse fixe quand l'utilisateur répond « non » (ou annule) à la question de confirmation d'intention. */
 export const PLANNER_MSG_CONFIRMATION_DECLINED = 'Entendu : je ne prépare rien.';
 export const PLANNER_PROPOSAL_INTRO = 'Je propose :';
@@ -494,16 +502,27 @@ export class AsstPlannerService implements AsstPlannerPort {
     return `${truncateSafe(shown, room)}${suffix}`;
   }
 
+  /**
+   * Question DU MODÈLE (`clarify`). Refusée si elle imite la question de confirmation d'intention du code (réponse
+   * neutre, sans choix ni marqueur) ; sinon marquée, avec ses choix éventuels, et terminée par la ligne fixe
+   * `PLANNER_MSG_INFO_ONLY` (que la relecture `parseClarificationContent` retire : elle n'est jamais un choix).
+   */
   private clarifyResult(st: LoopState, question: string, rawChoices: readonly string[]): AsstPlanResult {
     if (rawChoices.some((c) => st.nonces.some((n) => containsNonce(c, n)))) return this.textResult(st, PLANNER_MSG_LEAK);
+    if (imitatesIntentConfirmation(question, rawChoices)) {
+      const neutral = this.modelText(st, PLANNER_MSG_NEUTRAL_CLARIFY);
+      return this.textResult(st, neutral === PLANNER_MSG_LEAK ? PLANNER_MSG_LEAK : neutral);
+    }
     if (claimsActionDone(question) || rawChoices.some((c) => claimsActionDone(c))) {
       return this.textResult(st, this.modelText(st, PLANNER_MSG_ACTION_CLAIM));
     }
     const text = this.modelText(st, question);
     if (text === PLANNER_MSG_LEAK) return this.textResult(st, PLANNER_MSG_LEAK);
+    const room = ASST_ASSISTANT_MESSAGE_MAX_CHARS - Array.from(CLARIFICATION_INFO_SUFFIX).length;
+    const withInfo = (content: string): string => `${truncateSafe(content, room)}${CLARIFICATION_INFO_SUFFIX}`;
     // Requête suspecte : pas de boutons de choix (un choix dicté par une donnée ne doit pas devenir un ordre d'un clic),
     // et pas de marqueur : la réponse suivante de l'utilisateur ne fera pas revivre un ordre antérieur.
-    if (st.dataSuspicion) return this.textResult(st, text);
+    if (st.dataSuspicion) return this.textResult(st, withInfo(text));
     const choices: string[] = [];
     const seen = new Set<string>();
     for (const raw of rawChoices) {
@@ -513,9 +532,10 @@ export class AsstPlannerService implements AsstPlannerPort {
       seen.add(key);
       choices.push(c);
     }
-    const questionOnly = (): AsstPlanResult => this.textResult(st, formatClarificationQuestion(question), null, true);
+    const questionOnly = (): AsstPlanResult =>
+      this.textResult(st, withInfo(formatClarificationQuestion(question)), null, true);
     if (choices.length < PLANNER_CHOICES_MIN || choices.length > PLANNER_CHOICES_MAX) return questionOnly();
-    const content = formatClarificationContent(question, choices);
+    const content = `${formatClarificationContent(question, choices)}${CLARIFICATION_INFO_SUFFIX}`;
     const parsed = asstClarificationSchema.safeParse({ question, choices });
     const reread = parseClarificationContent(content);
     if (!parsed.success || reread === null || Array.from(content).length > ASST_ASSISTANT_MESSAGE_MAX_CHARS) {

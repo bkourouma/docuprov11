@@ -14,11 +14,12 @@ import { normalizeWords } from './intent-guards';
 export const PLANNER_MSG_ACTION_CLAIM = "Aucune action n'a été effectuée ; une action n'est appliquée qu'après votre confirmation.";
 
 /**
- * Ligne fixe ajoutée par le CODE à la fin de TOUTE réponse libre du modèle (`answer`) : le filtre lexical ci-dessous
- * n'est pas exhaustif ; cette ligne garantit que l'utilisateur lit, à chaque réponse libre, qu'aucune action n'a été
- * faite. Jamais sur les messages construits par le code, les propositions ou les questions de précision.
+ * Ligne fixe ajoutée par le CODE à la fin de TOUTE réponse libre du modèle (`answer`) et de toute question du MODÈLE
+ * (`clarify`) : le filtre lexical ci-dessous n'est pas exhaustif ; cette ligne garantit que l'utilisateur lit, à chaque
+ * texte du modèle, qu'aucune action n'a été faite. Définie dans `clarification-format.ts` (le format des questions la
+ * reconnaît en fin de contenu) et réexportée ici.
  */
-export const PLANNER_MSG_INFO_ONLY = "Information seulement : aucune action n'a été effectuée.";
+export { PLANNER_MSG_INFO_ONLY } from './clarification-format';
 
 /** Participes passés d'actions (sans accents), avec accord facultatif (« imputée », « imputés »…). */
 const FR_PART =

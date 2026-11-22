@@ -28,6 +28,21 @@ const MARKER_QUESTION = '⁣⁤⁢⁤';
 
 const CHOICE_LINE = /^(\d{1,2})\. (.+)$/;
 
+/**
+ * Ligne fixe ajoutée par le CODE à la fin de toute réponse libre du modèle (`answer`) et de toute question de
+ * précision DU MODÈLE (`clarify`, avec ou sans choix) : rien n'est appliqué pendant la planification, quoi que dise le
+ * texte. Jamais sur les messages construits par le code (questions du validateur, confirmation d'intention,
+ * propositions). Réexportée par `action-claims.ts`.
+ */
+export const PLANNER_MSG_INFO_ONLY = "Information seulement : aucune action n'a été effectuée.";
+/** Suffixe exact ajouté au contenu d'une question du modèle (ligne vide puis la ligne fixe). */
+export const CLARIFICATION_INFO_SUFFIX = `\n\n${PLANNER_MSG_INFO_ONLY}`;
+
+/** Contenu sans le suffixe d'information final (une seule occurrence exacte, en toute fin), ou tel quel. */
+function withoutInfoSuffix(content: string): string {
+  return content.endsWith(CLARIFICATION_INFO_SUFFIX) ? content.slice(0, -CLARIFICATION_INFO_SUFFIX.length) : content;
+}
+
 /** Retire tout caractère du marqueur (à appliquer à toute réponse qui n'est pas une question construite ici). */
 export function stripClarificationMarker(text: string): string {
   return typeof text === 'string' ? text.replace(MARKER_ALPHABET, '') : '';
@@ -58,11 +73,12 @@ export function isClarificationContent(content: string): boolean {
 /**
  * Relit la question de précision AVEC choix depuis `content` ; `null` si le contenu ne commence pas par le marqueur
  * valide, contient un autre caractère du marqueur, ou n'a pas exactement le format (question, ligne vide, liste
- * numérotée de 2 à 6 choix valides jusqu'à la fin du texte).
+ * numérotée de 2 à 6 choix valides jusqu'à la fin du texte). Une question DU MODÈLE se termine par la ligne fixe
+ * d'information (`CLARIFICATION_INFO_SUFFIX`) : elle est retirée avant la relecture et ne devient jamais un choix.
  */
 export function parseClarificationContent(content: string): AsstClarificationDto | null {
   if (typeof content !== 'string' || !content.startsWith(MARKER_CHOICES)) return null;
-  const body = content.slice(MARKER_CHOICES.length);
+  const body = withoutInfoSuffix(content.slice(MARKER_CHOICES.length));
   if (MARKER_ALPHABET_TEST.test(body)) return null;
   const lines = body.replace(/\r\n?/g, '\n').split('\n');
   let start = lines.length;
@@ -101,6 +117,30 @@ const INTENT_CONFIRM_SUFFIX = ' ?';
 /** Longueur maximale du résumé inclus dans la question (la question entière tient dans 500 caractères). */
 export const INTENT_CONFIRM_SUMMARY_MAX = 500 - INTENT_CONFIRM_PREFIX.length - 1 - INTENT_CONFIRM_SUFFIX.length;
 
+/** Forme comparable d'un texte du modèle : sans caractères invisibles ni accents, minuscules, mots séparés d'une espace. */
+function imitationKey(text: string): string {
+  return (typeof text === 'string' ? text : '')
+    .normalize('NFKD')
+    .replace(/[\p{M}\p{Cf}\p{Cc}]+/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+const IMITATION_PREFIX = imitationKey(INTENT_CONFIRM_PREFIX);
+const IMITATION_CHOICES: ReadonlySet<string> = new Set([imitationKey(INTENT_CONFIRM_YES), imitationKey(INTENT_CONFIRM_NO)]);
+
+/**
+ * Une question DU MODÈLE imite-t-elle la question de confirmation d'intention du code ? Question qui commence par
+ * « Voulez-vous que je prépare » (casse, accents, espaces, ponctuation et caractères invisibles ignorés), ou un choix
+ * égal, après la même normalisation, à « Oui, prépare cette action » ou « Non, ne fais rien » (option prudente : un
+ * seul choix suffit). Une telle question n'est jamais montrée : réponse neutre du code à la place.
+ */
+export function imitatesIntentConfirmation(question: string, choices: readonly string[]): boolean {
+  const q = imitationKey(question);
+  if (q === IMITATION_PREFIX || q.startsWith(`${IMITATION_PREFIX} `)) return true;
+  return (Array.isArray(choices) ? choices : []).some((c) => IMITATION_CHOICES.has(imitationKey(c)));
+}
+
 /** Les choix sont-ils exactement ceux d'une question de confirmation d'intention ? */
 export function isIntentConfirmationChoices(choices: readonly string[]): boolean {
   return choices.length === 2 && choices[0] === INTENT_CONFIRM_YES && choices[1] === INTENT_CONFIRM_NO;
@@ -119,8 +159,12 @@ export function formatIntentConfirmation(summary: string): string | null {
   return reread !== null && reread.summary === s ? content : null;
 }
 
-/** Relit une question de confirmation d'intention MARQUÉE : le résumé qu'elle montrait, ou `null`. */
+/**
+ * Relit une question de confirmation d'intention MARQUÉE : le résumé qu'elle montrait, ou `null`. Une question qui
+ * porte la ligne d'information vient du MODÈLE (jamais du code) : ce n'est jamais une confirmation d'intention.
+ */
 export function parseIntentConfirmation(content: string): { summary: string } | null {
+  if (typeof content !== 'string' || content.endsWith(CLARIFICATION_INFO_SUFFIX)) return null;
   const parsed = parseClarificationContent(content);
   if (!parsed || !isIntentConfirmationChoices(parsed.choices)) return null;
   const q = parsed.question ?? '';

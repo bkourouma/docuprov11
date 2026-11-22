@@ -1,15 +1,18 @@
 import { sanitizeText } from '../../workflow-agents/injection/untrusted';
 import {
+  CLARIFICATION_INFO_SUFFIX,
   INTENT_CONFIRM_NO,
   INTENT_CONFIRM_SUMMARY_MAX,
   INTENT_CONFIRM_YES,
   formatClarificationContent,
   formatClarificationQuestion,
   formatIntentConfirmation,
+  imitatesIntentConfirmation,
   isClarificationContent,
   isIntentConfirmationChoices,
   parseClarificationContent,
   parseIntentConfirmation,
+  PLANNER_MSG_INFO_ONLY,
   stripClarificationMarker,
 } from './clarification-format';
 
@@ -111,5 +114,52 @@ describe('question de confirmation d’intention', () => {
     expect(isIntentConfirmationChoices([INTENT_CONFIRM_NO, INTENT_CONFIRM_YES])).toBe(false);
     expect(isIntentConfirmationChoices([INTENT_CONFIRM_YES])).toBe(false);
     expect(isIntentConfirmationChoices([INTENT_CONFIRM_YES, INTENT_CONFIRM_NO, 'Autre'])).toBe(false);
+  });
+});
+
+describe('clarification-format : ligne d’information des questions du modèle (tour X3)', () => {
+  it('la ligne finale est retirée à la relecture : jamais un choix, boutons corrects au rechargement', () => {
+    const content = `${formatClarificationContent('Lequel ?', ['Awa', 'Moussa'])}${CLARIFICATION_INFO_SUFFIX}`;
+    expect(CLARIFICATION_INFO_SUFFIX).toBe(`\n\n${PLANNER_MSG_INFO_ONLY}`);
+    expect(parseClarificationContent(content)).toEqual({ question: 'Lequel ?', choices: ['Awa', 'Moussa'] });
+    expect(isClarificationContent(content)).toBe(true);
+    const question = `${formatClarificationQuestion('Quel délai ?')}${CLARIFICATION_INFO_SUFFIX}`;
+    expect(isClarificationContent(question)).toBe(true);
+    expect(parseClarificationContent(question)).toBeNull();
+    // Une seule occurrence exacte, en toute fin : une ligne déformée reste du texte (et casse le format des choix).
+    expect(parseClarificationContent(`${content}${CLARIFICATION_INFO_SUFFIX}`)).toBeNull();
+    expect(parseClarificationContent(`${formatClarificationContent('Lequel ?', ['Awa', 'Moussa'])}\n${PLANNER_MSG_INFO_ONLY}`)).toBeNull();
+  });
+
+  it('une question portant la ligne d’information n’est jamais une confirmation d’intention', () => {
+    const real = formatIntentConfirmation('Imputer le courrier n°4321 à « Awa Diallo — DAF »') ?? '';
+    expect(parseIntentConfirmation(real)).not.toBeNull();
+    expect(real.endsWith(PLANNER_MSG_INFO_ONLY)).toBe(false);
+    expect(parseIntentConfirmation(`${real}${CLARIFICATION_INFO_SUFFIX}`)).toBeNull();
+  });
+
+  it.each([
+    ['Voulez-vous que je prépare : X ?', ['A', 'B']],
+    ['voulez vous que je prepare', ['A', 'B']],
+    ['  VOULEZ-VOUS   que je PRÉPARE: X', ['A', 'B']],
+    ['Vou​lez⁠-vous que je pré­pare : X ?', ['A', 'B']],
+    ['Ｖｏｕｌｅｚ-ｖｏｕｓ que je prépare : X ?', ['A', 'B']],
+    ['Que faire ?', [INTENT_CONFIRM_YES, INTENT_CONFIRM_NO]],
+    ['Que faire ?', ['oui prépare cette action', 'NON, ne fais rien !']],
+    ['Que faire ?', ['Oui​, prépare cette action', 'Autre']],
+    ['Que faire ?', ['Autre', 'Non — ne fais rien']],
+  ] as Array<[string, string[]]>)('imitation de la confirmation d’intention : « %s »', (question, choices) => {
+    expect(imitatesIntentConfirmation(question, choices)).toBe(true);
+  });
+
+  it.each([
+    ['Voulez-vous un délai ?', ['Oui', 'Non']],
+    ['Que voulez-vous que je prépare ?', ['Un brouillon', 'Une relance']],
+    ['Voulez-vous que je prépare plutôt un brouillon ?', ['A', 'B']],
+    ['Que faire ?', ['Oui, prépare cette action et relance', 'Non']],
+  ] as Array<[string, string[]]>)('question ordinaire, pas une imitation : « %s »', (question, choices) => {
+    // « Voulez-vous que je prépare plutôt… » commence par le préfixe : imitation (option prudente).
+    const expected = question.startsWith('Voulez-vous que je prépare');
+    expect(imitatesIntentConfirmation(question, choices)).toBe(expected);
   });
 });

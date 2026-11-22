@@ -58,6 +58,11 @@ concurrente ») ; la proposition reste au statut 0. Les autres transitions (1 ve
 ne dépendent PAS du masquage : une exécution en cours doit pouvoir se terminer et les propositions d'un échange masqué
 peuvent expirer ou être refusées.
 
+Verrous du CAS 0 vers 1 : le `FOR SHARE` est pris sur la ligne de l'échange et tenu jusqu'à la fin de la transaction
+qui porte la confirmation (la transaction `t.db` de l'exécuteur, effets métier compris). Il attend uniquement derrière
+un verrou exclusif (`FOR UPDATE`) du masquage ou d'un ajout de message, de courte durée. Aucun `lock_timeout` n'est
+posé sur ce CAS : un `SET LOCAL` dans `t.db` s'étendrait à toute la transaction de l'exécuteur.
+
 Toute autre transition est refusée (par exemple 0 vers 2, 0 vers 5, 1 vers 3, 1 vers 4, tout retour en arrière).
 Sans changement de statut (0 vers 0, 1 vers 1), seuls `row_version` et `updated_at` peuvent changer.
 Les mises à jour qui changent de statut doivent renseigner dans la même instruction les dates et le résultat
@@ -104,6 +109,13 @@ alors que la conversation existe est refusé si une proposition appliquée ou en
     derrière une confirmation concurrente (verrou partagé du CAS 0 vers 1, voir §3) et voit alors le statut 1 :
     jamais « échange masqué ET proposition confirmée avec `purge_at` abaissée ». Si le masquage gagne, la
     confirmation perd son CAS et la proposition reste au statut 0.
+  - **Verrous et délai** : le verrou exclusif (`FOR UPDATE`) attend au plus 2 s (`lock_timeout` local à la transaction,
+    posé par `set_config('lock_timeout', '2000ms', true)` ; constante `ASST_DELETE_LOCK_TIMEOUT_MS`). Au-delà
+    (SQLSTATE `55P03`, `lock_not_available`), la transaction est annulée SANS EFFET (l'échange n'est pas masqué, la ligne
+    est inchangée) et `deleteConversation` lève `AsstError('conflict')`, soit HTTP 409 : « L'échange est en cours de
+    traitement : réessayez dans un instant. » Toute autre erreur de la base est propagée sans être masquée. Le
+    verrou partagé (`FOR SHARE`) du CAS 0 vers 1 force le masquage à attendre la validation d'une confirmation en vol
+    (qui peut durer le temps de l'exécution), d'où ce délai plutôt qu'une attente indéfinie.
 - **Suppression d'un message** (`deleteMessage`) : un seul `DELETE ... WHERE ... AND NOT EXISTS (proposition)`, limité
   aux échanges non masqués de l'utilisateur. Un message qui porte une proposition (quel que soit son statut) n'est
   jamais supprimé (la cascade emporterait une trace) ; retour `false`, jamais d'exception.

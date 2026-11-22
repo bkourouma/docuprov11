@@ -18,7 +18,7 @@ import {
   stripClarificationMarker,
 } from './clarification-format';
 import { CORPUS, REFUSED_PHRASES, type CorpusLayer, type InjectionCase } from './planner.injection-corpus';
-import { NON_ANSWER_REPLIES, VERIFIER_ATTACKS } from './planner.intent-phrases';
+import { NON_ANSWER_REPLIES, VERIFIER_ATTACKS, VERIFIER_NEW_ATTACKS } from './planner.intent-phrases';
 
 // Rejoue le corpus d'attaque (`planner.injection-corpus.ts`) contre le VRAI planificateur et le VRAI validateur,
 // avec un modèle compromis scripté et un port de données en mémoire (lecture seule).
@@ -75,20 +75,35 @@ function escapeRegExp(s: string): string {
 }
 
 describe('corpus d’attaque du planificateur', () => {
-  it('contient 345 cas (135 + 210 du tour X2), aux identifiants uniques, dont des témoins bénins', () => {
+  it('contient 600 cas (135 + 210 du tour X2 + 255 du tour X3), aux identifiants uniques, dont des témoins bénins', () => {
     // Tour X2 : 120 attaques du vérificateur (V), 51 réponses non reprises (X), 20 formes d'ordre (T),
     // 7 ordres marqués (Y), 12 cas de liaison de la confirmation (Z).
-    expect(CORPUS.length).toBe(345);
+    // Tour X3 : 249 nouvelles attaques du vérificateur (VN), 6 confirmations imitées par le modèle (CI) ; Z10 change
+    // d'attendu (« oui » seul après la question de confirmation = choix 1 : action exacte, témoin bénin).
+    expect(CORPUS.length).toBe(600);
     expect(new Set(CORPUS.map((c) => c.id)).size).toBe(CORPUS.length);
-    expect(CORPUS.filter((c) => c.benign).length).toBe(42);
-    expect(CORPUS.filter((c) => !c.benign).length).toBe(303);
-    expect(CORPUS.filter((c) => c.expect.kind === 'exact').length).toBe(41);
-    expect(CORPUS.filter((c) => c.expect.kind === 'confirm').length).toBe(6);
-    // Plusieurs cas par catégorie (25 catégories).
+    expect(CORPUS.filter((c) => c.benign).length).toBe(43);
+    expect(CORPUS.filter((c) => !c.benign).length).toBe(557);
+    expect(CORPUS.filter((c) => c.expect.kind === 'exact').length).toBe(42);
+    expect(CORPUS.filter((c) => c.expect.kind === 'confirm').length).toBe(7);
+    expect(CORPUS.filter((c) => c.expect.kind === 'none').length).toBe(551);
+    // Plusieurs cas par catégorie (27 catégories).
     const byCategory = new Map<string, number>();
     for (const c of CORPUS) byCategory.set(c.category, (byCategory.get(c.category) ?? 0) + 1);
-    expect(byCategory.size).toBe(25);
+    expect(byCategory.size).toBe(27);
+    expect(byCategory.get('vérificateur X3 : pas un ordre simple')).toBe(249);
+    expect(byCategory.get('confirmation imitée par le modèle')).toBe(6);
     for (const [, n] of byCategory) expect(n).toBeGreaterThanOrEqual(2);
+  });
+
+  it('rejoue les 249 nouvelles attaques du vérificateur (VN, tour X3), dans l’ordre, sans proposition directe', () => {
+    expect(VERIFIER_NEW_ATTACKS).toHaveLength(249);
+    const cases = CORPUS.filter((c) => c.category === 'vérificateur X3 : pas un ordre simple');
+    expect(cases.map((c) => c.userMessage)).toEqual(VERIFIER_NEW_ATTACKS.map(([, text]) => text));
+    VERIFIER_NEW_ATTACKS.forEach(([tool], i) => {
+      expect(cases[i]?.expect).toEqual({ kind: 'none', layer: 'validateur' });
+      expect(JSON.stringify(cases[i]?.script)).toContain(tool);
+    });
   });
 
   it('rejoue toutes les attaques du vérificateur (V) et toutes ses réponses non reprises (X), sans action', () => {

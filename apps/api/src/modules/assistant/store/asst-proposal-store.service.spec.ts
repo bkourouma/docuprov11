@@ -5,7 +5,8 @@ import {
   AsstProposalStatus,
   type AsstProposedAction,
 } from '@archivage/types';
-import { AsstProposalStoreService } from './asst-proposal-store.service';
+import { AsstError } from '../assistant.contracts';
+import { ASST_DELETE_LOCK_TIMEOUT_MS, AsstProposalStoreService } from './asst-proposal-store.service';
 import { asstArgsHash } from './asst-proposal-hash';
 
 const NOW = new Date('2026-11-22T10:00:00.000Z');
@@ -141,8 +142,12 @@ describe('AsstProposalStoreService — identifiants et visibilité', () => {
     expect(lockSql).toMatch(/FOR UPDATE/);
     expect(lockSql).toMatch(/"deleted_at" IS NULL/);
     expect(lockValues).toEqual([7n, 10]);
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
-    const [strings, ...values] = tx.$executeRaw.mock.calls[0] as [string[], ...unknown[]];
+    // 1er appel : lock_timeout local (paramétré, jamais concaténé) ; 2e appel : l'UPDATE conditionnel.
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
+    const [timeoutStrings, ...timeoutValues] = tx.$executeRaw.mock.calls[0] as [string[], ...unknown[]];
+    expect(timeoutStrings.join('?')).toMatch(/set_config\('lock_timeout', \?, true\)/);
+    expect(timeoutValues).toEqual([`${ASST_DELETE_LOCK_TIMEOUT_MS}ms`]);
+    const [strings, ...values] = tx.$executeRaw.mock.calls[1] as [string[], ...unknown[]];
     const sql = strings.join('?');
     expect(sql).toMatch(/UPDATE "asst_conversation"/);
     expect(sql).toMatch(/"status" IN \(1, 2, 5\)/);
@@ -151,10 +156,39 @@ describe('AsstProposalStoreService — identifiants et visibilité', () => {
     // Échange introuvable, masqué ou d'un autre : le verrou ne renvoie rien, aucune mise à jour.
     tx.$queryRaw.mockResolvedValueOnce([]);
     await expect(store.deleteConversation(10, '7', NOW)).resolves.toBe(false);
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(3);
     // Mise à jour sans ligne (masqué entre-temps) : false.
-    tx.$executeRaw.mockResolvedValueOnce(0);
+    tx.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
     await expect(store.deleteConversation(10, '7', NOW)).resolves.toBe(false);
+  });
+
+  it('deleteConversation : lock_timeout dépassé (55P03, brut ou enveloppé par Prisma) -> AsstError conflict ; autre erreur propagée', async () => {
+    const { store, prisma, tx } = makePrisma();
+    const raw = Object.assign(new Error('canceling statement due to lock timeout'), { code: '55P03' });
+    tx.$queryRaw.mockRejectedValueOnce(raw);
+    const err1 = await store.deleteConversation(10, '7', NOW).catch((e: unknown) => e);
+    expect(err1).toBeInstanceOf(AsstError);
+    expect(err1).toMatchObject({ errorCode: 'conflict', message: 'L’échange est en cours de traitement : réessayez dans un instant.' });
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1); // aucun UPDATE après l'échec du verrou
+
+    const prismaWrapped = Object.assign(new Error('Raw query failed. Code: `55P03`. Message: `lock timeout`'), {
+      code: 'P2010',
+      meta: { code: '55P03', message: 'ERROR: canceling statement due to lock timeout' },
+    });
+    tx.$queryRaw.mockRejectedValueOnce(prismaWrapped);
+    await expect(store.deleteConversation(10, '7', NOW)).rejects.toMatchObject({ errorCode: 'conflict' });
+
+    const withCause = Object.assign(new Error('transaction annulée'), { cause: raw });
+    prisma.$transaction.mockRejectedValueOnce(withCause);
+    await expect(store.deleteConversation(10, '7', NOW)).rejects.toMatchObject({ errorCode: 'conflict' });
+
+    // Toute autre cause (verrou mort 40P01, panne) n'est pas masquée.
+    const deadlock = Object.assign(new Error('deadlock detected'), { code: 'P2010', meta: { code: '40P01' } });
+    tx.$queryRaw.mockRejectedValueOnce(deadlock);
+    await expect(store.deleteConversation(10, '7', NOW)).rejects.toBe(deadlock);
+    const other = new Error('connexion perdue');
+    tx.$queryRaw.mockRejectedValueOnce(other);
+    await expect(store.deleteConversation(10, '7', NOW)).rejects.toBe(other);
   });
 
   it('deleteMessage : un seul DELETE conditionnel ; identifiants mal formés -> false sans appel base', async () => {
