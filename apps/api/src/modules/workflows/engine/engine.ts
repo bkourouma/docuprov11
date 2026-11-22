@@ -33,6 +33,7 @@ import {
 import {
   WfEngineError,
   type WfActorRef,
+  type WfAgentAudit,
   type WfAssigneeRef,
   type WfDirectory,
   type WfEngineEvent,
@@ -147,6 +148,13 @@ interface LogEntry {
   confidence?: number | null;
   validatedBy?: number | null;
   validatedAt?: Date | null;
+  /** Éléments d'audit d'agent (colonnes existantes du journal). */
+  autonomyLevel?: 0 | 1 | 2 | null;
+  model?: string | null;
+  aiDecisionId?: bigint | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  costAmount?: number | null;
 }
 
 interface TaskScope {
@@ -170,6 +178,9 @@ const MAX_EVENT_LIMIT = 1000;
 const MAX_PAGE = 200;
 const ERROR_MESSAGE_MAX = 2000;
 const REASON_MAX = 500;
+const MODEL_MAX = 200;
+const INT32_MAX = 2147483647;
+const COST_MAX = 9999999999.9999; // Decimal(14, 4)
 
 export class WorkflowEngine implements WorkflowEngineApi {
   private readonly registry?: WfTaskExecutorRegistry;
@@ -778,6 +789,12 @@ export class WorkflowEngine implements WorkflowEngineApi {
         step: structuredClone(step),
         context: structuredClone(normalizeContext(task.instance.context)) as unknown as Record<string, unknown>,
         runAs: { userGroupId: task.instance.startedBy },
+        definitionId: task.instance.definitionId,
+        definitionVersionId: task.instance.definitionVersionId,
+        subject: {
+          type: task.instance.subjectType ?? null,
+          id: task.instance.subjectId === null ? null : task.instance.subjectId.toString(),
+        },
       });
       outcome = normalizeOutcome(raw);
     } catch (err) {
@@ -816,13 +833,32 @@ export class WorkflowEngine implements WorkflowEngineApi {
     let effective: InternalOutcome = outcome;
     // Pour un type HUMAIN, un exécuteur ne fait que suggérer : « complete » devient une proposition.
     if (effective.kind === 'complete' && typeKey !== 'agent') {
-      effective = { kind: 'propose', proposal: effective.result, explanation: effective.explanation };
+      effective = {
+        kind: 'propose',
+        proposal: effective.result,
+        explanation: effective.explanation,
+        audit: effective.audit,
+      };
     }
     if (effective.kind === 'complete') {
       const validation = validateTaskResult(step, effective.result);
       if (!validation.ok) {
         effective = { kind: 'error', message: `résultat de l'agent refusé : ${validation.issues.join(' ; ')}` };
       } else {
+        // « Rien d'appliqué sans événement journalisé » : l'acte de l'agent est inscrit AVANT la clôture,
+        // dans la même transaction.
+        await this.log(run, {
+          type: 'agent.acted',
+          actor: AGENT,
+          taskId,
+          stepKey: task.stepKey,
+          ...auditFields(effective.audit),
+          decision:
+            effective.audit?.decision !== undefined
+              ? effective.audit.decision
+              : summarizeResultForLog(typeKey, validation.value),
+          explanation: effective.explanation ? truncateText(effective.explanation, WF_LOG_INSTRUCTION_MAX) : null,
+        });
         await this.closeTaskAndAdvance(run, scope, {
           result: validation.value,
           actor: AGENT,
@@ -838,7 +874,24 @@ export class WorkflowEngine implements WorkflowEngineApi {
       case 'complete':
         break;
       case 'wait':
-        if (typeKey === 'agent') await this.handToHuman(run, scope, "L'agent n'a pas conclu : tâche confiée à son bénéficiaire.");
+        if (typeKey === 'agent') {
+          if (effective.escalation) {
+            await this.log(run, {
+              type: 'agent.escalated',
+              actor: AGENT,
+              taskId,
+              stepKey: task.stepKey,
+              ...auditFields(effective.escalation.audit),
+              // Le détail de l'audit (suspicion_injection, raisons, outil refusé, appels d'outils) est conservé ; `reason` fait foi.
+              decision: {
+                ...(isPlainObject(effective.escalation.audit?.decision) ? effective.escalation.audit.decision : {}),
+                reason: truncateText(effective.escalation.reason, REASON_MAX),
+              },
+              explanation: truncateText(effective.escalation.explanation, WF_LOG_INSTRUCTION_MAX),
+            });
+          }
+          await this.handToHuman(run, scope, "L'agent n'a pas conclu : tâche confiée à son bénéficiaire.");
+        }
         break;
       case 'error':
         await this.log(run, {
@@ -880,15 +933,18 @@ export class WorkflowEngine implements WorkflowEngineApi {
       typeof outcome.explanation === 'string' && outcome.explanation.trim()
         ? truncateText(outcome.explanation.trim(), WF_LOG_INSTRUCTION_MAX)
         : "Aucune explication fournie par l'exécuteur : vérifier la proposition avant de l'accepter.";
-    const confidence = normalizeConfidence(outcome.confidence);
-    const sources = outcome.sources === undefined ? null : boundJson(outcome.sources);
+    const audit = outcome.audit;
+    const confidence = normalizeConfidence(outcome.confidence ?? audit?.confidence);
+    const rawSources = outcome.sources !== undefined ? outcome.sources : audit?.sources;
+    const sources = rawSources === undefined ? null : boundJson(rawSources);
     const proposal = toJson(outcome.proposal ?? null);
     const eventId = await this.log(run, {
       type: 'agent.proposed',
       actor: AGENT,
       taskId: task.wfTaskId,
       stepKey: task.stepKey,
-      decision: summarizeResultForLog(typeKey, outcome.proposal),
+      ...auditFields(audit),
+      decision: audit?.decision !== undefined ? audit.decision : summarizeResultForLog(typeKey, outcome.proposal),
       explanation,
       sources,
       confidence,
@@ -1031,6 +1087,29 @@ export class WorkflowEngine implements WorkflowEngineApi {
         validatedBy: userId,
         validatedAt: userId !== null ? now : null,
       });
+    }
+    // Validation humaine d'une proposition d'agent (élément kind 1) : accepter / modifier / refuser est
+    // journalisé dans la même transaction. Les étapes de type validation ont déjà leur événement ci-dessus.
+    if (userId !== null && step.type !== 'validation') {
+      for (const item of items) {
+        if (item.kind !== WfInboxItemKind.AgentValidation) continue;
+        const outcome = rejected
+          ? 'rejected'
+          : canonicalJson(item.proposal) === canonicalJson(args.result)
+            ? 'accepted'
+            : 'modified';
+        await this.log(run, {
+          type: `validation.${outcome}`,
+          actor: args.actor,
+          taskId: task.wfTaskId,
+          stepKey: step.key,
+          decision: { outcome, itemId: item.wfInboxItemId.toString() },
+          explanation: rejected && args.comment ? truncateText(args.comment, WF_LOG_INSTRUCTION_MAX) : null,
+          confidence: item.confidence === null ? null : normalizeConfidence(Number(item.confidence)),
+          validatedBy: userId,
+          validatedAt: now,
+        });
+      }
     }
     run.closedTasks.push(closed);
     run.events.push({
@@ -1458,6 +1537,12 @@ export class WorkflowEngine implements WorkflowEngineApi {
         sources: sources === null ? undefined : toJson(sources),
         explanation: entry.explanation ? truncateText(entry.explanation, WF_LOG_INSTRUCTION_MAX) : null,
         confidence: entry.confidence == null ? null : new Prisma.Decimal(entry.confidence.toFixed(3)),
+        autonomyLevel: entry.autonomyLevel ?? null,
+        model: entry.model ? truncateText(entry.model, MODEL_MAX) : null,
+        aiDecisionId: entry.aiDecisionId ?? null,
+        promptTokens: entry.promptTokens ?? null,
+        completionTokens: entry.completionTokens ?? null,
+        costAmount: entry.costAmount == null ? null : new Prisma.Decimal(entry.costAmount.toFixed(4)),
         validatedBy: entry.validatedBy ?? null,
         validatedAt: entry.validatedAt ?? null,
         occurredAt: run.now,
@@ -1656,16 +1741,29 @@ function errorText(err: unknown): string {
 }
 
 /** Résultat d'exécuteur mal formé => erreur (la tâche reste à l'humain), jamais une exception. */
-function normalizeOutcome(raw: unknown): InternalOutcome {
+export function normalizeOutcome(raw: unknown): InternalOutcome {
   if (!isPlainObject(raw)) return { kind: 'error', message: "réponse d'exécuteur invalide" };
   switch (raw.kind) {
-    case 'wait':
+    case 'wait': {
+      const esc = raw.escalation;
+      if (isPlainObject(esc) && typeof esc.reason === 'string' && esc.reason.trim()) {
+        return {
+          kind: 'wait',
+          escalation: {
+            reason: esc.reason,
+            explanation: typeof esc.explanation === 'string' ? esc.explanation : '',
+            audit: normalizeAudit(esc.audit),
+          },
+        };
+      }
       return { kind: 'wait' };
+    }
     case 'complete':
       return {
         kind: 'complete',
         result: raw.result,
         explanation: typeof raw.explanation === 'string' ? raw.explanation : undefined,
+        audit: normalizeAudit(raw.audit),
       };
     case 'propose':
       return {
@@ -1674,12 +1772,60 @@ function normalizeOutcome(raw: unknown): InternalOutcome {
         explanation: typeof raw.explanation === 'string' ? raw.explanation : undefined,
         sources: raw.sources,
         confidence: typeof raw.confidence === 'number' ? raw.confidence : undefined,
+        audit: normalizeAudit(raw.audit),
       };
     case 'fail':
       return { kind: 'fail', error: typeof raw.error === 'string' ? raw.error : 'échec sans précision' };
     default:
       return { kind: 'error', message: "réponse d'exécuteur invalide" };
   }
+}
+
+/**
+ * Audit d'agent fourni par un exécuteur : chaque champ est vérifié, ce qui est inconnu ou mal typé est
+ * ignoré (jamais d'exception : une valeur douteuse ne doit pas bloquer l'écriture du journal).
+ */
+export function normalizeAudit(raw: unknown): WfAgentAudit | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const out: WfAgentAudit = {};
+  if (typeof raw.instruction === 'string') out.instruction = raw.instruction;
+  if (raw.sources !== undefined) out.sources = raw.sources;
+  if (raw.decision !== undefined) out.decision = raw.decision;
+  const confidence = normalizeConfidence(raw.confidence);
+  if (confidence !== null) out.confidence = confidence;
+  if (raw.autonomyLevel === 0 || raw.autonomyLevel === 1 || raw.autonomyLevel === 2) {
+    out.autonomyLevel = raw.autonomyLevel;
+  }
+  if (typeof raw.model === 'string' && raw.model.trim()) out.model = truncateText(raw.model.trim(), MODEL_MAX);
+  else if (raw.model === null) out.model = null;
+  if (typeof raw.aiDecisionId === 'string' && /^[0-9]{1,19}$/.test(raw.aiDecisionId) && BigInt(raw.aiDecisionId) <= MAX_BIGINT) {
+    out.aiDecisionId = raw.aiDecisionId;
+  } else if (raw.aiDecisionId === null) out.aiDecisionId = null;
+  for (const key of ['promptTokens', 'completionTokens'] as const) {
+    const v = raw[key];
+    if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= INT32_MAX) out[key] = v;
+    else if (v === null) out[key] = null;
+  }
+  const cost = raw.costAmount;
+  if (typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 && cost <= COST_MAX) out.costAmount = cost;
+  else if (cost === null) out.costAmount = null;
+  return out;
+}
+
+/** Champs d'audit d'un événement de journal (identifiant décimal -> BigInt pour `ai_decision_id`). */
+function auditFields(audit: WfAgentAudit | undefined): Partial<LogEntry> {
+  if (!audit) return {};
+  return {
+    instruction: audit.instruction ?? null,
+    sources: audit.sources,
+    confidence: audit.confidence ?? null,
+    autonomyLevel: audit.autonomyLevel ?? null,
+    model: audit.model ?? null,
+    aiDecisionId: audit.aiDecisionId ? BigInt(audit.aiDecisionId) : null,
+    promptTokens: audit.promptTokens ?? null,
+    completionTokens: audit.completionTokens ?? null,
+    costAmount: audit.costAmount ?? null,
+  };
 }
 
 /** Valeur JSON écrivable par Prisma (aller-retour JSON : pas d'undefined, pas de prototype). */

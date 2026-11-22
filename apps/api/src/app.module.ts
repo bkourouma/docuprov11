@@ -33,6 +33,7 @@ import { SpacesModule } from './modules/spaces/spaces.module';
 import { UsersModule } from './modules/users/users.module';
 // --- Docu-Flow W1 ---
 import { WorkflowsModule } from './modules/workflows/workflows.module';
+import { WorkflowAgentsModule } from './modules/workflow-agents/workflow-agents.module';
 // --- fin Docu-Flow W1 ---
 import { HealthController } from './health.controller';
 
@@ -82,6 +83,7 @@ import { HealthController } from './health.controller';
     // --- fin Lot 4c ---
     // --- Docu-Flow W1 ---
     WorkflowsModule,
+    WorkflowAgentsModule, // Docu-Flow W2 : agents
     // --- fin Docu-Flow W1 ---
   ],
   providers: [

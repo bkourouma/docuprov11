@@ -523,7 +523,10 @@ interface WfTaskExecutor {
 registre refuse un type inconnu, et un double enregistrement pour un même type (aucun remplacement silencieux). L'exécuteur
 d'un type n'est appelé que si le registre le contient à l'entrée de l'étape. La publication d'un graphe qui contient une étape
 `agent` est refusée tant que `has('agent')` est faux (`EXECUTOR_MISSING`). Au démarrage, `rescanExecutors()` relance les
-exécuteurs des tâches ouvertes éligibles.
+exécuteurs des tâches ouvertes éligibles. Depuis W2, `WorkflowAgentsModule` enregistre l'exécuteur `agent` à l'initialisation
+(`workflow-agents/executor/agent-executor.ts`) : `EXECUTOR_MISSING` n'échoue plus que si ce module est absent.
+`WfExecutorContext` porte aussi `definitionId`, `definitionVersionId` et `subject`, et l'issue d'un exécuteur peut porter un
+`audit` (`complete`, `propose`) ou une `escalation` (`wait`) journalisés par le moteur dans la même transaction.
 
 Exemple d'enregistrement (illustratif) :
 
@@ -600,7 +603,9 @@ l'exécuteur `generation`. Une erreur du fournisseur ou une suggestion vide lais
 
 La suggestion ne fait que **proposer** : elle devient un élément kind 1 que l'humain accepte, modifie ou ignore.
 
-**W1 : aucune implémentation.** `DraftingModule` n'exporte pas son service ; le branchement reste à faire.
+**Implémentation (W2).** `DraftingModule` exporte `DraftingService` et `DraftingContextService` ; `DraftingGenerationSuggester`
+(`workflow-agents/drafting/`) implémente `WfGenerationSuggester` et `WorkflowAgentsModule` enregistre l'exécuteur `generation`
+(voir `docs/workflow-agents.md`). `suggest` reçoit aussi `definitionId` (facultatif).
 
 ### 7.6 Annuaire (`WfDirectory`)
 
@@ -686,7 +691,8 @@ pnpm --filter @archivage/types build      # après toute modification de package
 - **Aucune étape ne crée de minuterie de nature 0 ou 3.** Les gestionnaires `registerTimerHandler` existent, mais aucun producteur
   n'est branché en W1.
 - **Autonomie non appliquée par le moteur.** La règle « autonome » est contrôlée à la publication
-  (`AUTONOMY_REQUIRES_LOW_RISK`) et par la base. L'exécuteur (W2) doit la respecter à l'exécution.
+  (`AUTONOMY_REQUIRES_LOW_RISK`) et par la base. Depuis W2, l'exécuteur `agent` la respecte à l'exécution
+  (éligibilité relue en base, `docs/workflow-agents.md` section 3).
 - **`fail` d'un exécuteur humain fait échouer l'instance.** Seul `complete` est converti en proposition pour un type humain.
 - **Pas de délai maximal sur `execute()`.** Voir section 4.4.
 - **Escalade et `expectedRowVersion`.** L'escalade incrémente `row_version`. Un client qui agit avec une version antérieure

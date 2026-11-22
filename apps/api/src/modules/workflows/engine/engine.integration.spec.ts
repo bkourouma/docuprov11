@@ -709,6 +709,113 @@ suite(title, () => {
     expect(calls).toHaveLength(4);
   });
 
+  it('audit des agents : agent.acted avant la clôture, agent.escalated, validation.accepted / modified / rejected', async () => {
+    let mode: 'complete' | 'escalate' | 'propose' = 'complete';
+    const seen: Array<{ definitionId: number; definitionVersionId: number; subject: unknown }> = [];
+    const audit = {
+      instruction: 'Classer le courrier',
+      sources: [{ kind: 'document', id: 4, label: 'Courrier' }],
+      confidence: 0.93,
+      autonomyLevel: 1 as const,
+      model: 'modele-test',
+      aiDecisionId: '4242',
+      promptTokens: 120,
+      completionTokens: 30,
+      costAmount: 0.0123,
+    };
+    const agent: WfTaskExecutor = {
+      taskType: 'agent',
+      execute: (ctx) => {
+        seen.push({ definitionId: ctx.definitionId, definitionVersionId: ctx.definitionVersionId, subject: ctx.subject });
+        if (mode === 'escalate') {
+          return Promise.resolve({
+            kind: 'wait',
+            escalation: { reason: 'confiance_insuffisante', explanation: 'Confiance trop basse pour conclure', audit },
+          });
+        }
+        if (mode === 'propose') {
+          return Promise.resolve({ kind: 'propose', proposal: { classe: 'facture' }, explanation: 'Mot « facture »', audit });
+        }
+        return Promise.resolve({ kind: 'complete', result: { classe: 'facture' }, explanation: 'Courrier de facturation', audit });
+      },
+    };
+    const registry = new WfExecutorRegistry();
+    registry.register(agent);
+    const withAgent = new WorkflowEngine(prisma, { registry, directory });
+    const definitionId = await publish({
+      schemaVersion: 1,
+      start: 'ia',
+      steps: [
+        { key: 'ia', name: 'Analyse IA', type: 'agent', assignee: { kind: 'user', id: 20 }, agent: { objective: 'Classer', tools: [] }, next: [{ to: 'fin' }] },
+        { key: 'fin', name: 'Fin', type: 'formulaire', next: [] },
+      ],
+    });
+    const version = await prisma.wfDefinitionVersion.findFirstOrThrow({ where: { definitionId } });
+
+    // 1) complete : agent.acted est écrit AVANT task.completed, avec tout l'audit.
+    const c = await withAgent.startInstance({ definitionId, startedBy: 10 });
+    await withAgent.whenIdle();
+    expect(seen[0]).toEqual({ definitionId, definitionVersionId: version.wfDefinitionVersionId, subject: { type: null, id: null } });
+    const cEvents = await eventsOf(c.instance.wfInstanceId);
+    const types = cEvents.map((e) => e.eventType);
+    expect(types.indexOf('agent.acted')).toBeGreaterThanOrEqual(0);
+    expect(types.indexOf('agent.acted')).toBeLessThan(types.indexOf('task.completed'));
+    const acted = cEvents.find((e) => e.eventType === 'agent.acted')!;
+    expect(acted).toMatchObject({
+      actorKind: 2,
+      instruction: 'Classer le courrier',
+      autonomyLevel: 1,
+      model: 'modele-test',
+      promptTokens: 120,
+      completionTokens: 30,
+      explanation: 'Courrier de facturation',
+    });
+    expect(acted.aiDecisionId).toBe(4242n);
+    expect(acted.confidence?.toString()).toBe('0.93');
+    expect(acted.costAmount?.toString()).toBe('0.0123');
+
+    // 2) wait avec escalade : agent.escalated puis passage à l'humain (kind 0).
+    mode = 'escalate';
+    const e = await withAgent.startInstance({ definitionId, startedBy: 10 });
+    await withAgent.whenIdle();
+    const eEvents = await eventsOf(e.instance.wfInstanceId);
+    const eTypes = eEvents.map((x) => x.eventType);
+    expect(eTypes.indexOf('agent.escalated')).toBeGreaterThanOrEqual(0);
+    expect(eTypes.indexOf('agent.escalated')).toBeLessThan(eTypes.lastIndexOf('task.assigned'));
+    const escalated = eEvents.find((x) => x.eventType === 'agent.escalated')!;
+    expect(escalated).toMatchObject({ actorKind: 2, explanation: 'Confiance trop basse pour conclure', decision: { reason: 'confiance_insuffisante' } });
+    expect((await prisma.wfInboxItem.findFirstOrThrow({ where: { instanceId: BigInt(e.instance.wfInstanceId) } })).kind).toBe(0);
+
+    // 3) proposition : agent.proposed porte l'audit ; accepter => validation.accepted.
+    mode = 'propose';
+    const a = await withAgent.startInstance({ definitionId, startedBy: 10 });
+    await withAgent.whenIdle();
+    const proposed = (await eventsOf(a.instance.wfInstanceId)).find((x) => x.eventType === 'agent.proposed')!;
+    expect(proposed).toMatchObject({ autonomyLevel: 1, model: 'modele-test', promptTokens: 120, completionTokens: 30 });
+    expect(proposed.aiDecisionId).toBe(4242n);
+    const item = await prisma.wfInboxItem.findFirstOrThrow({ where: { instanceId: BigInt(a.instance.wfInstanceId), kind: 1 } });
+    await withAgent.completeTask({ taskId: a.openedTasks[0]!.wfTaskId, principal: user(20), result: { classe: 'facture' } });
+    const accepted = (await eventsOf(a.instance.wfInstanceId)).find((x) => x.eventType === 'validation.accepted')!;
+    expect(accepted).toMatchObject({ actorKind: 1, actorUserGroupId: 20, validatedBy: 20, decision: { outcome: 'accepted', itemId: item.wfInboxItemId.toString() } });
+    expect(accepted.validatedAt).not.toBeNull();
+    expect(accepted.confidence?.toString()).toBe('0.93');
+
+    // 4) résultat modifié par l'humain => validation.modified.
+    const m = await withAgent.startInstance({ definitionId, startedBy: 10 });
+    await withAgent.whenIdle();
+    await withAgent.completeTask({ taskId: m.openedTasks[0]!.wfTaskId, principal: user(20), result: { classe: 'devis' } });
+    const modified = (await eventsOf(m.instance.wfInstanceId)).find((x) => x.eventType === 'validation.modified')!;
+    expect(modified).toMatchObject({ validatedBy: 20, decision: { outcome: 'modified' } });
+    expect((await eventsOf(m.instance.wfInstanceId)).map((x) => x.eventType)).not.toContain('validation.accepted');
+
+    // 5) refus => validation.rejected.
+    const r = await withAgent.startInstance({ definitionId, startedBy: 10 });
+    await withAgent.whenIdle();
+    await withAgent.rejectTask({ taskId: r.openedTasks[0]!.wfTaskId, principal: user(20), comment: 'Non conforme' });
+    const rejected = (await eventsOf(r.instance.wfInstanceId)).find((x) => x.eventType === 'validation.rejected')!;
+    expect(rejected).toMatchObject({ validatedBy: 20, explanation: 'Non conforme', decision: { outcome: 'rejected' } });
+  });
+
   it('lecture : listInstances filtré et paginé, détail inconnu => null', async () => {
     const definitionId = await publish(expenseGraph());
     await engine.startInstance({ definitionId, startedBy: 41 });

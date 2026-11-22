@@ -17,7 +17,7 @@ import type {
   WfTimerStatus,
   WfToolSideEffect,
 } from './wf-enums';
-import { WF_DEFINITION_SOURCE_VALUES } from './wf-enums';
+import { WF_AUTONOMY_KEYS, WF_DEFINITION_SOURCE_VALUES } from './wf-enums';
 import { WF_EVENT_TYPE_MAX_LENGTH, WF_KEY_PATTERN } from './wf-events';
 import type { WfGraph } from './wf-graph';
 import { wfGraphSchema } from './wf-graph';
@@ -342,3 +342,51 @@ export const wfEscalationConfigSchema = z.object({
   message: z.string().max(500).optional(),
 });
 export type WfEscalationConfig = z.infer<typeof wfEscalationConfigSchema>;
+
+// ---------------------------------------------------------------------------
+// Agents (lot W2) — constantes partagées (ajout rétro-compatible)
+// ---------------------------------------------------------------------------
+
+/**
+ * Plancher de précision d'un jeu d'évaluation : l'application refuse un `min_accuracy` inférieur
+ * (le SQL accepte 0..1). Hypothèse métier prudente, réversible : modifier cette seule constante.
+ */
+export const WF_EVAL_ACCURACY_FLOOR = 0.8;
+
+/**
+ * Configuration d'une étape agent sur le BROUILLON (route `PUT /workflows/definitions/:id/draft/agents/:stepKey`).
+ * Les champs communs au graphe (`objective`, `tools`, `confidenceThreshold`, `autonomy`, `model`, `maxSteps`,
+ * `maxCostPerRun`) sont écrits dans le graphe (source de vérité) ET dans la ligne `wf_agent_config` ; `timeoutSeconds`
+ * et `evalSetId` ne vivent que dans la ligne. Bornes alignées sur les CHECK SQL. Champs inconnus refusés.
+ */
+export const upsertWfAgentConfigSchema = z
+  .object({
+    objective: z.string().trim().min(1).max(4000).optional(),
+    tools: z
+      .array(z.string().min(1).max(100).regex(WF_KEY_PATTERN, "clé d'outil invalide"))
+      .max(100)
+      .refine((tools) => new Set(tools).size === tools.length, {
+        message: "la liste d'outils contient un doublon",
+      })
+      .optional(),
+    confidenceThreshold: z.number().min(0).max(1).optional(),
+    autonomy: z.enum(WF_AUTONOMY_KEYS).optional(),
+    /** null = modèle de la configuration IA. */
+    model: z.string().trim().min(1).max(200).nullable().optional(),
+    maxSteps: z.number().int().min(1).max(50).optional(),
+    /** null = pas de plafond de coût par exécution. */
+    maxCostPerRun: z.number().min(0).nullable().optional(),
+    timeoutSeconds: z.number().int().min(1).max(3600).optional(),
+    /** null = délier le jeu d'évaluation. */
+    evalSetId: z.number().int().positive().nullable().optional(),
+  })
+  .strict()
+  .refine((v) => Object.values(v).some((x) => x !== undefined), { message: 'aucune modification fournie' });
+export type UpsertWfAgentConfigInput = z.infer<typeof upsertWfAgentConfigSchema>;
+
+/** Configuration d'agent d'une étape, avec ses outils (clés) et l'empreinte de son comportement. */
+export interface WfAgentConfigDetailDto extends WfAgentConfigDto {
+  tools: string[];
+  /** Empreinte (`agentSpecHash`) de la configuration : comparée à celle du dernier run d'évaluation. */
+  agentSpecHash: string;
+}

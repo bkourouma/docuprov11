@@ -150,7 +150,7 @@ export class OpenAiCompatibleProvider implements AiModelProvider {
     if (request.jsonSchema) {
       body.response_format = {
         type: 'json_schema',
-        json_schema: { name: request.jsonSchema.name, schema: request.jsonSchema.schema, strict: true },
+        json_schema: { name: request.jsonSchema.name, schema: request.jsonSchema.schema, strict: request.strictSchema !== false },
       };
     }
     if (request.maxOutputTokens) body.max_tokens = request.maxOutputTokens;

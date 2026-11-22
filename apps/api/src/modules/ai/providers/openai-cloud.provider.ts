@@ -78,7 +78,7 @@ export class OpenAiCloudProvider implements AiModelProvider {
           type: 'json_schema',
           name: request.jsonSchema.name,
           schema: request.jsonSchema.schema,
-          strict: true,
+          strict: request.strictSchema !== false,
         },
       };
     }

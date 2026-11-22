@@ -28,6 +28,7 @@ export const WF_EVENT_TYPES = [
   'agent.proposed',
   'agent.acted',
   'agent.escalated',
+  'agent.tool_called',
   'validation.requested',
   'validation.accepted',
   'validation.modified',

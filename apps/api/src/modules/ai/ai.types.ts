@@ -28,6 +28,8 @@ export interface AiCompletionRequest {
   attachments?: AiAttachment[];
   /** Sortie structurée stricte (JSON Schema). */
   jsonSchema?: { name: string; schema: Record<string, unknown> };
+  /** `false` : schéma non strict côté fournisseur (objets libres) ; la validation applicative stricte reste la référence. Défaut : strict. */
+  strictSchema?: boolean;
   maxOutputTokens?: number;
 }
 
@@ -141,6 +143,9 @@ export type AiRunResult<T> =
       confidence: number | null;
       provider: string;
       model: string;
+      /** Jetons réellement consommés (fournisseur) ; `null` si le fournisseur ne les renvoie pas. */
+      promptTokens: number | null;
+      completionTokens: number | null;
     };
 
 export type AiEmbedResult =
