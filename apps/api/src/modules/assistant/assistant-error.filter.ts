@@ -4,9 +4,18 @@ import { ZodError } from 'zod';
 import { ASST_ERROR_HTTP_STATUS, AsstErrorCode, isAsstErrorCode, type AsstErrorBodyDto } from '@archivage/types';
 import { AsstError } from './assistant.contracts';
 
+/** `details.retryAfterSeconds` s'il est un entier >= 1, sinon `null`. */
+function retryAfterSecondsOf(error: AsstError): number | null {
+  const details: unknown = error.details;
+  if (typeof details !== 'object' || details === null) return null;
+  const value = (details as { retryAfterSeconds?: unknown }).retryAfterSeconds;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : null;
+}
+
 /**
  * Filtre d'erreurs de /assistant/** :
  *  - `AsstError` -> `{statusCode, errorCode, message, details?, proposal?}` au statut de `ASST_ERROR_HTTP_STATUS` ;
+ *    Sur un 429 avec `details.retryAfterSeconds` entier >= 1, l'en-tête `Retry-After` est ajouté (corps inchangé) ;
  *  - `ZodError` (validation hors pipe) -> 422 `invalid_input` ;
  *  - `HttpException` (401/403 du guard, etc.) -> laissée telle quelle (même réponse que le comportement par défaut) ;
  *  - toute autre erreur (y compris un `errorCode` inconnu) -> 500 sans détail, cause journalisée côté serveur.
@@ -28,6 +37,8 @@ export class AssistantErrorFilter implements ExceptionFilter {
       const body: AsstErrorBodyDto = { statusCode, errorCode: exception.errorCode, message: exception.message };
       if (exception.details !== undefined) body.details = exception.details;
       if (exception.proposal !== undefined) body.proposal = exception.proposal;
+      const retryAfter = retryAfterSecondsOf(exception);
+      if (statusCode === 429 && retryAfter !== null) res.setHeader('Retry-After', String(retryAfter));
       res.status(statusCode).json(body);
       return;
     }

@@ -152,6 +152,26 @@ export type AsstProposalDto = {
   rowVersion: number;
 };
 
+export const ASST_CLARIFICATION_CHOICES_MIN = 2;
+export const ASST_CLARIFICATION_CHOICES_MAX = 6;
+export const ASST_CLARIFICATION_CHOICE_MAX_CHARS = 80;
+
+/**
+ * Question de précision posée par l'assistant (au lieu de deviner) : texte brut, 2 à 6 choix distincts de 80
+ * caractères au plus. Chaque choix peut être renvoyé tel quel comme message utilisateur.
+ */
+export const asstClarificationSchema = z
+  .object({
+    question: z.string().trim().min(1).max(500).optional(),
+    choices: z
+      .array(z.string().trim().min(1).max(ASST_CLARIFICATION_CHOICE_MAX_CHARS))
+      .min(ASST_CLARIFICATION_CHOICES_MIN)
+      .max(ASST_CLARIFICATION_CHOICES_MAX)
+      .refine((c) => new Set(c).size === c.length, { message: 'Choix en double.' }),
+  })
+  .strict();
+export type AsstClarificationDto = z.infer<typeof asstClarificationSchema>;
+
 /** Aucun jeton n'est exposé. */
 export type AsstMessageDto = {
   messageId: string;
@@ -161,6 +181,8 @@ export type AsstMessageDto = {
   position: number;
   createdAt: string;
   proposals: AsstProposalDto[];
+  /** Optionnel : présent quand l'assistant pose une question de précision (message assistant seulement). */
+  clarification?: AsstClarificationDto | null;
 };
 
 /** Corps de TOUTE erreur de /assistant/**. */
@@ -176,10 +198,30 @@ export type AsstErrorBodyDto = {
 // Requêtes (schémas zod stricts)
 // ---------------------------------------------------------------------------
 
+/**
+ * Caractères de contrôle interdits : NUL, C0 (sauf tabulation, LF, CR), DEL et C1.
+ * Le texte multiligne (message) autorise tabulation, LF et CR ; le titre (affiché sur une ligne) les refuse aussi,
+ * ainsi que les séparateurs de ligne Unicode U+0085 (déjà dans C1), U+2028 et U+2029. Dans le message (texte libre),
+ * U+2028 et U+2029 restent des sauts de ligne autorisés.
+ */
+// eslint-disable-next-line no-control-regex
+const ASST_CONTROL_CHARS_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/;
+// eslint-disable-next-line no-control-regex
+const ASST_TITLE_FORBIDDEN_RE = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/;
+const noControlChars = (v: string): boolean => !ASST_CONTROL_CHARS_RE.test(v);
+const NO_CONTROL_MESSAGE = 'Le texte contient des caractères de contrôle interdits.';
+const NO_TITLE_CONTROL_MESSAGE = 'Le titre ne doit contenir ni retour à la ligne ni caractère de contrôle.';
+
 /** L'utilisateur est celui du jeton, JAMAIS dans le corps. */
 export const createConversationBody = z
   .object({
-    title: z.string().trim().min(1).max(ASST_TITLE_MAX_CHARS).optional(),
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(ASST_TITLE_MAX_CHARS)
+      .refine((v) => !ASST_TITLE_FORBIDDEN_RE.test(v), { message: NO_TITLE_CONTROL_MESSAGE })
+      .optional(),
     pageContext: asstPageContextSchema.optional(),
   })
   .strict();
@@ -198,7 +240,7 @@ export const proposalIdParam = asstIdSchema;
 
 export const postMessageBody = z
   .object({
-    content: z.string().trim().min(1).max(ASST_MESSAGE_MAX_CHARS),
+    content: z.string().trim().min(1).max(ASST_MESSAGE_MAX_CHARS).refine(noControlChars, { message: NO_CONTROL_MESSAGE }),
     pageContext: asstPageContextSchema.optional(),
   })
   .strict();

@@ -3,6 +3,7 @@ import {
   ASST_ROUTES,
   ASST_ROUTE_MENU,
   asstBrouillonArgsSchema,
+  asstClarificationSchema,
   asstCanonicalActionsJson,
   asstIdSchema,
   asstImputationArgsSchema,
@@ -146,6 +147,31 @@ describe('requêtes', () => {
     expect(postMessageBody.safeParse({ content: 'x', role: 'assistant' }).success).toBe(false);
   });
 
+  it('postMessageBody : refuse NUL, ESC, DEL et C1 ; accepte retours à la ligne, tabulation, accents, emoji', () => {
+    for (const bad of ['a\u0000b', 'a\u001Bb', 'a\u007Fb', 'a\u0085b', 'a\u009Fb', 'a\u0008b', 'a\u000Bb', 'a\u000Cb', 'a\u001Fb']) {
+      const r = postMessageBody.safeParse({ content: bad });
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.issues[0]?.message).toBe('Le texte contient des caractères de contrôle interdits.');
+    }
+    for (const ok of ['ligne 1\nligne 2', 'ligne 1\r\nligne 2', 'a\tb', 'Éléphant à l’œuvre', 'Bonjour 😀 👍🏽']) {
+      expect(postMessageBody.safeParse({ content: ok }).success).toBe(true);
+    }
+    expect(postMessageBody.safeParse({ content: 'a'.repeat(4000) }).success).toBe(true);
+    expect(postMessageBody.safeParse({ content: 'a'.repeat(4001) }).success).toBe(false);
+  });
+
+  it('createConversationBody.title : refuse contrôle et retours à la ligne, accepte accents et emoji', () => {
+    for (const bad of ['a\u0000b', 'a\nb', 'a\rb', 'a\tb', 'a\u001Bb', 'a\u007Fb', 'a\u0090b', 'a\u0085b', 'a\u2028b', 'a\u2029b', '\u2028']) {
+      expect(createConversationBody.safeParse({ title: bad }).success).toBe(false);
+    }
+    expect(createConversationBody.safeParse({ title: 'Courrier été 📬' }).success).toBe(true);
+  });
+
+  it('postMessageBody.content : U+2028 et U+2029 (sauts de ligne de texte libre) restent acceptés, U+0085 refusé (comportement inchangé)', () => {
+    expect(postMessageBody.safeParse({ content: 'ligne 1\u2028ligne 2\u2029ligne 3' }).success).toBe(true);
+    expect(postMessageBody.safeParse({ content: 'a\u0085b' }).success).toBe(false);
+  });
+
   it('confirmProposalBody : argsHash = SHA-256 hexadécimal minuscule', () => {
     expect(confirmProposalBody.safeParse({ argsHash: 'a'.repeat(64) }).success).toBe(true);
     for (const bad of ['a'.repeat(63), 'a'.repeat(65), 'A'.repeat(64), 'g'.repeat(64), '']) {
@@ -221,5 +247,21 @@ describe('ASST_ROUTES', () => {
       expect(new Set(route.errors).size).toBe(route.errors.length);
       for (const code of route.errors) expect(ASST_ERROR_CODE_VALUES).toContain(code);
     }
+  });
+});
+
+describe('asstClarificationSchema', () => {
+  it('accepte 2 à 6 choix distincts de 80 caractères au plus, avec ou sans question', () => {
+    expect(asstClarificationSchema.safeParse({ choices: ['DAF Nord', 'DAF Sud'] }).success).toBe(true);
+    expect(asstClarificationSchema.safeParse({ question: 'Lequel ?', choices: ['a', 'b', 'c', 'd', 'e', 'f'] }).success).toBe(true);
+  });
+
+  it('refuse 1 ou 7 choix, un doublon, un choix vide ou trop long, une clé inconnue', () => {
+    expect(asstClarificationSchema.safeParse({ choices: ['a'] }).success).toBe(false);
+    expect(asstClarificationSchema.safeParse({ choices: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }).success).toBe(false);
+    expect(asstClarificationSchema.safeParse({ choices: ['a', 'a'] }).success).toBe(false);
+    expect(asstClarificationSchema.safeParse({ choices: ['a', '  '] }).success).toBe(false);
+    expect(asstClarificationSchema.safeParse({ choices: ['a', 'x'.repeat(81)] }).success).toBe(false);
+    expect(asstClarificationSchema.safeParse({ choices: ['a', 'b'], extra: 1 }).success).toBe(false);
   });
 });

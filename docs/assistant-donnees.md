@@ -50,6 +50,19 @@ Transitions légales (déclencheur `asst_proposal_guard`) :
 | 1 confirmée | 2 appliquée | aucune |
 | 1 confirmée | 5 échec | aucune |
 
+Le compare-and-set de confirmation (0 vers 1) exige en plus que l'échange ne soit PAS masqué (`deleted_at IS NULL`),
+dans la même instruction : la conversation est verrouillée en partage (`FOR SHARE`) par une CTE, puis la mise à jour
+n'a lieu que si le verrou est obtenu. Un échange masqué entre la lecture de la proposition et la confirmation fait
+perdre le CAS (aucune ligne touchée, résultat `null`, que l'exécuteur traduit en conflit 409 « confirmation
+concurrente ») ; la proposition reste au statut 0. Les autres transitions (1 vers 2, 1 vers 5, 0 vers 3, 0 vers 4)
+ne dépendent PAS du masquage : une exécution en cours doit pouvoir se terminer et les propositions d'un échange masqué
+peuvent expirer ou être refusées.
+
+Verrous du CAS 0 vers 1 : le `FOR SHARE` est pris sur la ligne de l'échange et tenu jusqu'à la fin de la transaction
+qui porte la confirmation (la transaction `t.db` de l'exécuteur, effets métier compris). Il attend uniquement derrière
+un verrou exclusif (`FOR UPDATE`) du masquage ou d'un ajout de message, de courte durée. Aucun `lock_timeout` n'est
+posé sur ce CAS : un `SET LOCAL` dans `t.db` s'étendrait à toute la transaction de l'exécuteur.
+
 Toute autre transition est refusée (par exemple 0 vers 2, 0 vers 5, 1 vers 3, 1 vers 4, tout retour en arrière).
 Sans changement de statut (0 vers 0, 1 vers 1), seuls `row_version` et `updated_at` peuvent changer.
 Les mises à jour qui changent de statut doivent renseigner dans la même instruction les dates et le résultat
@@ -62,7 +75,7 @@ exigés par le tableau (les CHECK `ck_asst_proposal_*` les contrôlent).
 | `asst_proposal_guard_insert` (BEFORE INSERT) | Une proposition naît « proposée » : `status` 0, `row_version` 0, sans `confirmed_at`, `finished_at`, `result`, `error_*` (erreur `check_violation`). Le message doit appartenir à la conversation, et `user_id` / `user_group_id` doivent être ceux de la conversation (`check_violation`) ; un parent inexistant est laissé aux clés étrangères. |
 | `asst_proposal_guard` (BEFORE UPDATE) | Une proposition terminée (2, 3, 4, 5) est figée : tout UPDATE refusé. Immuables : `conversation_id`, `message_id`, `user_id`, `user_group_id`, `actions`, `args_hash`, `summary`, `expires_at`, `created_at`. Transitions et expiration : voir §3. `row_version` ne décroît jamais (`check_violation`) ; CHECK `ck_asst_proposal_row_version` >= 0. |
 | `asst_proposal_guard_delete` (BEFORE DELETE) | Suppression directe refusée pour une proposition confirmée (1), appliquée (2) ou en échec (5). Les propositions 2 et 5 ne disparaissent que si leur conversation n'existe plus (purge en cascade). |
-| `asst_conversation_guard_delete` (BEFORE DELETE) | Suppression d'une conversation refusée (1) tant qu'une de ses propositions est confirmée (exécution en cours) ; (2) tant qu'elle porte une proposition appliquée ou en échec ET que `purge_at` > `now()`. Le masquage par l'utilisateur ramène `purge_at` à `now()` : la purge est alors permise. |
+| `asst_conversation_guard_delete` (BEFORE DELETE) | Suppression d'une conversation refusée (1) tant qu'une de ses propositions est confirmée (exécution en cours) ; (2) tant qu'elle porte une proposition appliquée ou en échec ET que `purge_at` > `now()`. Le masquage d'un échange sans trace d'exécution ramène `purge_at` à `now()` (purge permise) ; avec une trace, `purge_at` est conservée (voir §5). |
 | `asst_conversation_immutable` (BEFORE UPDATE) | `user_id`, `user_group_id` et `created_at` ne changent jamais ; `title`, `page_context`, `deleted_at`, `purge_at`, `updated_at`, `last_message_at` restent modifiables. |
 | `asst_conversation_no_truncate`, `asst_message_no_truncate`, `asst_proposal_no_truncate` (BEFORE TRUNCATE) | TRUNCATE interdit (`restrict_violation`), y compris avec CASCADE : il contourne les déclencheurs de ligne. |
 | `asst_message_immutable` (BEFORE UPDATE) | `conversation_id`, `role`, `position` et `content` ne changent jamais (le contenu est append-only). Les jetons et `ai_decision_id` restent modifiables. |
@@ -83,13 +96,33 @@ alors que la conversation existe est refusé si une proposition appliquée ou en
 ## 5. Conservation 90 jours et purge
 
 - `asst_conversation.purge_at` vaut par défaut `now() + 90 jours` (CHECK `purge_at >= created_at`).
-- **Suppression par l'utilisateur = masquage immédiat** : l'application renseigne `deleted_at` ET ramène
-  `purge_at` à `now()`. La base ne le fait pas elle-même. La liste de l'utilisateur filtre `deleted_at IS NULL`
+- **Suppression par l'utilisateur = masquage immédiat** : l'application renseigne `deleted_at` (et `updated_at`).
+  La base ne le fait pas elle-même. La liste de l'utilisateur filtre `deleted_at IS NULL`
   (index partiel `ix_asst_conversation_user_active`).
-- La **purge physique** (job qui supprime les conversations dont `purge_at` est échue, index `purge_at`) est faite
-  plus tard par un autre lot. Elle supprime la conversation, et la cascade emporte messages et propositions, y
-  compris les propositions appliquées ou en échec. Elle échoue (et doit être retentée) tant qu'une proposition
-  est confirmée.
+  - **Sans trace d'exécution** (aucune proposition confirmée, appliquée ou en échec) : `purge_at` est aussi ramenée
+    à `now()`, l'échange est purgé au passage suivant du job.
+  - **Avec une trace d'exécution** (proposition appliquée (2) ou en échec (5) ; une confirmée (1) est traitée de même,
+    car elle deviendra l'un ou l'autre) : l'échange est SEULEMENT masqué ; `purge_at` n'est PAS abaissée. Il disparaît
+    des listes mais la trace reste en base jusqu'à l'échéance d'origine (90 jours), puis la purge la supprime.
+  - La décision est prise dans une transaction : verrou exclusif de la ligne de l'échange (`SELECT ... FOR UPDATE`),
+    puis `UPDATE` conditionnel (sous-requête `EXISTS` sur `asst_proposal`) lancé après le verrou. Il se met en file
+    derrière une confirmation concurrente (verrou partagé du CAS 0 vers 1, voir §3) et voit alors le statut 1 :
+    jamais « échange masqué ET proposition confirmée avec `purge_at` abaissée ». Si le masquage gagne, la
+    confirmation perd son CAS et la proposition reste au statut 0.
+  - **Verrous et délai** : le verrou exclusif (`FOR UPDATE`) attend au plus 2 s (`lock_timeout` local à la transaction,
+    posé par `set_config('lock_timeout', '2000ms', true)` ; constante `ASST_DELETE_LOCK_TIMEOUT_MS`). Au-delà
+    (SQLSTATE `55P03`, `lock_not_available`), la transaction est annulée SANS EFFET (l'échange n'est pas masqué, la ligne
+    est inchangée) et `deleteConversation` lève `AsstError('conflict')`, soit HTTP 409 : « L'échange est en cours de
+    traitement : réessayez dans un instant. » Toute autre erreur de la base est propagée sans être masquée. Le
+    verrou partagé (`FOR SHARE`) du CAS 0 vers 1 force le masquage à attendre la validation d'une confirmation en vol
+    (qui peut durer le temps de l'exécution), d'où ce délai plutôt qu'une attente indéfinie.
+- **Suppression d'un message** (`deleteMessage`) : un seul `DELETE ... WHERE ... AND NOT EXISTS (proposition)`, limité
+  aux échanges non masqués de l'utilisateur. Un message qui porte une proposition (quel que soit son statut) n'est
+  jamais supprimé (la cascade emporterait une trace) ; retour `false`, jamais d'exception.
+- La **purge physique** (job qui supprime les conversations dont `purge_at` est échue, index `purge_at`) supprime la
+  conversation, et la cascade emporte messages et propositions, y compris les propositions appliquées ou en échec.
+  Elle ne sélectionne que les échanges échus : un échange masqué dont l'échéance n'est pas atteinte n'est ni purgé ni
+  compté en erreur. Elle échoue (et est retentée) tant qu'une proposition est confirmée.
 - Propositions encore ouvertes (0 ou 1) : l'index partiel `ix_asst_proposal_expiry` (`status`, `expires_at`)
   sert au job d'expiration (0 vers 4 quand `expires_at` est échue).
 
@@ -124,7 +157,8 @@ conversations, `(user_id, created_at DESC)` sur les propositions.
 - **`actions` validé par zod côté application** : la base ne contrôle que « tableau de 1 à 5 éléments ».
 - **Suppression d'un échange applicable à la purge seulement** : aucune suppression directe d'une trace d'exécution
   (proposition appliquée ou en échec), et une conversation qui en porte ne se supprime qu'une fois `purge_at` échue ;
-  l'utilisateur masque (ce qui ramène `purge_at` à `now()`), le job purge.
+  l'utilisateur masque (`purge_at` n'est abaissée à `now()` que s'il n'y a aucune trace d'exécution ; sinon la trace
+  reste jusqu'à l'échéance de 90 jours), le job purge à l'échéance.
 - **Messages non figés** (hors périmètre) : seuls rattachement, rôle, position et contenu sont immuables.
 - **Propriétaire de la base** : il peut retirer les déclencheurs, y compris ceux qui interdisent TRUNCATE (`DROP TRIGGER`, `ALTER TABLE ... DISABLE
   TRIGGER`). Les garde-fous sont une barrière applicative forte, pas une preuve cryptographique.

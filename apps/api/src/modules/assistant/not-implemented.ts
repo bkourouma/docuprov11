@@ -2,9 +2,6 @@ import {
   AsstError,
   type AsstConversationsPort,
   type AsstExecutorPort,
-  type AsstGatePort,
-  type AsstPlannerPort,
-  type AsstProposalStore,
 } from './assistant.contracts';
 
 // Implémentations par défaut « pas encore branché » : chaque méthode échoue en `not_implemented` (HTTP 501).
@@ -28,28 +25,3 @@ export class NotImplementedExecutor implements AsstExecutorPort {
   expireDue = unavailable;
 }
 
-export class NotImplementedPlanner implements AsstPlannerPort {
-  plan = unavailable;
-}
-
-export class NotImplementedProposalStore implements AsstProposalStore {
-  createConversation = unavailable;
-  listConversations = unavailable;
-  getConversation = unavailable;
-  deleteConversation = unavailable;
-  appendMessage = unavailable;
-  createProposal = unavailable;
-  getProposal = unavailable;
-  transitionProposal = unavailable;
-  listExpirableProposals = unavailable;
-  listStaleConfirmedProposals = unavailable;
-  getProposalActor = unavailable;
-}
-
-export class NotImplementedGate implements AsstGatePort {
-  assertRunnable = unavailable;
-  reserve = unavailable;
-  settle = unavailable;
-  release = unavailable;
-  userCap = unavailable;
-}
