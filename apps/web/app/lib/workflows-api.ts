@@ -6,6 +6,9 @@
 // distinguer 403 / 404 / 409 / 422 (dont la liste `issues` d'une publication refusée) et masquer
 // les emplacements dont l'API n'existe pas encore (W2 outils d'agent, W3 déclencheurs : 404 => masqués).
 import type {
+  WfAuthoringExplanation,
+  WfAuthoringGenerateInput,
+  WfAuthoringGenerateResponse,
   WfDefinitionDto,
   WfDefinitionVersionDto,
   WfEventLogDto,
@@ -15,6 +18,7 @@ import type {
   WfInstanceDto,
   WfInstanceStatus,
   WfTaskDto,
+  WfTemplateSummary,
   WfToolDto,
   WfTriggerDto,
 } from '@archivage/types';
@@ -24,7 +28,11 @@ import { API_BASE } from './api';
 // Types propres à l'API
 // ---------------------------------------------------------------------------
 
-export type WfDefinitionIssueCode = WfGraphIssueCode | 'ESCALATION_INVALID' | 'EXECUTOR_MISSING';
+export type WfDefinitionIssueCode =
+  | WfGraphIssueCode
+  | 'ESCALATION_INVALID'
+  | 'EXECUTOR_MISSING'
+  | 'AUTHORING_TO_COMPLETE';
 
 export interface WfDefinitionIssue {
   code: WfDefinitionIssueCode;
@@ -103,6 +111,8 @@ export class WorkflowApiError extends Error {
     /** Liste des problèmes d'une publication refusée (HTTP 422). */
     readonly issues?: WfDefinitionIssue[],
     readonly details?: unknown,
+    /** HTTP 429 : délai avant nouvel essai, en secondes (en-tête `Retry-After`), si fourni et valide. */
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'WorkflowApiError';
@@ -183,6 +193,8 @@ function authHeader(): Record<string, string> {
 interface ErrorBody {
   message?: unknown;
   code?: unknown;
+  /** Code texte du moteur (ex. IDEMPOTENCY_CONFLICT) : l'API renvoie `code` NUMÉRIQUE (statut) et ce champ en plus. */
+  errorCode?: unknown;
   issues?: unknown;
   details?: unknown;
 }
@@ -198,6 +210,14 @@ function isIssueList(value: unknown): value is WfDefinitionIssue[] {
     Array.isArray(value) &&
     value.every((v) => typeof v === 'object' && v !== null && typeof (v as { code?: unknown }).code === 'string')
   );
+}
+
+/** `Retry-After` en secondes entières (1 à 86400) ; une date HTTP ou une valeur invalide donne `undefined`. */
+export function parseRetryAfter(value: string | null | undefined): number | undefined {
+  const v = typeof value === 'string' ? value.trim() : '';
+  if (!/^\d{1,6}$/.test(v)) return undefined;
+  const n = Number(v);
+  return n >= 1 && n <= 86400 ? n : undefined;
 }
 
 async function toError(res: Response): Promise<WorkflowApiError> {
@@ -218,9 +238,10 @@ async function toError(res: Response): Promise<WorkflowApiError> {
   return new WorkflowApiError(
     res.status,
     messageOf(body) || `HTTP ${res.status}`,
-    typeof body.code === 'string' ? body.code : undefined,
+    typeof body.errorCode === 'string' ? body.errorCode : typeof body.code === 'string' ? body.code : undefined,
     isIssueList(body.issues) ? body.issues : undefined,
     body.details,
+    res.status === 429 ? parseRetryAfter(res.headers?.get?.('Retry-After')) : undefined,
   );
 }
 
@@ -271,6 +292,16 @@ export async function requestOptional<T>(path: string): Promise<T | null> {
 // ---------------------------------------------------------------------------
 
 const BASE = '/workflows';
+
+/** Clé de modèle (W6) : minuscules, chiffres, « _ », « . », « - » ; 1 à 100 caractères. */
+export const WF_TEMPLATE_KEY_RE = /^[a-z0-9_.-]{1,100}$/;
+
+function templatePath(key: string): string {
+  if (typeof key !== 'string' || !WF_TEMPLATE_KEY_RE.test(key)) {
+    throw new WorkflowApiError(404, 'Modèle introuvable.');
+  }
+  return encodeURIComponent(key);
+}
 
 export const workflowsApi = {
   // Définitions
@@ -339,6 +370,23 @@ export const workflowsApi = {
    * À brancher quand W2 en publiera une.
    */
   getEvaluationStatus: async (_definitionId: number): Promise<{ hasPassedEvalRun: boolean } | null> => null,
+
+  // W5 : création en langage naturel (brouillon, jamais publié).
+  /** `signal` : annulation de l'attente côté navigateur (la génération côté serveur peut aboutir quand même). */
+  authoringGenerate: (input: WfAuthoringGenerateInput, signal?: AbortSignal) =>
+    request<WfAuthoringGenerateResponse>(`${BASE}/authoring/generate`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+      signal,
+    }),
+  authoringExplain: (definitionId: number) =>
+    post<WfAuthoringExplanation>(`${BASE}/authoring/explain/${encodeURIComponent(String(definitionId))}`),
+  // W6 (lot parallèle) : 403, 404, 405 ou 501 => `null` tant que l'API n'est pas livrée (bouton masqué).
+  listTemplates: () => requestOptional<WfTemplateSummary[]>(`${BASE}/templates`),
+  instantiateTemplate: async (key: string) => {
+    const path = templatePath(key); // clé invalide : rejet immédiat, aucun appel réseau
+    return post<{ definitionId: number }>(`${BASE}/templates/${path}/instantiate`);
+  },
 };
 
 // ---------------------------------------------------------------------------

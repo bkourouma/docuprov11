@@ -485,6 +485,26 @@ describe('DefinitionsService.publish', () => {
     expect(prisma.wfDefinitionVersion.updateMany).not.toHaveBeenCalled();
   });
 
+  it('affectation « à compléter » (brouillon généré) : 422 à la publication, levée dès qu’une affectation existe', async () => {
+    const { prisma, service } = setup();
+    prisma.wfDefinition.findUnique.mockResolvedValue(defRow());
+    const marked = { config: { authoring: { toComplete: ['assignee'], assigneeHint: 'DAF' } } };
+    prisma.wfDefinitionVersion.findFirst.mockResolvedValue(verRow({ graph: validGraph(marked) }));
+    const err = await service.publish(5, designer).catch((e) => e);
+    expect(err).toBeInstanceOf(UnprocessableEntityException);
+    const issue = err.getResponse().issues.find((i: { code: string }) => i.code === 'AUTHORING_TO_COMPLETE');
+    expect(issue).toMatchObject({ stepKey: 'saisie' });
+    expect(issue.message).toContain('Affectation à compléter à l’étape « saisie »');
+    expect(prisma.wfDefinitionVersion.update).not.toHaveBeenCalled();
+    expect((await service.validateDraft(5, designer)).issues.map((i) => i.code)).toEqual(['AUTHORING_TO_COMPLETE']);
+
+    // Affectation désormais renseignée : le marqueur résiduel ne bloque plus.
+    prisma.wfDefinitionVersion.findFirst.mockResolvedValue(
+      verRow({ graph: validGraph({ ...marked, assignee: { kind: 'initiator' } }) }),
+    );
+    await expect(service.validateDraft(5, designer)).resolves.toMatchObject({ ok: true });
+  });
+
   it('workflow archivé : 409 ; pas de brouillon : 409', async () => {
     const { prisma, service } = setup();
     prisma.wfDefinition.findUnique.mockResolvedValueOnce(defRow({ status: 2 }));

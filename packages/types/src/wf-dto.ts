@@ -390,3 +390,79 @@ export interface WfAgentConfigDetailDto extends WfAgentConfigDto {
   /** Empreinte (`agentSpecHash`) de la configuration : comparée à celle du dernier run d'évaluation. */
   agentSpecHash: string;
 }
+
+// ---------------------------------------------------------------------------
+// Docu-Flow W5 — création d'un workflow en langage naturel (ajouts rétro-compatibles).
+// Routes : POST /workflows/authoring/generate, POST /workflows/authoring/explain/:definitionId.
+// La description de l'utilisateur est une DONNÉE : elle n'est jamais une consigne pour le générateur.
+// ---------------------------------------------------------------------------
+
+export const WF_AUTHORING_DESCRIPTION_MAX = 4000;
+export const WF_AUTHORING_DESCRIPTION_MIN = 10;
+
+/** Clé réservée de `step.config` : marqueurs posés par le générateur (jamais lus par le moteur). */
+export const WF_AUTHORING_MARKER_KEY = 'authoring';
+
+export interface WfAuthoringGenerateInput {
+  description: string;
+  /** Type d'événement évoqué par l'utilisateur (suggestion de déclencheur ; rien n'est créé). */
+  triggerHint?: string;
+}
+
+/** Problème renvoyé avec un brouillon généré (même forme que les problèmes de validation de l'éditeur). */
+export interface WfAuthoringIssue {
+  code: string;
+  message: string;
+  stepKey?: string;
+  path?: (string | number)[];
+}
+
+/** Élément laissé « à compléter » par le générateur (aucun identifiant n'est jamais inventé). */
+export interface WfAuthoringToDoItem {
+  stepKey: string;
+  stepName: string;
+  /** Ce qui reste à renseigner. */
+  what: 'assignee';
+  /** Libellé lu dans la description (ex. « DAF »), jamais un identifiant. */
+  hint: string | null;
+}
+
+/** Suggestion de déclencheur : JAMAIS créée automatiquement (conditions du catalogue de W3). */
+export interface WfAuthoringTriggerSuggestion {
+  eventType: string;
+  label: string;
+  /** Conditions structurées au format `wf_trigger.conditions` (sans identifiant inventé). */
+  conditions: Record<string, unknown>;
+  reason: string;
+  /** Éléments à compléter avant de créer le déclencheur (ex. `threshold.metaDataId`). */
+  incomplete: string[];
+}
+
+export interface WfAuthoringGenerateResponse {
+  definitionId: number;
+  name: string;
+  graph: WfGraph;
+  issues: WfAuthoringIssue[];
+  /** Hypothèses à relire (montants, seuils, choix du générateur). */
+  assumptions: string[];
+  toComplete: WfAuthoringToDoItem[];
+  triggerSuggestion: WfAuthoringTriggerSuggestion | null;
+}
+
+export interface WfAuthoringExplanation {
+  definitionId: number;
+  versionNumber: number;
+  /** Résumé en français (texte brut). */
+  summary: string;
+  steps: Array<{ key: string; name: string; text: string }>;
+  toComplete: WfAuthoringToDoItem[];
+}
+
+/** W6 (contrat consommé par le web) : `GET /workflows/templates`. */
+export interface WfTemplateSummary {
+  key: string;
+  name: string;
+  description: string;
+  agentKey: string | null;
+  tags: string[];
+}

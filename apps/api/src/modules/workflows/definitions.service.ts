@@ -691,9 +691,27 @@ export class DefinitionsService {
           path: ['steps', i, 'type'],
         });
       }
+      // Brouillon généré en langage naturel (W5) : une affectation laissée « à compléter » bloque la publication.
+      if (hasAssigneeToComplete(step)) {
+        issues.push({
+          code: 'AUTHORING_TO_COMPLETE',
+          message: `Affectation à compléter à l’étape « ${step.key} » : désignez qui traite cette étape avant de publier.`,
+          stepKey: step.key,
+          path: ['steps', i, 'assignee'],
+        });
+      }
     });
     return issues;
   }
+}
+
+/** Marqueur posé par le générateur (`config.authoring.toComplete` contient « assignee ») et affectation toujours absente. */
+function hasAssigneeToComplete(step: WfGraph['steps'][number]): boolean {
+  if (step.assignee !== undefined) return false;
+  const marker = step.config?.authoring;
+  if (marker === null || typeof marker !== 'object') return false;
+  const todo = (marker as { toComplete?: unknown }).toComplete;
+  return Array.isArray(todo) && todo.includes('assignee');
 }
 
 type WfDefinitionVersionDtoStatus = WfDefinitionVersionDto['status'];
