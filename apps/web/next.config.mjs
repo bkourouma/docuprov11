@@ -4,8 +4,15 @@ const PHASE_DEVELOPMENT_SERVER = 'phase-development-server';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Dossier de sortie : `.next` par défaut. La pile E2E (apps/e2e) en donne un par pile
+  // (ARCHIVAGE_WEB_DIST_DIR=.next-e2e-<port>) pour ne jamais écrire dans le `.next` du
+  // développeur ni dans celui d'une autre pile lancée en parallèle.
+  distDir: process.env.ARCHIVAGE_WEB_DIST_DIR || '.next',
   transpilePackages: ['@archivage/ui', '@archivage/types'],
   eslint: { ignoreDuringBuilds: true },
+  // La pile E2E (apps/e2e) saute la vérification de types du `next build` (≈ 1 min, et un
+  // worker de vérification qui a planté sous charge) : le typage reste vérifié par `pnpm build`.
+  ...(process.env.ARCHIVAGE_WEB_SKIP_TYPECHECK === '1' ? { typescript: { ignoreBuildErrors: true } } : {}),
   // Proxy même-origine : le navigateur appelle /api sur l'adresse par laquelle il est arrivé
   // (LAN, Tailscale, Docker, …) et Next route en interne vers l'API.
   // En local : 127.0.0.1:3001. En compose : http://docupro-demo-api:3001 (API_INTERNAL_URL).
