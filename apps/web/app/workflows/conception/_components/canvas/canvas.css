@@ -1,0 +1,157 @@
+/* Canevas, palette, liste alternative et problèmes de l'éditeur Docu-Flow (préfixe wfc-).
+   Variables AntD uniquement : aucune couleur codée en dur. */
+
+.wfc-sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* ---- Canevas React Flow : variables --xy-* alignées sur le thème AntD ---- */
+.wfc-canvas { position: relative; width: 100%; height: 100%; min-height: 420px; }
+.wfc-canvas .react-flow {
+  --xy-background-color: var(--ant-color-bg-layout);
+  --xy-node-color: var(--ant-color-text);
+  --xy-node-border: 1px solid var(--ant-color-border);
+  --xy-node-background-color: var(--ant-color-bg-container);
+  --xy-node-border-radius: var(--ant-border-radius);
+  --xy-node-boxshadow-hover: 0 1px 4px 1px var(--ant-color-fill-secondary);
+  --xy-node-boxshadow-selected: 0 0 0 2px var(--ant-color-primary);
+  --xy-edge-stroke: var(--ant-color-text-tertiary);
+  --xy-edge-stroke-selected: var(--ant-color-primary);
+  --xy-edge-label-color: var(--ant-color-text);
+  --xy-edge-label-background-color: var(--ant-color-bg-container);
+  --xy-handle-background-color: var(--ant-color-primary);
+  --xy-handle-border-color: var(--ant-color-bg-container);
+  --xy-selection-background-color: var(--ant-color-primary-bg);
+  --xy-selection-border: 1px dotted var(--ant-color-primary);
+  --xy-minimap-background-color: var(--ant-color-bg-container);
+  --xy-minimap-mask-background-color: var(--ant-color-fill-tertiary);
+  --xy-minimap-node-background-color: var(--ant-color-fill);
+  --xy-controls-button-background-color: var(--ant-color-bg-container);
+  --xy-controls-button-background-color-hover: var(--ant-color-fill-tertiary);
+  --xy-controls-button-color: var(--ant-color-text);
+  --xy-controls-button-border-color: var(--ant-color-border-secondary);
+  --xy-controls-box-shadow: 0 0 2px 1px var(--ant-color-fill-secondary);
+  --xy-attribution-background-color: var(--ant-color-bg-container);
+  font-family: inherit;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius);
+}
+.wfc-canvas .react-flow__background { --xy-background-pattern-dots-color: var(--ant-color-border); }
+.wfc-canvas .react-flow__background-pattern { color: var(--ant-color-border); }
+.wfc-canvas .react-flow__controls-button svg { fill: currentColor; }
+.wfc-canvas .react-flow__edge-textbg { fill: var(--ant-color-bg-container); }
+.wfc-canvas .react-flow__edge-text { fill: var(--ant-color-text); font-size: 11px; }
+.wfc-canvas .react-flow__edge.selected .react-flow__edge-path { stroke-width: 2.5; }
+.wfc-canvas .react-flow__edge:focus-visible .react-flow__edge-path,
+.wfc-canvas .react-flow__node:focus-visible { outline: 2px solid var(--ant-color-primary); outline-offset: 2px; }
+.wfc-canvas .react-flow__node { padding: 0; border: 0; background: transparent; box-shadow: none; }
+
+/* ---- Nœud d'étape ---- */
+.wfc-node {
+  position: relative; width: 220px; display: flex; flex-direction: column; gap: 4px; padding: 8px 12px;
+  color: var(--ant-color-text); background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius);
+}
+.wfc-node--selected { border-color: var(--ant-color-primary); box-shadow: 0 0 0 2px var(--ant-color-primary); }
+.wfc-node--issue { border-color: var(--ant-color-error); }
+.wfc-node--selected.wfc-node--issue { box-shadow: 0 0 0 2px var(--ant-color-primary); }
+.wfc-node-type { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ant-color-text-secondary); }
+.wfc-node-name {
+  font-size: 14px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;
+}
+.wfc-node-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.wfc-badge {
+  display: inline-flex; align-items: center; padding: 0 6px; font-size: 11px; line-height: 18px;
+  color: var(--ant-color-text-secondary); background: var(--ant-color-fill-tertiary);
+  border-radius: var(--ant-border-radius-sm, 4px); white-space: nowrap;
+}
+.wfc-badge--issue { color: var(--ant-color-error); background: var(--ant-color-error-bg); }
+.wfc-badge--ai { margin-left: 6px; color: var(--ant-color-primary); background: var(--ant-color-primary-bg); }
+/* Poignées >= 14 px pour le tactile. */
+.wfc-canvas .react-flow__handle.wfc-handle { width: 14px; height: 14px; border-width: 2px; }
+.wfc-canvas .react-flow__handle.wfc-handle.react-flow__handle-left { left: -7px; }
+.wfc-canvas .react-flow__handle.wfc-handle.react-flow__handle-right { right: -7px; }
+
+/* ---- Palette ---- */
+.wfc-palette { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.wfc-palette-title, .wfc-outline-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--ant-color-text); }
+.wfc-palette-note { margin: 0; font-size: 12px; color: var(--ant-color-text-secondary); }
+.wfc-palette-list { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.wfc-palette-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 10px; text-align: left;
+  font: inherit; color: var(--ant-color-text); background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius); cursor: grab;
+}
+.wfc-palette-btn:hover:not(:disabled) { border-color: var(--ant-color-primary); background: var(--ant-color-primary-bg); }
+.wfc-palette-btn:focus-visible, .wfc-outline-select:focus-visible, .wfc-outline-edge-select:focus-visible {
+  outline: 2px solid var(--ant-color-primary); outline-offset: 2px;
+}
+.wfc-palette-btn:disabled { cursor: not-allowed; color: var(--ant-color-text-disabled); background: var(--ant-color-bg-container-disabled); }
+.wfc-palette-icon { display: inline-flex; flex: none; color: var(--ant-color-primary); }
+.wfc-palette-btn:disabled .wfc-palette-icon { color: inherit; }
+.wfc-palette-text { display: flex; flex-direction: column; min-width: 0; }
+.wfc-palette-label { display: flex; align-items: center; font-weight: 600; font-size: 14px; }
+.wfc-palette-desc { font-size: 12px; color: var(--ant-color-text-secondary); }
+.wfc-palette-btn:disabled .wfc-palette-desc { color: inherit; }
+
+/* ---- Liste alternative ---- */
+.wfc-outline { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wfc-outline-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; counter-reset: wfc-step; }
+.wfc-outline-step {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px; min-width: 0;
+  background: var(--ant-color-bg-container); border: 1px solid var(--ant-color-border); border-radius: var(--ant-border-radius);
+}
+.wfc-outline-step--selected { border-color: var(--ant-color-primary); box-shadow: 0 0 0 2px var(--ant-color-primary-bg); background: var(--ant-color-primary-bg); }
+.wfc-outline-select {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; width: 100%; min-height: 44px; padding: 6px 8px; text-align: left;
+  font: inherit; color: var(--ant-color-text); background: transparent; border: 0; border-radius: var(--ant-border-radius); cursor: pointer;
+}
+.wfc-outline-icon { display: inline-flex; flex: none; color: var(--ant-color-primary); }
+.wfc-outline-main { display: flex; flex-direction: column; flex: 1; min-width: 120px; }
+.wfc-outline-type { font-size: 12px; color: var(--ant-color-text-secondary); }
+.wfc-outline-name { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.wfc-outline-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.wfc-outline-edges { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0 0 0 12px; list-style: none; }
+.wfc-outline-edge { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; border-radius: var(--ant-border-radius); }
+.wfc-outline-edge--selected { background: var(--ant-color-fill-tertiary); }
+.wfc-outline-edge-select {
+  display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; flex: 1; min-width: 0; min-height: 44px; padding: 4px 8px; text-align: left;
+  font: inherit; color: var(--ant-color-text); background: transparent; border: 0; border-radius: var(--ant-border-radius); cursor: pointer;
+}
+.wfc-outline-edge-target { font-weight: 600; overflow-wrap: anywhere; }
+.wfc-outline-edge-label { font-size: 12px; color: var(--ant-color-text-secondary); overflow-wrap: anywhere; }
+.wfc-outline-actions, .wfc-outline-add { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.wfc-outline-field { display: flex; flex-direction: column; gap: 4px; }
+.wfc-outline-field-label { font-size: 12px; font-weight: 600; color: var(--ant-color-text-secondary); }
+.wfc-outline-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wfc-outline-inline--wrap { flex-wrap: wrap; }
+.wfc-outline-select-input { flex: 1; min-width: 160px; }
+.wfc-outline-error { font-size: 12px; color: var(--ant-color-error); overflow-wrap: anywhere; }
+
+/* ---- Problèmes ---- */
+.wfc-issues { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.wfc-issues-summary { margin: 0; font-size: 15px; font-weight: 600; color: var(--ant-color-text); }
+.wfc-issues-summary--error { color: var(--ant-color-error); }
+.wfc-issues-status { margin: 0; font-weight: 600; }
+.wfc-issues-status--ok { color: var(--ant-color-success); }
+.wfc-issues-note { margin: 0; font-size: 12px; color: var(--ant-color-text-secondary); overflow-wrap: anywhere; }
+.wfc-issues-body { display: flex; flex-direction: column; gap: 12px; }
+.wfc-issues-group { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--ant-color-text); }
+.wfc-issues-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.wfc-issue {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px; min-width: 0;
+  border: 1px solid var(--ant-color-error-border); background: var(--ant-color-error-bg); border-radius: var(--ant-border-radius);
+}
+.wfc-issue-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--ant-color-text); }
+.wfc-issue-text { margin: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.wfc-issue-detail { font-size: 12px; color: var(--ant-color-text-secondary); max-width: 100%; }
+.wfc-issue-detail summary { cursor: pointer; min-height: 24px; }
+.wfc-issue-detail p { margin: 4px 0 0; overflow-wrap: anywhere; }
+
+/* Cibles tactiles confortables sur mobile. */
+@media (max-width: 767px) {
+  .wfc-outline .ant-btn, .wfc-issues .ant-btn { min-height: 44px; }
+  .wfc-outline .ant-select-selector { min-height: 44px !important; align-items: center; }
+}

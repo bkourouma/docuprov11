@@ -1,0 +1,79 @@
+/* Docu-Flow : suivi des instances, détail, lancement, administration (préfixe wfi-).
+   Uniquement des variables AntD (clair et sombre) ; aucune couleur codée en dur. */
+.wfi-cards { display: grid; gap: 12px; grid-template-columns: 1fr; margin-bottom: 16px; }
+.wfi-card { display: grid; gap: 8px; }
+.wfi-card-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; }
+.wfi-card-title { font-weight: 600; overflow-wrap: anywhere; color: var(--ant-color-text); }
+.wfi-card-title:focus-visible, .wfi-link:focus-visible { outline: 2px solid var(--ant-color-primary); outline-offset: 2px; }
+.wfi-meta { display: grid; gap: 2px; font-size: 13px; color: var(--ant-color-text-secondary); }
+.wfi-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.wfi-pager { display: flex; justify-content: center; margin-top: 16px; }
+.wfi-toolbar-end { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.wfi-table { margin-bottom: 8px; }
+.wfi-table .ant-table-cell { vertical-align: top; }
+@media (max-width: 767px) {
+  .wfi-actions .ant-btn, .wfi-toolbar .ant-btn, .wfi-launch-card .ant-btn { min-height: 44px; }
+  .wfi-toolbar .ant-select-selector, .wfi-toolbar .ant-input-affix-wrapper { min-height: 44px; }
+}
+
+/* Détail : en-tête */
+.wfi-head { display: grid; gap: 12px; margin-bottom: 16px; }
+.wfi-facts { display: grid; gap: 10px 20px; margin: 0; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
+.wfi-fact { display: grid; gap: 2px; min-width: 0; }
+.wfi-fact dt { font-size: 12px; font-weight: 600; color: var(--ant-color-text-secondary); }
+.wfi-fact dd { margin: 0; overflow-wrap: anywhere; }
+.wfi-section { margin-bottom: 16px; }
+.wfi-section-title { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+
+/* Étapes franchies */
+.wfi-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.wfi-step {
+  display: grid; gap: 6px; padding: 10px 12px; min-width: 0;
+  border: 1px solid var(--ant-color-border-secondary); border-radius: var(--ant-border-radius);
+  background: var(--ant-color-bg-container);
+}
+.wfi-step-current {
+  border-color: var(--ant-color-primary); background: var(--ant-color-primary-bg);
+  box-shadow: inset 3px 0 0 var(--ant-color-primary);
+}
+.wfi-step-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.wfi-step-name { font-weight: 600; overflow-wrap: anywhere; }
+.wfi-step-sub { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 13px; color: var(--ant-color-text-secondary); }
+.wfi-step-wait { display: flex; gap: 6px; align-items: center; font-size: 13px; font-weight: 600; color: var(--ant-color-primary); }
+
+/* Journal */
+.wfi-filters { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 12px; }
+.wfi-journal { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.wfi-event {
+  display: grid; gap: 4px; padding: 10px 12px; min-width: 0;
+  border: 1px solid var(--ant-color-border-secondary); border-left-width: 4px; border-radius: var(--ant-border-radius);
+  background: var(--ant-color-bg-container);
+}
+.wfi-event-info { border-left-color: var(--ant-color-border); }
+.wfi-event-success { border-left-color: var(--ant-color-success); }
+.wfi-event-warning { border-left-color: var(--ant-color-warning); }
+.wfi-event-error { border-left-color: var(--ant-color-error); }
+.wfi-event-agent { border-left-color: var(--ant-color-primary); background: var(--ant-color-primary-bg); }
+.wfi-event-line { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; overflow-wrap: anywhere; }
+.wfi-event-who { font-weight: 600; display: inline-flex; gap: 4px; align-items: center; }
+.wfi-event-time { font-size: 12px; color: var(--ant-color-text-secondary); margin-left: auto; white-space: nowrap; }
+.wfi-event-details { display: grid; gap: 2px; margin: 0; padding: 0; font-size: 13px; color: var(--ant-color-text-secondary); }
+.wfi-event-details div { display: flex; flex-wrap: wrap; gap: 0 6px; }
+.wfi-event-details dt { font-weight: 600; }
+.wfi-event-details dd { margin: 0; overflow-wrap: anywhere; }
+.wfi-explanation { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ant-color-text); font-size: 13px; }
+@media (max-width: 767px) { .wfi-event-time { margin-left: 0; white-space: normal; } }
+
+/* Lancement */
+.wfi-launch-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+.wfi-launch-card { display: grid; gap: 10px; align-content: start; }
+.wfi-launch-name { font-weight: 600; overflow-wrap: anywhere; }
+.wfi-launch-desc { color: var(--ant-color-text-secondary); font-size: 13px; overflow-wrap: anywhere; margin: 0; }
+.wfi-form { display: grid; gap: 14px; }
+.wfi-subject-row { display: grid; gap: 8px; grid-template-columns: 1fr; }
+@media (min-width: 576px) { .wfi-subject-row { grid-template-columns: 200px 1fr; } }
+.wfi-key-row { display: flex; gap: 8px; align-items: stretch; }
+.wfi-key-row .ant-input { flex: 1; min-width: 0; }
+.wfi-hint { margin: 0; font-size: 12px; color: var(--ant-color-text-secondary); }
+.wfi-error { margin: 0; font-size: 13px; color: var(--ant-color-error); }
+.wfi-mono textarea { font-family: var(--ant-font-family-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); font-size: 13px; }
