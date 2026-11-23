@@ -9,6 +9,8 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import type { AuthUser } from '../auth/auth.types';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { MenuPermissionGuard } from '../auth/menu-permission.guard';
 import { RequireMenu } from '../auth/require-menu.decorator';
 import { SECURITY_MENUS } from '../access-inquiries/security.menus';
@@ -38,6 +40,10 @@ import {
  * handler par handler et en LECTURE, plus la seule écriture que ces écrans pratiquent
  * (`PATCH /users/confidentialite`) : création, suppression, mot de passe, `isAdmin` et `roleId`
  * restent réservés au menu « Utilisateurs ».
+ *
+ * Le menu ne suffit pas pour tout : `isAdmin`, le rôle système et toute action sur un compte
+ * administrateur exigent un acteur administrateur (règles dans `UsersService`, d'où l'acteur passé
+ * à chaque écriture).
  */
 @UseGuards(MenuPermissionGuard)
 @RequireMenu('/admin/users')
@@ -53,8 +59,11 @@ export class UsersController {
   }
 
   @Post()
-  create(@Body(new ZodValidationPipe(createUserSchema)) body: CreateUserDto) {
-    return this.service.createUser(body);
+  create(
+    @Body(new ZodValidationPipe(createUserSchema)) body: CreateUserDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.service.createUser(body, actor);
   }
 
   /**
@@ -74,29 +83,32 @@ export class UsersController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(updateUserSchema)) body: UpdateUserDto,
+    @CurrentUser() actor: AuthUser,
   ) {
-    return this.service.updateUser(id, body);
+    return this.service.updateUser(id, body, actor);
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.service.deleteUser(id);
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: AuthUser) {
+    return this.service.deleteUser(id, actor);
   }
 
   @Post(':id/reset-password')
   resetPassword(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(resetPasswordSchema)) body: ResetPasswordDto,
+    @CurrentUser() actor: AuthUser,
   ) {
-    return this.service.resetPassword(id, body.newPassword);
+    return this.service.resetPassword(id, body.newPassword, actor);
   }
 
   @Post(':id/groups')
   assignGroup(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(assignGroupSchema)) body: AssignGroupDto,
+    @CurrentUser() actor: AuthUser,
   ) {
-    return this.service.assignGroup(id, body.groupId, body.isDefault ?? false);
+    return this.service.assignGroup(id, body.groupId, body.isDefault ?? false, actor);
   }
 
   // Profils : depuis que « Sécurité type document par rôle » vise les rôles (2026-08-06), ce lookup

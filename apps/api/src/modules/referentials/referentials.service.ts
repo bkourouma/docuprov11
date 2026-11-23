@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { exportRows, type ExportFormat } from '@archivage/exports';
 import { PrismaService } from '../prisma/prisma.service';
 import { HierarchyService } from '../../common/hierarchy.service';
+import { findLabelConflict } from '../courriers/domain/label-normalisation';
 import type {
   CreateConfidentialiteDto,
   CreateDocumentTypeDto,
@@ -17,6 +18,26 @@ import type {
   UpdateLocationDto,
   UpdatePlanDto,
 } from './referentials.dto';
+
+/** Code d'une erreur Prisma connue (`P2002` unicité, `P2003` clé étrangère, `P2025` introuvable). */
+function prismaCode(e: unknown): string | undefined {
+  const code = typeof e === 'object' && e !== null ? (e as { code?: unknown }).code : undefined;
+  return typeof code === 'string' ? code : undefined;
+}
+
+/**
+ * Filet de sécurité des écritures : le contrôle applicatif précède toujours l'écriture, mais une
+ * course (deux créations simultanées du même libellé, du même rang) atteint quand même l'index
+ * unique. Sans cette traduction, le filtre global la rendait en 500 générique.
+ */
+async function conflictOnDuplicate<T>(write: Promise<T>, message: string): Promise<T> {
+  try {
+    return await write;
+  } catch (e) {
+    if (prismaCode(e) === 'P2002') throw new ConflictException(message);
+    throw e;
+  }
+}
 
 @Injectable()
 export class ReferentialsService {
@@ -36,7 +57,10 @@ export class ReferentialsService {
       select: { documentTypeId: true },
     });
     if (dup) throw new ConflictException('Un type de document actif porte déjà ce libellé');
-    return this.prisma.documentType.create({ data: { label: input.label, code: input.code ?? null } });
+    return conflictOnDuplicate(
+      this.prisma.documentType.create({ data: { label: input.label, code: input.code ?? null } }),
+      'Un type de document actif porte déjà ce libellé',
+    );
   }
 
   async updateDocumentType(documentTypeId: number, input: UpdateDocumentTypeDto) {
@@ -50,10 +74,22 @@ export class ReferentialsService {
       select: { documentTypeId: true },
     });
     if (dup) throw new ConflictException('Un type de document actif porte déjà ce libellé');
-    return this.prisma.documentType.update({ where: { documentTypeId }, data: { label: input.label } });
+    return conflictOnDuplicate(
+      this.prisma.documentType.update({ where: { documentTypeId }, data: { label: input.label } }),
+      'Un type de document actif porte déjà ce libellé',
+    );
   }
 
+  /**
+   * Désactivation (le type reste référencé par ses documents). Un identifiant inconnu rendait
+   * l'erreur Prisma P2025 brute, donc un 500 : il rend désormais 404, comme les autres référentiels.
+   */
   async deactivateDocumentType(documentTypeId: number) {
+    const node = await this.prisma.documentType.findUnique({
+      where: { documentTypeId },
+      select: { documentTypeId: true },
+    });
+    if (!node) throw new NotFoundException('Type de document introuvable');
     await this.prisma.documentType.update({ where: { documentTypeId }, data: { isActive: false } });
     return { deactivated: true };
   }
@@ -91,14 +127,14 @@ export class ReferentialsService {
    * seed (Public 0 / Interne 10 / Confidentiel 20 / Secret 30) plutôt que le laisser saisir.
    */
   async createConfidentialite(input: CreateConfidentialiteDto) {
-    const dup = await this.prisma.confidentialite.findFirst({
-      where: { label: input.label, isActive: true },
-      select: { confidentialiteId: true },
-    });
-    if (dup) throw new ConflictException('Un niveau de confidentialité actif porte déjà ce libellé');
+    await this.assertConfidentialiteLabelFree(input.label, null);
     const max = await this.prisma.confidentialite.aggregate({ _max: { rank: true } });
     const rank = (max._max.rank ?? -10) + 10;
-    return this.prisma.confidentialite.create({ data: { label: input.label, rank } });
+    // P2002 restant = course : même libellé, ou même rang calculé par deux créations simultanées.
+    return conflictOnDuplicate(
+      this.prisma.confidentialite.create({ data: { label: input.label, rank } }),
+      'Un niveau de confidentialité actif porte déjà ce libellé ou ce rang — réessayez',
+    );
   }
 
   async updateConfidentialite(confidentialiteId: number, input: UpdateConfidentialiteDto) {
@@ -107,15 +143,37 @@ export class ReferentialsService {
       select: { confidentialiteId: true },
     });
     if (!node) throw new NotFoundException('Niveau de confidentialité introuvable');
-    const dup = await this.prisma.confidentialite.findFirst({
-      where: { label: input.label, isActive: true, confidentialiteId: { not: confidentialiteId } },
-      select: { confidentialiteId: true },
-    });
-    if (dup) throw new ConflictException('Un niveau de confidentialité actif porte déjà ce libellé');
-    return this.prisma.confidentialite.update({ where: { confidentialiteId }, data: { label: input.label } });
+    await this.assertConfidentialiteLabelFree(input.label, confidentialiteId);
+    return conflictOnDuplicate(
+      this.prisma.confidentialite.update({ where: { confidentialiteId }, data: { label: input.label } }),
+      'Un niveau de confidentialité actif porte déjà ce libellé',
+    );
   }
 
+  /**
+   * Unicité du libellé parmi les niveaux ACTIFS, insensible à la casse et aux espaces : c'est la
+   * sémantique de l'index `confidentialite_label_active_key` (`lower(replace(label, ' ', ''))`).
+   * La comparaison au libellé brut laissait passer « secret » à côté de « Secret », que l'index
+   * refusait ensuite en 500 au lieu du 409 attendu.
+   */
+  private async assertConfidentialiteLabelFree(label: string, excludeId: number | null) {
+    const active = await this.prisma.confidentialite.findMany({
+      where: { isActive: true },
+      select: { confidentialiteId: true, label: true },
+    });
+    const rows = active.map((r) => ({ id: r.confidentialiteId, label: r.label }));
+    if (findLabelConflict(label, rows, excludeId)) {
+      throw new ConflictException('Un niveau de confidentialité actif porte déjà ce libellé');
+    }
+  }
+
+  /** Désactivation ; un identifiant inconnu rend 404 (P2025 brut = 500 auparavant). */
   async deactivateConfidentialite(confidentialiteId: number) {
+    const node = await this.prisma.confidentialite.findUnique({
+      where: { confidentialiteId },
+      select: { confidentialiteId: true },
+    });
+    if (!node) throw new NotFoundException('Niveau de confidentialité introuvable');
     await this.prisma.confidentialite.update({ where: { confidentialiteId }, data: { isActive: false } });
     return { deactivated: true };
   }
@@ -316,15 +374,18 @@ export class ReferentialsService {
     if (dup) throw new ConflictException('Un dossier actif porte déjà ce libellé');
 
     const { parentPath, depth } = await this.resolveParent('dossier', input.parentId);
-    const node = await this.prisma.dossier.create({
-      data: {
-        label: input.label,
-        code: input.code ?? null,
-        parentId: input.parentId ?? null,
-        depth,
-        path: '/',
-      },
-    });
+    const node = await conflictOnDuplicate(
+      this.prisma.dossier.create({
+        data: {
+          label: input.label,
+          code: input.code ?? null,
+          parentId: input.parentId ?? null,
+          depth,
+          path: '/',
+        },
+      }),
+      'Un dossier actif porte déjà ce libellé',
+    );
     return this.prisma.dossier.update({
       where: { dossierId: node.dossierId },
       data: { path: this.hierarchy.childPath(parentPath, node.dossierId) },
@@ -340,7 +401,9 @@ export class ReferentialsService {
     let parentDepth = -1;
     if (newParentId != null) {
       const parent = await this.prisma.dossier.findUnique({ where: { dossierId: newParentId } });
-      if (!parent) throw new BadRequestException('Dossier parent introuvable');
+      // Un parent désactivé vaut un parent absent : l'écran ne le liste plus, le dossier déplacé
+      // sous lui s'afficherait comme une racine orpheline.
+      if (!parent || !parent.isActive) throw new BadRequestException('Dossier parent introuvable');
       if (parent.path.startsWith(node.path)) throw new BadRequestException('Déplacement cyclique interdit');
       parentPath = parent.path;
       parentDepth = parent.depth;
@@ -376,13 +439,16 @@ export class ReferentialsService {
       });
       if (dup) throw new ConflictException('Un dossier actif porte déjà ce libellé');
     }
-    return this.prisma.dossier.update({
-      where: { dossierId },
-      data: {
-        ...(input.label !== undefined ? { label: input.label } : {}),
-        ...(input.code !== undefined ? { code: input.code } : {}),
-      },
-    });
+    return conflictOnDuplicate(
+      this.prisma.dossier.update({
+        where: { dossierId },
+        data: {
+          ...(input.label !== undefined ? { label: input.label } : {}),
+          ...(input.code !== undefined ? { code: input.code } : {}),
+        },
+      }),
+      'Un dossier actif porte déjà ce libellé',
+    );
   }
 
   /** Soft-delete a dossier and its whole subtree (keeps children from orphaning). */
@@ -422,20 +488,66 @@ export class ReferentialsService {
 
   // ---- Permission grants ----------------------------------------------------
   async grantDocumentPermission(input: GrantDocumentPermissionDto) {
-    return this.prisma.documentPermission.upsert({
-      where: {
-        documentId_userGroupId_permissionLevelId: {
-          documentId: input.documentId,
-          userGroupId: input.userGroupId,
-          permissionLevelId: input.permissionLevelId,
+    try {
+      return await this.prisma.documentPermission.upsert({
+        where: {
+          documentId_userGroupId_permissionLevelId: {
+            documentId: input.documentId,
+            userGroupId: input.userGroupId,
+            permissionLevelId: input.permissionLevelId,
+          },
         },
-      },
-      update: {},
-      create: input,
-    });
+        update: {},
+        create: input,
+      });
+    } catch (e) {
+      // Document, acteur ou niveau inexistant : clé étrangère violée, rendue en 500 auparavant.
+      if (prismaCode(e) === 'P2003') {
+        throw new BadRequestException('Document, utilisateur ou niveau de permission introuvable');
+      }
+      throw e;
+    }
   }
 
-  grantTypePermission(input: GrantTypePermissionDto) {
+  /**
+   * Octroi d'un droit par type. Chaque référence est vérifiée AVANT l'écriture : un identifiant
+   * inconnu violait une clé étrangère, rendue en 500 par le filtre global.
+   *
+   * « Denied » (niveau 1) est refusé, comme dans `DocumentTabsService.grantPermission` et comme
+   * l'exige la recette (« un appel API direct avec le niveau 1 est refusé ») : l'écran ne le
+   * propose pas, et une telle ligne n'aurait de toute façon aucun effet — la visibilité par type ne
+   * compte que les niveaux ≥ 2, l'absence de droit tenant lieu de refus.
+   */
+  async grantTypePermission(input: GrantTypePermissionDto) {
+    if (input.permissionLevelId === 1) {
+      throw new BadRequestException('Le niveau « Denied » ne peut pas être accordé explicitement');
+    }
+    const [type, level] = await Promise.all([
+      this.prisma.documentType.findUnique({
+        where: { documentTypeId: input.documentTypeId },
+        select: { isActive: true },
+      }),
+      this.prisma.permissionLevel.findUnique({
+        where: { permissionLevelId: input.permissionLevelId },
+        select: { permissionLevelId: true },
+      }),
+    ]);
+    if (!type || !type.isActive) throw new BadRequestException('Type de document introuvable');
+    if (!level) throw new BadRequestException('Niveau de permission inconnu');
+    if (input.roleId != null) {
+      const role = await this.prisma.role.findUnique({
+        where: { roleId: input.roleId },
+        select: { roleId: true },
+      });
+      if (!role) throw new BadRequestException('Rôle introuvable');
+    }
+    if (input.userGroupId != null) {
+      const actor = await this.prisma.appUserGroup.findUnique({
+        where: { userGroupId: input.userGroupId },
+        select: { userGroupId: true },
+      });
+      if (!actor) throw new BadRequestException('Utilisateur introuvable');
+    }
     return this.prisma.documentTypePermission.create({
       data: {
         documentTypeId: input.documentTypeId,
@@ -543,15 +655,19 @@ export class ReferentialsService {
     parentId?: number,
   ): Promise<{ parentPath: string | null; depth: number }> {
     if (parentId == null) return { parentPath: null, depth: 0 };
-    let parent: { path: string; depth: number } | null = null;
+    const select = { path: true, depth: true, isActive: true } as const;
+    let parent: { path: string; depth: number; isActive: boolean } | null = null;
     if (kind === 'classificationPlan') {
-      parent = await this.prisma.classificationPlan.findUnique({ where: { planId: parentId }, select: { path: true, depth: true } });
+      parent = await this.prisma.classificationPlan.findUnique({ where: { planId: parentId }, select });
     } else if (kind === 'location') {
-      parent = await this.prisma.location.findUnique({ where: { locationId: parentId }, select: { path: true, depth: true } });
+      parent = await this.prisma.location.findUnique({ where: { locationId: parentId }, select });
     } else {
-      parent = await this.prisma.dossier.findUnique({ where: { dossierId: parentId }, select: { path: true, depth: true } });
+      parent = await this.prisma.dossier.findUnique({ where: { dossierId: parentId }, select });
     }
-    if (!parent) throw new BadRequestException('Élément parent introuvable');
+    // Un parent DÉSACTIVÉ vaut un parent absent : les listes ne renvoient que les actifs, l'enfant
+    // créé sous lui s'afficherait donc comme une racine orpheline, et réapparaîtrait seul alors que
+    // sa branche a été supprimée.
+    if (!parent || !parent.isActive) throw new BadRequestException('Élément parent introuvable');
     return { parentPath: parent.path, depth: parent.depth + 1 };
   }
 }

@@ -264,7 +264,12 @@ function CadreWidget<Ctx>({
   const Fermer = icons.close;
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    // `data-testid` : le titre du widget n'est pas un repère unique (« Croissance du fonds » est
+    // aussi le titre de la carte qu'il contient) ; l'identifiant de catalogue, lui, l'est.
+    <div
+      data-testid={`widget-${widget.id}`}
+      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+    >
       {/* En-tête toujours visible (identifie le widget dans la grille) ; en mode édition, cette
           même zone devient la poignée de glissement + le bouton de retrait. */}
       <div
