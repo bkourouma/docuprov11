@@ -111,13 +111,29 @@ function buildTree<T extends { parentId: number | null }>(
   return roots;
 }
 
-/** Labelled field wrapper for the advanced filter grid. */
-function Field({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * Labelled field wrapper for the advanced filter grid.
+ *
+ * `htmlFor` relie le libellé au champ de saisie (l'`id` d'un Select/TreeSelect AntD est posé sur
+ * son `input` de rôle `combobox`) : le champ est ainsi nommé pour les lecteurs d'écran, et
+ * retrouvable par son libellé dans les tests de bout en bout.
+ */
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  children: ReactNode;
+}) {
   return (
     <div>
-      <Text type="secondary" style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
-        {label}
-      </Text>
+      <label htmlFor={htmlFor} style={{ display: 'block', marginBottom: 4 }}>
+        <Text type="secondary" style={{ fontSize: 13 }}>
+          {label}
+        </Text>
+      </label>
       {children}
     </div>
   );
@@ -347,8 +363,12 @@ export default function SearchPage() {
       const a = document.createElement('a');
       a.href = url;
       a.download = `documents.${format}`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      a.remove();
+      // Révoquer l'URL dans la foulée du clic annulait parfois le téléchargement (Chromium lit le
+      // blob de façon asynchrone) : le fichier n'arrivait jamais (ANO-ARC-B-02). Libérée plus tard.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     },
     [applied, sort, message],
   );
@@ -455,6 +475,7 @@ export default function SearchPage() {
                   style={{ color: 'var(--ant-color-text-tertiary)' }}
                 />
               }
+              aria-label="Recherche plein texte"
               placeholder="Rechercher dans le libellé, la référence et le texte OCR…"
               value={qDraft}
               onChange={(e) => setQDraft(e.target.value)}
@@ -501,8 +522,9 @@ export default function SearchPage() {
               children: (
                 <Row gutter={[16, 16]}>
                   <Col xs={24} md={12} lg={8}>
-                    <Field label="Type de document">
+                    <Field label="Type de document" htmlFor="search-document-type">
                       <Select
+                        id="search-document-type"
                         style={{ width: '100%' }}
                         value={typeDraft ?? undefined}
                         onChange={(v) => setTypeDraft((v as number) ?? null)}
@@ -515,8 +537,9 @@ export default function SearchPage() {
                     </Field>
                   </Col>
                   <Col xs={24} md={12} lg={8}>
-                    <Field label="Dossier">
+                    <Field label="Dossier" htmlFor="search-dossier">
                       <TreeSelect
+                        id="search-dossier"
                         style={{ width: '100%' }}
                         value={dossierDraft ?? undefined}
                         onChange={(v) => setDossierDraft((v as number) ?? null)}
@@ -530,8 +553,9 @@ export default function SearchPage() {
                     </Field>
                   </Col>
                   <Col xs={24} md={12} lg={8}>
-                    <Field label="Plan de classement">
+                    <Field label="Plan de classement" htmlFor="search-plan">
                       <TreeSelect
+                        id="search-plan"
                         style={{ width: '100%' }}
                         value={planDraft ?? undefined}
                         onChange={(v) => setPlanDraft((v as number) ?? null)}
@@ -545,8 +569,9 @@ export default function SearchPage() {
                     </Field>
                   </Col>
                   <Col xs={24} md={12} lg={8}>
-                    <Field label="Type de fichier">
+                    <Field label="Type de fichier" htmlFor="search-file-type">
                       <Select
+                        id="search-file-type"
                         style={{ width: '100%' }}
                         value={fileTypeDraft ?? undefined}
                         onChange={(v) => setFileTypeDraft((v as number) ?? null)}

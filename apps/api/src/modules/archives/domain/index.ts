@@ -1,5 +1,6 @@
 // Domaine métier PUR de Docu-Archives : aucune dépendance NestJS/Prisma.
 export * from './dua';
+export * from './lending-scope';
 
 // Normalisation des libellés de référentiel : la règle est UNE (`lower(replace(label,' ',''))`,
 // miroir des index SQL uniques partiels), elle a été écrite pour Docu-Courriers et vaut telle

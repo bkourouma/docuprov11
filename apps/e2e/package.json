@@ -18,7 +18,10 @@
     "@archivage/config": "workspace:*",
     "@playwright/test": "1.65.1",
     "@types/node": "^22.10.2",
+    "exceljs": "^4.4.0",
     "ioredis": "^5.4.2",
+    "jszip": "^3.10.1",
+    "pdf-lib": "^1.17.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

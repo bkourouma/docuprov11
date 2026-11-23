@@ -1,8 +1,16 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DocumentState } from '@archivage/types';
 import { PrismaService } from '../prisma/prisma.service';
-import { toIsoDate } from './domain';
+import type { AuthUser } from '../auth/auth.types';
+import { effectiveMenuKeys } from '../auth/menu-access';
+import { lendingAccess, toIsoDate, type LendingAccess, type LendingAction } from './domain';
 import type { CreateLendingDto, LendingQueryDto } from './archives.dto';
 
 /** Ligne des écrans « Documents communiqués », « Mes documents communiqués » et « Historique ». */
@@ -85,24 +93,39 @@ export class ArchivesLendingService {
   /**
    * Crée une communication : une entête + un détail par document.
    *
-   * Contrôles refusés en bloc (une transaction, pas de prêt à moitié créé) : documents inexistants,
-   * documents épurés, documents déjà prêtés. Le source créait les détails un à un sans vérifier,
-   * de sorte qu'un document déjà sorti pouvait l'être une seconde fois.
+   * Contrôles refusés en bloc (une transaction, pas de prêt à moitié créé) : bénéficiaire ou motif
+   * inexistant, motif désactivé, documents inexistants, épurés, gelés ou déjà prêtés. Le source
+   * créait les détails un à un sans vérifier, de sorte qu'un document déjà sorti pouvait l'être une
+   * seconde fois.
+   *
+   * Corrections du 2026-11-22 (E2E lot 2, T3) :
+   *  - motif vérifié AVANT l'insertion : un identifiant inconnu levait une violation de clé
+   *    étrangère, rendue en 500 (ANO-ARC-T3-01) ;
+   *  - documents gelés refusés, comme `listLendableDocuments` les écarte déjà (ANO-ARC-T3-03) ;
+   *  - identifiants dédoublonnés : le même document cité deux fois créait deux sorties
+   *    concurrentes de la même pièce (ANO-ARC-T3-04).
    */
   async createLending(input: CreateLendingDto, createdBy: number | null) {
+    const documentIds = [...new Set(input.documentIds)];
+
     const beneficiary = await this.prisma.appUserGroup.findUnique({
       where: { userGroupId: input.userGroupId },
       select: { userGroupId: true },
     });
     if (!beneficiary) throw new NotFoundException('Bénéficiaire introuvable');
 
-    const documents = await this.prisma.document.findMany({
-      where: { documentId: { in: input.documentIds } },
-      select: { documentId: true, label: true, documentState: true },
+    const motive = await this.prisma.lendingMotive.findUnique({
+      where: { lendingMotiveId: input.lendingMotiveId },
+      select: { isActive: true },
     });
-    const missing = input.documentIds.filter(
-      (id) => !documents.some((d) => d.documentId === id),
-    );
+    if (!motive) throw new NotFoundException('Motif de prêt introuvable');
+    if (!motive.isActive) throw new BadRequestException('Motif de prêt désactivé');
+
+    const documents = await this.prisma.document.findMany({
+      where: { documentId: { in: documentIds } },
+      select: { documentId: true, label: true, documentState: true, isFrozen: true },
+    });
+    const missing = documentIds.filter((id) => !documents.some((d) => d.documentId === id));
     if (missing.length) {
       throw new NotFoundException(`Document(s) introuvable(s) : ${missing.join(', ')}`);
     }
@@ -114,8 +137,15 @@ export class ArchivesLendingService {
       );
     }
 
+    const frozen = documents.filter((d) => d.isFrozen);
+    if (frozen.length) {
+      throw new ConflictException(
+        `Document(s) gelé(s), non communicable(s) : ${frozen.map((d) => d.label).join(', ')}`,
+      );
+    }
+
     const alreadyOut = await this.prisma.lendingDocumentDetail.findMany({
-      where: { documentId: { in: input.documentIds }, returnedDate: null },
+      where: { documentId: { in: documentIds }, returnedDate: null },
       select: { document: { select: { label: true } } },
     });
     if (alreadyOut.length) {
@@ -133,7 +163,7 @@ export class ArchivesLendingService {
         lendingMotiveId: input.lendingMotiveId,
         userGroupId: input.userGroupId,
         createdBy,
-        details: { create: input.documentIds.map((documentId) => ({ documentId })) },
+        details: { create: documentIds.map((documentId) => ({ documentId })) },
       },
       include: { details: true },
     });
@@ -266,13 +296,57 @@ export class ArchivesLendingService {
   }
 
   /**
+   * Périmètre de l'appelant pour un geste sur un prêt identifié (ANO-ARC-T3-05, règle dans
+   * `domain/lending-scope.ts`). Menus relus en base, comme le `MenuPermissionGuard` : le jeton ne
+   * les porte pas, et un menu retiré doit prendre effet sans reconnexion.
+   */
+  private async accessFor(user: AuthUser, action: LendingAction): Promise<LendingAccess> {
+    if (user.isAdmin) return 'all';
+    const row = await this.prisma.appUser.findUnique({
+      where: { userId: user.userId },
+      select: {
+        isAdmin: true,
+        role: {
+          select: { isActive: true, isSystem: true, menus: { select: { menuKey: true } } },
+        },
+      },
+    });
+    const access = lendingAccess(
+      effectiveMenuKeys(row?.isAdmin ?? false, row?.role ?? null),
+      action,
+    );
+    if (access === 'none') throw new ForbiddenException("Vous n'avez pas accès à cette section.");
+    return access;
+  }
+
+  /**
+   * Filtre « prêts de l'appelant » sur l'ENTÊTE, identique à celui de `listMine` : la personne
+   * bénéficiaire, pas l'acteur du jeton (un prêt reçu via un autre de ses groupes reste le sien).
+   *
+   * Un prêt hors périmètre est rendu INTROUVABLE (404, même message qu'un identifiant inexistant)
+   * plutôt qu'interdit (403) : pour un porteur du seul menu « Mes documents communiqués », le
+   * prêt d'autrui n'existe pas — sa liste ne le montre pas — et un 403 confirmerait l'existence de
+   * chaque identifiant essayé.
+   */
+  private ownLendingFilter(
+    access: LendingAccess,
+    user: AuthUser,
+  ): Prisma.LendingDocumentWhereInput {
+    return access === 'own' ? { userGroup: { userId: user.userId } } : {};
+  }
+
+  /**
    * Retour d'un document prêté. Clôt aussi l'entête si c'était le dernier document en sortie.
    * Idempotence refusée à dessein : re-cliquer sur « Retour » d'un prêt déjà rendu écraserait la
    * date de retour réelle, donc l'historique.
+   *
+   * Périmètre : « Documents communiqués » rend tout prêt ; « Mes documents communiqués » seul ne
+   * rend que les siens (ANO-ARC-T3-05).
    */
-  async returnDetail(lendingDocumentDetailId: number) {
-    const detail = await this.prisma.lendingDocumentDetail.findUnique({
-      where: { lendingDocumentDetailId },
+  async returnDetail(lendingDocumentDetailId: number, user: AuthUser) {
+    const access = await this.accessFor(user, 'return');
+    const detail = await this.prisma.lendingDocumentDetail.findFirst({
+      where: { lendingDocumentDetailId, lending: this.ownLendingFilter(access, user) },
       select: { lendingDocumentId: true, returnedDate: true },
     });
     if (!detail) throw new NotFoundException('Prêt introuvable');
@@ -297,10 +371,14 @@ export class ArchivesLendingService {
     });
   }
 
-  /** Détail d'un prêt : ses documents et ses commentaires. */
-  async getLending(lendingDocumentId: number) {
-    const lending = await this.prisma.lendingDocument.findUnique({
-      where: { lendingDocumentId },
+  /**
+   * Détail d'un prêt : ses documents et ses commentaires. « Documents communiqués » et
+   * « Historique » lisent tout prêt ; « Mes documents communiqués » seul, les siens.
+   */
+  async getLending(lendingDocumentId: number, user: AuthUser) {
+    const access = await this.accessFor(user, 'read');
+    const lending = await this.prisma.lendingDocument.findFirst({
+      where: { lendingDocumentId, ...this.ownLendingFilter(access, user) },
       include: {
         motive: { select: { label: true } },
         userGroup: { select: { user: { select: { fullName: true, username: true } } } },
@@ -309,7 +387,9 @@ export class ArchivesLendingService {
           orderBy: { lendingDocumentDetailId: 'asc' },
         },
         comments: {
-          include: { userGroup: { select: { user: { select: { fullName: true, username: true } } } } },
+          include: {
+            userGroup: { select: { user: { select: { fullName: true, username: true } } } },
+          },
           orderBy: { createdAt: 'desc' },
         },
       },
@@ -318,12 +398,18 @@ export class ArchivesLendingService {
     return lending;
   }
 
-  async addComment(lendingDocumentId: number, comments: string, userGroupId: number | null) {
+  /**
+   * Commentaire sur un prêt, signé de l'acteur du jeton. « Documents communiqués » commente tout
+   * prêt ; « Mes documents communiqués » seul, les siens.
+   */
+  async addComment(lendingDocumentId: number, comments: string, user: AuthUser) {
+    const userGroupId = user.userGroupId;
     if (userGroupId == null) {
       throw new BadRequestException("Votre compte n'a pas d'acteur : commentaire impossible");
     }
-    const lending = await this.prisma.lendingDocument.findUnique({
-      where: { lendingDocumentId },
+    const access = await this.accessFor(user, 'comment');
+    const lending = await this.prisma.lendingDocument.findFirst({
+      where: { lendingDocumentId, ...this.ownLendingFilter(access, user) },
       select: { lendingDocumentId: true },
     });
     if (!lending) throw new NotFoundException('Prêt introuvable');

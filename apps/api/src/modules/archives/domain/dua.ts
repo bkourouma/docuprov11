@@ -43,10 +43,7 @@ export interface LifeCycleDueDates {
  * Un document sans date métier (indexation incomplète) ne doit pas échapper au cycle de vie —
  * le source retombait déjà sur la date d'enregistrement.
  */
-export function lifeCycleStartDate(doc: {
-  documentDate: Date | null;
-  createdAt: Date;
-}): Date {
+export function lifeCycleStartDate(doc: { documentDate: Date | null; createdAt: Date }): Date {
   const base = doc.documentDate ?? doc.createdAt;
   // Normalise à une date civile UTC : `created_at` est un timestamptz, l'échéance une date.
   return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
@@ -76,6 +73,16 @@ export function isExpired(dueDate: Date, asOf: Date): boolean {
 export function expiryCutoff(asOf: Date, monthsAhead: number): Date {
   const today = new Date(Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate()));
   return monthsAhead > 0 ? addMonths(today, monthsAhead) : today;
+}
+
+/**
+ * Date civile la plus avancée qu'il puisse être, quelque part sur Terre, à l'instant `asOf`
+ * (fuseau UTC+14). Sert de borne au « pas de date future » d'une saisie faite en date LOCALE par le
+ * navigateur : comparer à la date UTC refuserait, en début de journée, le « aujourd'hui » d'un
+ * poste situé à l'est de Greenwich ; cette borne ne refuse que ce qui est futur partout.
+ */
+export function latestCivilDate(asOf: Date): string {
+  return toIsoDate(new Date(asOf.getTime() + 14 * 3_600_000));
 }
 
 /** Date civile `AAAA-MM-JJ` — format d'échange des échéances avec le client. */
