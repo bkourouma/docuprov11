@@ -312,16 +312,9 @@ test.describe('Accès P3 — refus par permission', () => {
     apiAs,
     uniq,
   }) => {
-    // ANO-ARC-B-01 (confirmée sur la pile le 2026-11-22) : un compte qui ne peut PAS ouvrir la fiche
-    // s'octroie un droit nominatif (201), retire la confidentialité (200), retire le droit d'autrui
-    // (200) et lit les bénéficiaires (200). Règle décidée par l'utilisateur : gère les droits et la
-    // confidentialité d'un document quiconque peut ouvrir sa fiche — donc pas celui qui ne le peut
-    // pas. Correctif hors périmètre du lot 2 : documents.controller.ts / document-tabs (lot GED) et
-    // referentials (document-permissions). Le test décrit la règle et redeviendra actif ensuite.
-    test.fixme(
-      true,
-      'en attente du lot GED : contrôle « peut ouvrir la fiche » sur les droits et la confidentialité (ANO-ARC-B-01)',
-    );
+    // ANO-ARC-B-01 (corrigée par le lot GED, `assertCanOpen`) : gère les droits et la
+    // confidentialité d'un document quiconque peut ouvrir sa fiche — et seulement lui. Pour un compte
+    // qui ne le peut pas, les routes de la fiche répondent 404, comme pour une pièce inexistante.
     const jeton = uniq('ARC22');
     const niveau = await creerConfidentialite(api, uniq('ARC22 Secret'));
     const secret = await creerDocumentArchive(api, {
@@ -355,23 +348,13 @@ test.describe('Accès P3 — refus par permission', () => {
     await attendreRefusSurTousLesCanaux(api, client, jeton, secret.documentId, secret.label);
     await attendreRefusSurTousLesCanaux(api, client, jeton, restreint.documentId, restreint.label);
 
-    // Chaque tentative doit être refusée (403 ou 404). Jouées l'une après l'autre ; `expect.soft` :
-    // toutes sont rapportées, même si la première passe à tort.
-    const refuse = (statut: number) => statut === 403 || statut === 404;
+    // Chaque tentative sur la fiche doit répondre 404 (la pièce « n'existe pas » pour lui). Jouées
+    // l'une après l'autre ; `expect.soft` : toutes sont rapportées, même si la première passe à tort.
     const tentatives: Array<[string, () => Promise<{ status(): number }>]> = [
       [
         'POST /documents/:id/permissions (droit nominatif sur soi)',
         () =>
           client.raw.post(`/documents/${restreint.documentId}/permissions`, {
-            userGroupId: compteIntrus,
-            permissionLevelId: NIVEAU.archivistique,
-          }),
-      ],
-      [
-        'POST /referentials/document-permissions (droit nominatif sur soi)',
-        () =>
-          client.raw.post('/referentials/document-permissions', {
-            documentId: secret.documentId,
             userGroupId: compteIntrus,
             permissionLevelId: NIVEAU.archivistique,
           }),
@@ -398,7 +381,7 @@ test.describe('Accès P3 — refus par permission', () => {
     ];
     for (const [route, appel] of tentatives) {
       const statut = (await appel()).status();
-      expect.soft(refuse(statut), `${route} → HTTP ${statut}`).toBe(true);
+      expect.soft(statut, `${route} → HTTP ${statut}`).toBe(404);
     }
 
     // Quel qu'ait été le sort des tentatives, les deux pièces doivent rester hors de sa portée.
@@ -408,6 +391,39 @@ test.describe('Accès P3 — refus par permission', () => {
       confidentialiteId: number | null;
     };
     expect(fiche.confidentialiteId).toBe(niveau.confidentialiteId);
+  });
+
+  test('ARC-22 l’octroi direct d’un droit sur un document (référentiel) est réservé à l’administrateur', async ({
+    api,
+    apiAs,
+    uniq,
+  }) => {
+    // Le lot socle pose `@RequireAdmin` sur `POST /referentials/document-permissions` ; ce correctif
+    // n'est pas encore fusionné dans cette branche (la route y répond 201 à tout compte connecté).
+    test.fixme(
+      true,
+      'en attente du lot socle : @RequireAdmin sur POST /referentials/document-permissions (403 attendu)',
+    );
+    const jeton = uniq('ARC22R');
+    const niveau = await creerConfidentialite(api, uniq('ARC22R Secret'));
+    const secret = await creerDocumentArchive(api, {
+      label: `${jeton} secret`,
+      confidentialiteId: niveau.confidentialiteId,
+    });
+    const intrus = await creerUtilisateurAvecMenus(api, {
+      prefix: uniq('arc22r'),
+      menus: ['/search'],
+    });
+    await habiliter(api, intrus.userId, null);
+    const compteIntrus = await compteGroupeDe(api, apiAs, intrus);
+    const client = await apiAs(intrus.username, intrus.password);
+    const r = await client.raw.post('/referentials/document-permissions', {
+      documentId: secret.documentId,
+      userGroupId: compteIntrus,
+      permissionLevelId: NIVEAU.archivistique,
+    });
+    expect(r.status()).toBe(403);
+    await attendreRefusSurTousLesCanaux(api, client, jeton, secret.documentId, secret.label);
   });
 
   test('ARC-22 sans le menu « Recherche », l’entrée n’apparaît pas dans la navigation', async ({
