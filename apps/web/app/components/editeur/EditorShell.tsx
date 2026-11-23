@@ -21,6 +21,7 @@ import {
   LIMIT_MAX_ATTEMPTS,
   STABLE_CONNECTION_MS,
   closeAction,
+  currentVersionNumber,
   deriveWsUrl,
   docRecreation,
   editeurApi,
@@ -28,8 +29,10 @@ import {
   interpretCloseCode,
   redirectToLogin,
   presenceColor,
+  versionNumberAfterSave,
   type GedCollabSession,
 } from '../../lib/editeur';
+import { docVersionsApi } from '../../lib/doc-versions';
 import { EditorToolbar } from './EditorToolbar';
 import { CommentsPanel, makeDraft, type CommentDraft } from './CommentsPanel';
 import { VersionHistoryPanel } from './VersionHistoryPanel';
@@ -393,7 +396,28 @@ function EditorCanvas({
   const [draft, setDraft] = useState<CommentDraft | null>(null);
   const [openComments, setOpenComments] = useState(0);
   const [historyKey, setHistoryKey] = useState(0);
+  // Numéro affiché dans la barre d'état : suit les versions créées depuis l'éditeur (la session
+  // n'est relue qu'à l'ouverture, à la restauration et à la réinitialisation de la salle).
+  const [versionNumber, setVersionNumber] = useState(session.currentVersionNumber);
+  // Relu une fois, à la première synchronisation de cette session (ANO-GED-16) : après une
+  // restauration, l'API ferme la salle (4410) AVANT d'écrire la version restaurée, si bien que la
+  // session relue par `onReset` peut encore porter l'ancien numéro. La reconnexion, elle, n'est
+  // servie qu'une fois la restauration acquise (barrière de chargement côté serveur) : l'historique
+  // relu à ce moment donne le bon numéro. Échec silencieux : le numéro de la session reste affiché.
+  const versionCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!synced || versionCheckedRef.current) return;
+    versionCheckedRef.current = true;
+    docVersionsApi
+      .list(documentId)
+      .then((rows) => setVersionNumber((n) => currentVersionNumber(rows, n)))
+      .catch(() => undefined);
+  }, [synced, documentId]);
   const [saveOpen, setSaveOpen] = useState(false);
+  // Chaque ouverture de « Enregistrer une version » remonte la boîte (clé) : l'animation de sortie
+  // de l'icône de chargement d'un bouton Ant Design ne s'achève pas toujours, l'icône restait alors
+  // dans le DOM et le bouton s'annonçait « loading Enregistrer » à la réouverture (ANO-GED-15).
+  const [saveRound, setSaveRound] = useState(0);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState<null | 'import' | 'export'>(null);
   const [saveForm] = Form.useForm<{ summary?: string }>();
@@ -510,6 +534,7 @@ function EditorCanvas({
         );
         setHistoryKey((k) => k + 1);
       }
+      setVersionNumber((n) => versionNumberAfterSave(n, r));
       setSaveOpen(false);
       saveForm.resetFields();
     } catch (e) {
@@ -538,6 +563,11 @@ function EditorCanvas({
           message.success('Le fichier DOCX a été importé.');
           r.warnings.slice(0, 5).forEach((w) => message.warning(w));
           setHistoryKey((k) => k + 1);
+          // L'import crée « Avant import DOCX » puis « Import DOCX » : numéro relu, sans bloquer.
+          docVersionsApi
+            .list(documentId)
+            .then((rows) => setVersionNumber((n) => currentVersionNumber(rows, n)))
+            .catch(() => undefined);
         } catch (e) {
           message.error(errMsg(e, 'Import du DOCX impossible.'));
         } finally {
@@ -587,7 +617,10 @@ function EditorCanvas({
         documentId={documentId}
         canRestore={!readOnly}
         refreshKey={historyKey}
-        onRestored={(v) => message.success(`Version ${v.versionNumber} créée à partir de la restauration.`)}
+        onRestored={(v) => {
+          setVersionNumber(v.versionNumber);
+          message.success(`Version ${v.versionNumber} créée à partir de la restauration.`);
+        }}
         onError={(m) => message.error(m)}
       />
     ) : panel === 'drafting' && editor ? (
@@ -664,7 +697,11 @@ function EditorCanvas({
               </Button>
             </Dropdown>
             {!readOnly && (
-              <Button type="primary" icon={<Save {...ICON} />} onClick={() => setSaveOpen(true)}>
+              <Button type="primary" icon={<Save {...ICON} />} onClick={() => {
+                  setSaveRound((r) => r + 1);
+                  setSaveOpen(true);
+                }}
+              >
                 Enregistrer une version
               </Button>
             )}
@@ -744,7 +781,7 @@ function EditorCanvas({
             )}
           </span>
           {readOnly && <strong>Lecture seule</strong>}
-          <span>Version {session.currentVersionNumber}</span>
+          <span>Version {versionNumber}</span>
         </div>
         <ul className={styles.presence} aria-label={`Personnes connectées : ${presence.map((p) => p.name).join(', ') || 'aucune'}`}>
           {presence.slice(0, 6).map((p) => (
@@ -814,6 +851,7 @@ function EditorCanvas({
       )}
 
       <Modal
+        key={saveRound}
         title="Enregistrer une version"
         open={saveOpen}
         okText="Enregistrer"

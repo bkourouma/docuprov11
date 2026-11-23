@@ -36,7 +36,11 @@ import * as Y from 'yjs';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../auth/auth.types';
 import { actorName } from '../../documents/documents.service';
-import { CollabAccessService, type VerifiedCollabToken } from '../access/collab-access.service';
+import {
+  CollabAccessService,
+  CollabAuthError,
+  type VerifiedCollabToken,
+} from '../access/collab-access.service';
 import {
   COLLAB_WS_PATH,
   CollabCloseCode,
@@ -113,6 +117,12 @@ const AWARENESS_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
 const REVALIDATION_CONCURRENCY = 16;
 /** Passes maximales d'attente des tâches d'une salle dans `resetRoom` (tâches qui en créent d'autres). */
 const RESET_WAIT_PASSES = 5;
+/**
+ * Marge gardée sur le délai d'authentification quand une connexion attend la fin d'une
+ * restauration : au-delà, elle est fermée en `Reload` (le client réessaie) AVANT que la minuterie
+ * d'authentification ne la ferme en `Unauthorized` (que le client lirait comme un refus).
+ */
+const RESET_WAIT_AUTH_MARGIN_MS = 500;
 /** Verrou de validation structurelle rendu au plus tard après ce délai (filet, jamais atteint). */
 const STRUCTURE_LOCK_TIMEOUT_MS = 5_000;
 
@@ -162,6 +172,11 @@ interface RoomState {
   detach: () => void;
 }
 
+/** Barrière de chargement d'une salle (voir `CollabServerService.holdRoomLoads`). */
+interface LoadBarrier {
+  released: Promise<void>;
+}
+
 /** Erreur jetée par un hook pour refuser un message (sans `message` : Hocuspocus ne la journalise pas). */
 function rejection(code: number, reason: string): { code: number; reason: string } {
   return { code, reason };
@@ -172,6 +187,9 @@ class CollabRefusal extends Error {}
 
 /** Refus pour dépassement d'une limite de connexions (après un accès accordé). */
 class CollabLimitRefusal extends Error {}
+
+/** Salle suspendue (restauration en cours) : le client doit se reconnecter plus tard (`Reload`). */
+class CollabReloadRefusal extends Error {}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -223,7 +241,18 @@ export class CollabServerService
   private readonly ipCounts = new Map<string, number>();
   private readonly rooms = new WeakMap<Y.Doc, RoomState>();
   private readonly unloadingRooms = new Map<string, RoomState>();
-  private readonly pendingLoads = new Map<number, { loaded: CollabLoadResult; at: number }>();
+  /**
+   * État lu pendant l'authentification, réutilisé par `onLoadDocument`. `generation` : valeur de
+   * `loadGeneration` AVANT la lecture — toute barrière posée ou levée depuis la rend caduque.
+   */
+  private readonly pendingLoads = new Map<
+    number,
+    { loaded: CollabLoadResult; at: number; generation: number }
+  >();
+  /** Barrières de chargement par document (restauration en cours), voir `holdRoomLoads`. */
+  private readonly loadBarriers = new Map<number, Set<LoadBarrier>>();
+  /** Incrémenté à chaque pose ou levée de barrière (invalide les états lus avant). */
+  private loadGeneration = 0;
   private readonly pendingTasks = new Set<Promise<unknown>>();
   /** Tâches de persistance en cours par document (attendues par `resetRoom`). */
   private readonly roomTasks = new Map<number, Set<Promise<void>>>();
@@ -502,6 +531,72 @@ export class CollabServerService
       unloading.pendingMentions.clear();
     }
     await this.waitRoomTasks(documentId);
+  }
+
+  /**
+   * Suspend tout (re)chargement de la salle `documentId` jusqu'à l'appel de la fonction renvoyée
+   * (idempotente) — ANO-GED-08. À poser AVANT `resetRoom` et à lever APRÈS le remplacement de
+   * l'état persisté (restauration de version) : `resetRoom` ferme les connexions en `Reload`, et
+   * le client se reconnecte AUSSITÔT ; sans barrière, sa reconnexion rechargeait l'état d'AVANT la
+   * restauration (version courante pas encore remplacée, état de travail pas encore supprimé),
+   * puis une version d'inactivité ou de fermeture le re-versionnait par-dessus la version restaurée.
+   *
+   * Pendant la barrière :
+   *  - `onAuthenticate` ATTEND sa levée (dans la limite du délai d'authentification, sinon
+   *    fermeture `Reload` : le client réessaie) avant de lire l'état à charger ;
+   *  - `onLoadDocument` REFUSE de charger (fermeture `Reload` des sockets en attente) : il ne peut
+   *    pas attendre, car `resetRoom` attend lui-même les chargements engagés (interblocage) ;
+   *  - un état lu pendant l'authentification avant ou pendant la barrière n'est jamais réutilisé
+   *    (génération de chargement, voir `pendingLoads`).
+   * Plusieurs barrières peuvent se chevaucher sur un même document : la salle reste suspendue
+   * jusqu'à la levée de la dernière.
+   */
+  holdRoomLoads(documentId: number): () => void {
+    let resolve!: () => void;
+    const barrier: LoadBarrier = { released: new Promise<void>((r) => (resolve = r)) };
+    let held = this.loadBarriers.get(documentId);
+    if (!held) {
+      held = new Set();
+      this.loadBarriers.set(documentId, held);
+    }
+    held.add(barrier);
+    this.loadGeneration += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const current = this.loadBarriers.get(documentId);
+      current?.delete(barrier);
+      if (current && current.size === 0) this.loadBarriers.delete(documentId);
+      this.loadGeneration += 1;
+      resolve();
+    };
+  }
+
+  /** Une barrière de chargement est-elle posée sur ce document ? */
+  isRoomLoadHeld(documentId: number): boolean {
+    return (this.loadBarriers.get(documentId)?.size ?? 0) > 0;
+  }
+
+  /** Attend la levée de toutes les barrières du document ; `false` si le délai est dépassé avant. */
+  private async waitRoomLoads(documentId: number, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const held = this.loadBarriers.get(documentId);
+      if (!held || held.size === 0) return true;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return false;
+      let timer: NodeJS.Timeout | undefined;
+      const timedOut = await Promise.race([
+        Promise.all([...held].map((b) => b.released)).then(() => false),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(true), remaining);
+          timer.unref();
+        }),
+      ]);
+      if (timer) clearTimeout(timer);
+      if (timedOut) return false;
+    }
   }
 
   // ----------------------------------------------------------------------------- upgrade HTTP
@@ -901,23 +996,40 @@ export class CollabServerService
       if (documentId === null) throw new CollabRefusal('salle invalide');
       let verified: VerifiedCollabToken;
       try {
-        verified = this.access.verifyToken(payload.token);
-      } catch {
-        throw new CollabRefusal('jeton absent, invalide ou expiré');
+        // Jeton ET compte (relu en base : supprimé/désactivé refusé, `isAdmin` de la base).
+        verified = await this.access.authenticateToken(payload.token);
+      } catch (error) {
+        if (error instanceof CollabAuthError) {
+          throw new CollabRefusal('jeton absent, invalide ou expiré, ou compte inactif');
+        }
+        throw error; // panne (base) : erreur interne, même refus uniforme côté client
       }
       userId = verified.user.userId;
 
       const mode = await this.access.resolveMode(documentId, verified.user);
       if (!mode) throw new CollabRefusal('accès refusé');
 
+      // Restauration en cours (barrière posée avant `resetRoom`) : on attend qu'elle ait remplacé
+      // l'état persisté AVANT de le lire — sinon la reconnexion qui suit le `Reload` rechargerait
+      // l'état d'avant (ANO-GED-08). Attente bornée par le délai d'authentification restant.
+      if (this.isRoomLoadHeld(documentId)) {
+        const budget =
+          this.options.authTimeoutMs - (Date.now() - state.openedAt) - RESET_WAIT_AUTH_MARGIN_MS;
+        if (!(await this.waitRoomLoads(documentId, Math.max(0, budget)))) {
+          throw new CollabReloadRefusal();
+        }
+        if (state.closed) throw new CollabRefusal('socket fermé');
+      }
+
       // Document non texte (ou disparu) : MÊME refus. Une salle vivante prouve déjà le contraire.
       if (!this.hocuspocus.documents.has(payload.documentName)) {
+        const generation = this.loadGeneration;
         const loaded = await this.persistence.loadDocument(documentId);
         if (!loaded) throw new CollabRefusal('document non texte ou inconnu');
         if (loaded.state && loaded.state.byteLength > this.options.maxStateBytes) {
           throw new CollabRefusal('état persisté trop volumineux');
         }
-        this.pendingLoads.set(documentId, { loaded, at: Date.now() });
+        this.pendingLoads.set(documentId, { loaded, at: Date.now(), generation });
         staged = true;
       }
       if (state.closed) throw new CollabRefusal('socket fermé');
@@ -961,6 +1073,15 @@ export class CollabServerService
     } catch (error) {
       // Un état chargé pour une connexion refusée ne doit pas servir plus tard (risque de périmé).
       if (staged && documentId !== null) this.pendingLoads.delete(documentId);
+      if (error instanceof CollabReloadRefusal) {
+        // Fermeture IMMÉDIATE (détache Hocuspocus avant sa trame « permission refusée ») : le client
+        // lit `Reload` et se reconnecte, au lieu de conclure à un document inaccessible.
+        this.logger.warn(
+          `Connexion collaborative différée : restauration en cours (document=${documentId} utilisateur=${userId})`,
+        );
+        if (state) this.closeSocket(state, CollabCloseCode.Reload, CLOSE_REASON.reload);
+        throw rejection(CollabCloseCode.Reload, CLOSE_REASON.reload);
+      }
       if (error instanceof CollabLimitRefusal) {
         this.logger.warn(
           `Connexion collaborative refusée : trop de connexions (document=${documentId} utilisateur=${userId})`,
@@ -981,11 +1102,26 @@ export class CollabServerService
     const state = this.socketOf(payload.context);
     try {
       if (!state?.user) throw new Error('non authentifié');
-      const verified = this.access.verifyToken(payload.token);
+      // Compte relu aussi au renouvellement : un compte désactivé depuis l'ouverture est coupé.
+      let verified: VerifiedCollabToken;
+      try {
+        verified = await this.access.authenticateToken(payload.token);
+      } catch (error) {
+        if (error instanceof CollabAuthError) throw error;
+        // Panne passagère (base) : ni coupure ni prolongation. La connexion garde son expiration
+        // actuelle (fermée à l'échéance par `beforeHandleMessage`/le balayage) ; le prochain
+        // renouvellement retentera.
+        this.logger.warn(
+          `Renouvellement de jeton non vérifiable (document=${state.documentId ?? '-'} utilisateur=${state.user.userId}) : ${errorMessage(error)}`,
+        );
+        return;
+      }
       if (verified.user.userId !== state.user.userId) throw new Error('changement d’utilisateur');
       state.expiresAt = Math.max(state.expiresAt, verified.expiresAt);
+      // Même objet que `connection.context.user` : la réévaluation qui suit voit le statut à jour.
+      state.user.isAdmin = verified.user.isAdmin;
     } catch {
-      this.logRefusal('renouvellement de jeton invalide', state?.documentId ?? null, state?.user?.userId ?? null, state?.ip ?? null);
+      this.logRefusal('renouvellement de jeton invalide ou compte inactif', state?.documentId ?? null, state?.user?.userId ?? null, state?.ip ?? null);
       this.scheduleClose(state, CollabCloseCode.Unauthorized, CLOSE_REASON.unauthorized);
       throw rejection(CollabCloseCode.Unauthorized, COLLAB_DENIED_REASON);
     }
@@ -1203,10 +1339,20 @@ export class CollabServerService
     const documentId = parseRoomName(payload.documentName);
     try {
       if (documentId === null) throw new Error('Salle invalide');
+      // Restauration en cours : ne PAS charger (l'état persisté est en train d'être remplacé). Pas
+      // d'attente ici : `resetRoom` attend les chargements engagés, attendre la barrière depuis l'un
+      // d'eux serait un interblocage. Les sockets en attente se reconnecteront (`Reload`) et
+      // attendront, eux, dans `onAuthenticate`.
+      if (this.isRoomLoadHeld(documentId)) {
+        // Sans message : Hocuspocus ne journalise pas l'erreur d'un hook qui n'en porte pas.
+        throw new CollabReloadRefusal();
+      }
       const pending = this.pendingLoads.get(documentId);
       this.pendingLoads.delete(documentId);
       const loaded =
-        pending && Date.now() - pending.at <= PENDING_LOAD_TTL_MS
+        pending &&
+        pending.generation === this.loadGeneration &&
+        Date.now() - pending.at <= PENDING_LOAD_TTL_MS
           ? pending.loaded
           : await this.persistence.loadDocument(documentId);
       if (!loaded) throw new Error('Document introuvable');
@@ -1281,6 +1427,17 @@ export class CollabServerService
       };
       this.rooms.set(doc, room);
     } catch (error) {
+      if (error instanceof CollabReloadRefusal && documentId !== null) {
+        this.logger.warn(`Chargement collaboratif différé : restauration en cours (document=${documentId})`);
+        // Fermeture IMMÉDIATE en `Reload` (avant la trame « permission refusée » de Hocuspocus) :
+        // le client se reconnecte au lieu de conclure à un document inaccessible.
+        for (const state of [...this.sockets.values()]) {
+          if (state.roomId === documentId && !state.connected) {
+            this.closeSocket(state, CollabCloseCode.Reload, CLOSE_REASON.reload);
+          }
+        }
+        throw error;
+      }
       this.logger.error(
         `Chargement collaboratif impossible (document=${documentId ?? '-'}) : ${errorMessage(error)}`,
       );

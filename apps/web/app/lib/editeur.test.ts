@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import {
   LIMIT_MAX_ATTEMPTS,
   closeAction,
+  currentVersionNumber,
   deriveWsUrl,
   docRecreation,
   initials,
@@ -12,6 +13,7 @@ import {
   isCollabDocument,
   presenceColor,
   sanitizeFilename,
+  versionNumberAfterSave,
 } from './editeur';
 
 test('deriveWsUrl : ws en http, wss en https, wsPath de la session', () => {
@@ -97,4 +99,22 @@ test('docRecreation : Y.Doc propre après reset (immédiat) et structure (sur ac
   assert.equal(docRecreation('structure'), 'on-user-action');
   assert.equal(docRecreation('limit'), 'never');
   assert.equal(docRecreation('other'), 'never');
+});
+
+test('versionNumberAfterSave : numéro de la version créée, inchangé si rien n’est créé', () => {
+  assert.equal(versionNumberAfterSave(1, { created: true, version: { versionNumber: 2 } }), 2);
+  assert.equal(versionNumberAfterSave(3, { created: false, version: null }), 3);
+  // Version créée mais ligne introuvable (liste filtrée) : on garde le numéro affiché.
+  assert.equal(versionNumberAfterSave(3, { created: true, version: null }), 3);
+});
+
+test('currentVersionNumber : version courante de la liste, sinon repli', () => {
+  const rows = [
+    { isCurrent: false, versionNumber: 1 },
+    { isCurrent: true, versionNumber: 4 },
+    { isCurrent: false, versionNumber: 3 },
+  ];
+  assert.equal(currentVersionNumber(rows, 1), 4);
+  assert.equal(currentVersionNumber([{ isCurrent: false, versionNumber: 2 }], 7), 7);
+  assert.equal(currentVersionNumber([], 5), 5);
 });

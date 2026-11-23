@@ -150,6 +150,26 @@ export function sanitizeFilename(name: string): string {
   return (cleaned || 'document').slice(0, 120);
 }
 
+/**
+ * Numéro de version à afficher après « Enregistrer une version » : celui de la version créée, sinon
+ * (contenu identique, rien créé) le numéro déjà affiché. Sans cela, la barre d'état gardait le
+ * numéro lu à l'ouverture de la session.
+ */
+export function versionNumberAfterSave(
+  displayed: number,
+  result: { created: boolean; version: { versionNumber: number } | null },
+): number {
+  return result.created && result.version ? result.version.versionNumber : displayed;
+}
+
+/** Numéro de la version courante d'une liste de versions ; `fallback` si aucune n'est courante. */
+export function currentVersionNumber(
+  rows: ReadonlyArray<{ isCurrent: boolean; versionNumber: number }>,
+  fallback: number,
+): number {
+  return rows.find((r) => r.isCurrent)?.versionNumber ?? fallback;
+}
+
 /** Vrai si la version courante porte la pièce d'état Yjs : le document est un texte natif. */
 export function isCollabDocument(
   files: ReadonlyArray<{ fileExtension: string }> | null | undefined,
