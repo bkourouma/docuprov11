@@ -14,6 +14,7 @@ import { InfoCard, InfoRow } from '../InfoCard';
 // Les deux intertitres de cet onglet partagent leur ligne avec un badge de verdict : ils gardent
 // leur `Text strong` en flex plutôt que le `SectionTitle` en bloc des autres onglets.
 import { StateTag, TabSkeleton, sectionDivider, type StateTone } from './shared';
+import { sealErrorMessage, sealView, type SealBadge } from './seal-view';
 import { icons } from '../../theme/icons';
 import { fontSize, space } from '../../theme/tokens';
 
@@ -28,34 +29,20 @@ function formatBytes(n: number | null): string {
 }
 
 /**
- * Verdict d'un coup d'œil : les états du cachet ne se résument pas à « valide / invalide ».
- * L'absence de verdict (non scellé, clé inconnue) reste un Tag neutre — colorer un « on ne sait
- * pas » lui donnerait un sens qu'il n'a pas.
+ * Badge de verdict du cachet. La DÉCISION (quel libellé, quelle couleur, dans quel ordre) vit dans
+ * `seal-view.ts`, fonction pure testée à part ; ici, seulement le rendu.
  *
- * `integrityOk` entre dans le verdict depuis le 2026-09-15, et c'est une correction de fond.
- * `verifySeal` ne relit JAMAIS le coffre : il compare les empreintes ENREGISTRÉES à celles qui
- * ont été scellées. Un binaire altéré sur le disque laisse donc `contentMatches` à `true`, et le
- * cachet s'affichait « Scellé et intact » — en vert — sur un document dont la vérification venait
- * d'établir qu'il était compromis. Le moteur avait raison (il répond à « les références ont-elles
- * bougé ? »), l'affichage mentait. Constaté en test le 2026-09-15 : trois octets ajoutés à
- * `511.pdf`, bandeau rouge en haut, badge vert en bas.
- *
- * On ne corrige PAS en faisant relire le coffre au cachet : l'onglet serait alors relu à chaque
- * consultation, ce que toute l'architecture de cet écran évite. On corrige le verdict.
+ * Rappel de la correction de fond du 2026-09-15 : `verifySeal` ne relit JAMAIS le coffre, d'où
+ * `integrityOk` dans le verdict (un binaire altéré s'affichait « Scellé et intact »). On ne corrige
+ * PAS en faisant relire le coffre au cachet : l'onglet serait alors relu à chaque consultation, ce
+ * que toute l'architecture de cet écran évite. On corrige le verdict.
  */
-function sealVerdict(seal: DocumentSealView | null, integrityOk: boolean | null | undefined) {
-  if (!seal?.sealed) return <Tag>Non scellé</Tag>;
-  if (seal.knownKey === false) return <Tag>Clé inconnue</Tag>;
-  if (!seal.signatureValid) return <StateTag tone="danger">Cachet invalide</StateTag>;
-  // Ordre délibéré : un horodatage retouché est une falsification, à annoncer avant une simple
-  // évolution de contenu — qui, elle, peut être parfaitement légitime.
-  if (seal.timestampMatches === false) return <StateTag tone="danger">Horodatage altéré</StateTag>;
-  // Le coffre diverge de ce qui est scellé : le cachet reste authentique, mais il n'atteste plus
-  // le binaire présent. DISTINCT de `contentMatches` ci-dessous — celui-là signale une évolution
-  // des références (nouvelle version réindexée), qui est légitime et se règle en re-scellant.
-  if (integrityOk === false) return <StateTag tone="danger">Contenu du coffre altéré</StateTag>;
-  if (!seal.contentMatches) return <StateTag tone="warning">Contenu modifié depuis</StateTag>;
-  return <StateTag tone="success">Scellé et intact</StateTag>;
+function SealVerdictTag({ badge }: { badge: SealBadge }) {
+  return badge.tone === null ? (
+    <Tag>{badge.label}</Tag>
+  ) : (
+    <StateTag tone={badge.tone}>{badge.label}</StateTag>
+  );
 }
 
 const STATUS_TAG: Record<
@@ -103,6 +90,8 @@ export function SecurityTab({
   const { message } = App.useApp();
   const [view, setView] = useState<DocumentIntegrityView | null>(null);
   const [seal, setSeal] = useState<DocumentSealView | null>(null);
+  // Échec du chargement de l'état du cachet (ANO-GED-11) : distinct d'un « non scellé ».
+  const [sealError, setSealError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [sealing, setSealing] = useState(false);
@@ -111,12 +100,18 @@ export function SecurityTab({
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // L'échec du cachet ne doit pas masquer l'intégrité (et réciproquement) : il est capturé à
+      // part, mais CONSERVÉ — l'avaler en `null` le faisait passer pour « Non scellé ».
       const [integrity, sealState] = await Promise.all([
         documentsApi.integrity(documentId),
-        documentsApi.seal(documentId).catch(() => null),
+        documentsApi.seal(documentId).then(
+          (s) => ({ seal: s, error: null }),
+          (e: unknown) => ({ seal: null, error: sealErrorMessage(e) }),
+        ),
       ]);
       setView(integrity);
-      setSeal(sealState);
+      setSeal(sealState.seal);
+      setSealError(sealState.error);
     } catch (e) {
       message.error(e instanceof Error ? e.message : 'Chargement impossible');
     } finally {
@@ -164,6 +159,8 @@ export function SecurityTab({
   if (loading) {
     return <TabSkeleton rows={6} />;
   }
+
+  const sealModel = sealView({ seal, integrityOk: view?.integrityOk, sealError });
 
   const verdict =
     view?.integrityOk == null ? (
@@ -302,24 +299,47 @@ export function SecurityTab({
             <Text strong style={{ fontSize: fontSize.sm }}>
               Cachet serveur
             </Text>
-            {sealVerdict(seal, view?.integrityOk)}
+            <SealVerdictTag badge={sealModel.verdict} />
           </Space>
-          {canSeal ? (
+          {/* État du cachet inconnu : aucun geste proposé. « Apposer » sur une pièce peut-être déjà
+              scellée — ou altérée — reviendrait à attester à l'aveugle ; l'alerte ci-dessous
+              propose de relire l'état d'abord. */}
+          {sealModel.action === null ? null : canSeal ? (
             <Button
               icon={<icons.lock size={16} />}
               loading={sealing}
               onClick={() => void applySeal()}
             >
-              {seal?.sealed ? 'Renouveler le cachet' : 'Apposer le cachet'}
+              {sealModel.action === 'renew' ? 'Renouveler le cachet' : 'Apposer le cachet'}
             </Button>
           ) : (
             <Text type="secondary" style={{ fontSize: fontSize.xs }}>
-              Niveau Archivistique requis pour {seal?.sealed ? 'renouveler' : 'apposer'} un cachet
+              Niveau Archivistique requis pour {sealModel.action === 'renew' ? 'renouveler' : 'apposer'} un cachet
             </Text>
           )}
         </div>
 
-        {seal?.sealed ? (
+        {sealModel.section === 'error' ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="État du cachet indisponible"
+            description={
+              <>
+                <div>{sealError}</div>
+                <div>
+                  Le cachet n’a pas pu être relu : rien ne peut être conclu sur sa présence ni sur
+                  sa validité. Réessayez avant toute action sur le cachet.
+                </div>
+              </>
+            }
+            action={
+              <Button size="small" onClick={() => void load()}>
+                Réessayer
+              </Button>
+            }
+          />
+        ) : seal?.sealed ? (
           <>
             <Row gutter={[16, 16]}>
               <Col xs={24} lg={12}>

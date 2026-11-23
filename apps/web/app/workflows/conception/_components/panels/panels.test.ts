@@ -64,6 +64,9 @@ test('TriggersView : affiche nom, événement, état et exécutant', () => {
   assert.match(html, /document\.created/);
   assert.match(html, /Inactif/);
   assert.match(html, /utilisateur n° 42/);
+  // Élision : « en tant qu'utilisateur », jamais « en tant que utilisateur ».
+  assert.match(html, /Exécuté en tant qu(’|&#x27;|')utilisateur n° 42/);
+  assert.doesNotMatch(html, /en tant que utilisateur/);
 });
 
 test('AgentSpecFields : « Autonome » grisé avec son motif tant que non permis', () => {

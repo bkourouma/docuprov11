@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { App, Button, Card, Input, Select, Space, Table, Typography } from 'antd';
+import { Alert, App, Button, Card, Input, Select, Space, Table, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -11,6 +11,7 @@ import { TableSkeleton } from '../components/skeletons';
 import { AccessTag, PublicationTag, SpaceKindTag } from '../components/espaces/SpaceBadges';
 import { DocumentCount } from '../components/espaces/SpaceCount';
 import { SpaceFormModal } from '../components/espaces/SpaceFormModal';
+import { spacesListView } from '../components/espaces/list-view';
 import { icons, iconDefaults } from '../theme/icons';
 import { space as spacing } from '../theme/tokens';
 import {
@@ -43,13 +44,18 @@ export default function EspacesPage() {
   const [q, setQ] = useState('');
   const [kind, setKind] = useState<GedSpaceKind | undefined>();
   const [creating, setCreating] = useState(false);
+  /** Échec du dernier chargement (refus 403 sans le menu, panne…) : jamais présenté comme une liste vide. */
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setRows(await espacesApi.list());
+      setLoadError(null);
     } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Chargement des espaces impossible');
+      const msg = e instanceof Error ? e.message : 'Chargement des espaces impossible';
+      setLoadError(msg);
+      message.error(msg);
     } finally {
       setLoading(false);
     }
@@ -71,6 +77,7 @@ export default function EspacesPage() {
   }, [rows, q, kind]);
 
   const Add = icons.add;
+  const view = spacesListView({ loading, rowCount: rows.length, error: loadError });
 
   const columns: TableColumnsType<GedSpaceSummary> = [
     {
@@ -110,16 +117,28 @@ export default function EspacesPage() {
         title="Espaces"
         icon="dossier"
         actions={
-          <Button type="primary" icon={<Add size={iconDefaults.size} />} onClick={() => setCreating(true)}>
-            Nouvel espace
-          </Button>
+          // Pas d'invitation à créer quand la liste n'a pas pu être lue (refus, panne).
+          view === 'error' ? undefined : (
+            <Button type="primary" icon={<Add size={iconDefaults.size} />} onClick={() => setCreating(true)}>
+              Nouvel espace
+            </Button>
+          )
         }
       />
 
       <Card>
-        {loading && rows.length === 0 ? (
+        {view === 'loading' ? (
           <TableSkeleton rows={5} columns={7} />
-        ) : rows.length === 0 ? (
+        ) : view === 'error' ? (
+          <>
+            <Alert type="error" showIcon style={{ marginBottom: spacing.lg }} message={loadError} />
+            <EmptyState
+              icon="alert"
+              title="La liste des espaces n'a pas pu être chargée."
+              action={<Button onClick={() => void load()}>Réessayer</Button>}
+            />
+          </>
+        ) : view === 'empty' ? (
           <EmptyState
             icon="dossier"
             title="Aucun espace pour l'instant : créez-en un pour regrouper des documents."

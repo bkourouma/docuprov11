@@ -15,6 +15,7 @@ import {
   connecteursApi,
   formatDateTime,
   isForbiddenError,
+  newestFirst,
   oauthStatus,
   truncate,
   type GedConnectorTypeInfo,
@@ -48,7 +49,7 @@ export default function ConnecteursPage() {
     setLoading(true);
     try {
       const [list, t] = await Promise.all([connecteursApi.list(), connecteursApi.types()]);
-      setRows(list);
+      setRows(newestFirst(list));
       setTypes(t);
       setForbidden(false);
     } catch (e) {
@@ -161,7 +162,15 @@ export default function ConnecteursPage() {
                 Synchroniser maintenant
               </Button>
             )}
-            <Button size="small" loading={busy === `toggle:${id}`} onClick={() => toggle(r)}>
+            {/* `key` : « Activer » et « Désactiver » sont deux actions, donc deux boutons. Réutiliser le
+                même bouton gardait parfois l'icône de chargement de l'action précédente, et le
+                nom accessible devenait « loading Activer » (ANO-GED-15). */}
+            <Button
+              key={r.isActive ? 'deactivate' : 'activate'}
+              size="small"
+              loading={busy === `toggle:${id}`}
+              onClick={() => toggle(r)}
+            >
               {r.isActive ? 'Désactiver' : 'Activer'}
             </Button>
             <Button

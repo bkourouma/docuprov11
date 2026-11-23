@@ -116,6 +116,16 @@ export class DocVersionsService {
       orderBy: { versionNumber: 'desc' },
       include: ROW_INCLUDE,
     });
+    if (rows.length === 0) {
+      // `canAccess` laisse passer l'administrateur SANS vérifier que le document existe : sans ce
+      // contrôle, un identifiant inconnu rendait `200 []`, là où la fiche et tous ses autres
+      // onglets répondent 404. Une seule requête de plus, et seulement sur une liste vide.
+      const exists = await this.prisma.document.findUnique({
+        where: { documentId },
+        select: { documentId: true },
+      });
+      if (!exists) throw new NotFoundException('Document introuvable');
+    }
     return rows.map((r) => this.toRow(r));
   }
 

@@ -307,6 +307,17 @@ describe('DocVersionsService.list', () => {
     await expect(service.list(7, user)).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it('refuse (404) un document inconnu même quand canAccess passe (administrateur)', async () => {
+    const { service, prisma } = setup({ canAccess: true });
+    (prisma.document as { findUnique: jest.Mock }).findUnique.mockResolvedValueOnce(null);
+    await expect(service.list(7, user)).rejects.toThrow('Document introuvable');
+  });
+
+  it('renvoie une liste vide pour un document existant sans version', async () => {
+    const { service } = setup();
+    await expect(service.list(7, user)).resolves.toEqual([]);
+  });
+
   it('trie par version décroissante et complète les versions antérieures à la GED', async () => {
     const { service, db } = setup();
     const v1 = db.addVersion(1, { current: false, content: 'a', info: null });

@@ -117,10 +117,15 @@ function setup(
     discardWorkingState: jest.fn(async () => undefined),
     saveWorkingState: jest.fn(async () => undefined),
   };
+  // Barrière de chargement de la salle (ANO-GED-08) : la levée est un mock distinct, pour vérifier
+  // QUAND elle a lieu.
+  const releaseRoomLoads = jest.fn(() => undefined);
   const collab = {
     getLiveState: jest.fn((): Uint8Array | null => null),
     mutateDocument: jest.fn(async () => undefined),
     resetRoom: jest.fn(async () => undefined),
+    holdRoomLoads: jest.fn((_id: number) => releaseRoomLoads),
+    releaseRoomLoads,
   };
   const service = new CollabDocumentsService(
     prisma as unknown as PrismaService,
@@ -352,6 +357,60 @@ describe('restore', () => {
     release();
     await Promise.all([restoring, saving]);
     expect(events.indexOf('restore:fin')).toBeLessThan(events.lastIndexOf('createVersion:save'));
+  });
+
+  // ANO-GED-08 : la reconnexion du client après le `Reload` de `resetRoom` ne doit pas recharger
+  // l'état d'avant restauration. La barrière de chargement couvre TOUTE la fenêtre resetRoom ->
+  // restore -> suppression de l'état de travail.
+  it('barrière de chargement posée avant resetRoom, levée après la suppression de l’état de travail', async () => {
+    const h = setup();
+    await h.service.restore(7, { versionId: 40 }, user);
+    expect(h.collab.holdRoomLoads).toHaveBeenCalledWith(7);
+    expect(h.collab.releaseRoomLoads).toHaveBeenCalledTimes(1);
+    const order = [
+      h.persistence.createVersion.mock.invocationCallOrder[0],
+      h.collab.holdRoomLoads.mock.invocationCallOrder[0],
+      h.collab.resetRoom.mock.invocationCallOrder[0],
+      h.versions.restore.mock.invocationCallOrder[0],
+      h.persistence.discardWorkingState.mock.invocationCallOrder[0],
+      h.collab.releaseRoomLoads.mock.invocationCallOrder[0],
+    ];
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('barrière maintenue PENDANT la restauration (une reconnexion ne peut pas recharger entre-temps)', async () => {
+    const h = setup();
+    let finish!: () => void;
+    const gate = new Promise<void>((r) => (finish = r));
+    h.versions.restore.mockImplementationOnce(async () => {
+      await gate;
+      return h.versionRow;
+    });
+    const restoring = h.service.restore(7, { versionId: 40 }, user);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(h.collab.resetRoom).toHaveBeenCalledWith(7);
+    expect(h.collab.releaseRoomLoads).not.toHaveBeenCalled();
+    finish();
+    await restoring;
+    expect(h.collab.releaseRoomLoads).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['resetRoom échoue', (h: Harness) => h.collab.resetRoom.mockRejectedValueOnce(new Error('salle'))],
+    ['restore échoue', (h: Harness) => h.versions.restore.mockRejectedValueOnce(new Error('base'))],
+  ])('%s : la barrière est levée quand même (salle jamais laissée suspendue)', async (_n, arrange) => {
+    const h = setup();
+    arrange(h);
+    await expect(h.service.restore(7, { versionId: 40 }, user)).rejects.toThrow();
+    expect(h.collab.holdRoomLoads).toHaveBeenCalledWith(7);
+    expect(h.collab.releaseRoomLoads).toHaveBeenCalledTimes(1);
+  });
+
+  it('refus avant la restauration (403) : aucune barrière posée', async () => {
+    const h = setup();
+    h.persistence.assertCanModify.mockRejectedValueOnce(new ForbiddenException('Modification non autorisée sur ce document'));
+    await expect(h.service.restore(7, { versionId: 40 }, user)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(h.collab.holdRoomLoads).not.toHaveBeenCalled();
   });
 });
 

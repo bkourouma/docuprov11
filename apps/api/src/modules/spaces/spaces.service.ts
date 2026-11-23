@@ -57,6 +57,10 @@ const CAN_ACCESS_CONCURRENCY = 10;
 
 const PRIVATE_SPACE_MEMBERS_MESSAGE = 'Un espace privé est réservé à son propriétaire';
 
+/** Rattachement d'un document non archivé (règle : seuls les documents archivés se rattachent). */
+export const NOT_ARCHIVED_MESSAGE =
+  'Seuls les documents archivés (validés) peuvent être rattachés à un espace';
+
 /** Acteur sans aucun droit : compte désactivé/introuvable ou identité machine. */
 const NO_ACTOR: SpaceActor = Object.freeze({ userGroupIds: [], roleId: null, isAdmin: false });
 
@@ -744,6 +748,16 @@ export class SpacesService {
     if (!(await this.documents.canAccess(dto.documentId, user))) {
       throw new NotFoundException('Document introuvable');
     }
+    // Règle de gestion (décision du 2026-11-22) : seuls les documents ARCHIVÉS (validés) se
+    // rattachent à un espace. Vérifiée APRÈS `canAccess` : un tiers n'apprend rien de l'état d'un
+    // document qu'il ne voit pas. Le document créé par l'éditeur dans son espace d'origine
+    // (`CollabPersistenceService`) n'emprunte pas cette route.
+    const target = await this.prisma.document.findUnique({
+      where: { documentId: dto.documentId },
+      select: { isArchived: true },
+    });
+    if (!target) throw new NotFoundException('Document introuvable');
+    if (!target.isArchived) throw new ConflictException(NOT_ARCHIVED_MESSAGE);
     const existing = await this.prisma.gedSpaceDocument.findUnique({
       where: { spaceId_documentId: { spaceId, documentId: dto.documentId } },
       select: { documentId: true },
