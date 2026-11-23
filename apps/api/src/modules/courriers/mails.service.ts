@@ -46,6 +46,17 @@ const LIST_SELECT = {
   destinataireRole: { select: { roleId: true, name: true } },
 } satisfies Prisma.MailSelect;
 
+/**
+ * Critères de la file Validation (§10), partagés par la liste, son badge et l'action de lot : un
+ * courrier ne peut être validé Direction que s'il figure réellement dans la file. Sans ce partage,
+ * l'action re-tamponnait Traité/dateTraited un courrier déjà traité ou archivé.
+ */
+const VALIDATION_QUEUE_WHERE = {
+  isDeleted: false,
+  valider: true,
+  dateTraited: null,
+} satisfies Prisma.MailWhereInput;
+
 export interface MailListResult {
   total: number;
   page: number;
@@ -187,7 +198,7 @@ export class MailsService {
    * non traité.
    */
   listValidationDirection(opts?: { page?: number; pageSize?: number }) {
-    return this.paginate({ isDeleted: false, valider: true, dateTraited: null }, opts);
+    return this.paginate({ ...VALIDATION_QUEUE_WHERE }, opts);
   }
 
   /** File Suivi (§09) : courriers en cours (non traités), dans le périmètre de l'utilisateur. */
@@ -364,7 +375,7 @@ export class MailsService {
 
     const [controle, validation, suivi, parapheur, decharge, scans] = await Promise.all([
       this.prisma.mail.count({ where: await this.controleWhere(user) }),
-      this.prisma.mail.count({ where: { isDeleted: false, valider: true, dateTraited: null } }),
+      this.prisma.mail.count({ where: { ...VALIDATION_QUEUE_WHERE } }),
       scope === 'none' ? Promise.resolve(0) : this.prisma.mail.count({ where: suiviWhere }),
       // Parapheur (§08) : PERSONNEL, miroir exact de `listParapheur` — imputation actionnable non
       // traitée (« En Copie » exclu, il n'appelle aucun geste).
@@ -630,6 +641,17 @@ export class MailsService {
       throw new BadRequestException("Aucun acteur effectif : impossible de déterminer l'émetteur");
     }
 
+    // « Lié au courrier » (§12) : le parent est vérifié AVANT toute écriture — sans quoi un id
+    // inconnu ou supprimé échouait en 500 sur la clé étrangère `mail_parent`, APRÈS avoir promu le
+    // scan en document GED (binaire orphelin, scan sorti de la file §07 sans courrier).
+    if (input.parentMailId != null) {
+      const parent = await this.prisma.mail.findFirst({
+        where: { mailId: input.parentMailId, isDeleted: false },
+        select: { mailId: true },
+      });
+      if (!parent) throw new BadRequestException('Courrier lié introuvable');
+    }
+
     // Promotion du scan HORS transaction, comme à l'enregistrement (§05) : elle écrit le binaire
     // sur disque, une opération non annulable par un rollback.
     const documentId =
@@ -858,8 +880,12 @@ export class MailsService {
    */
   async validationDirection(mailIds: number[], user: AuthUser): Promise<{ updated: number }> {
     const now = new Date();
-    const res = await this.prisma.mail.updateMany({
-      where: { mailId: { in: mailIds }, isDeleted: false },
+    // Seuls les courriers de la FILE Validation sont validés : un id déjà traité, archivé, non
+    // contrôlé ou supprimé est ignoré (il était re-tamponné Traité/dateTraited). `…AndReturn` rend
+    // les lignes RÉELLEMENT mises à jour, en une seule requête : deux validations concurrentes du
+    // même lot ne peuvent pas toutes deux revendiquer un courrier, ni le notifier deux fois.
+    const updatedRows = await this.prisma.mail.updateManyAndReturn({
+      where: { mailId: { in: mailIds }, ...VALIDATION_QUEUE_WHERE },
       data: {
         validationDirection: true,
         status: MailStatus.Traite,
@@ -867,13 +893,17 @@ export class MailsService {
         modifiedBy: user.userGroupId,
         modifiedAt: now,
       },
+      select: { mailId: true },
     });
+    const updatedIds = updatedRows.map((r) => r.mailId);
+    // Effets de bord (imputations traitées, notifications) limités aux courriers mis à jour.
+    if (updatedIds.length === 0) return { updated: 0 };
     await this.prisma.mailInputation.updateMany({
-      where: { mailId: { in: mailIds }, dateTreated: null },
+      where: { mailId: { in: updatedIds }, dateTreated: null },
       data: { dateTreated: now },
     });
     const mails = await this.prisma.mail.findMany({
-      where: { mailId: { in: mailIds }, isDeleted: false },
+      where: { mailId: { in: updatedIds } },
       select: {
         mailId: true,
         title: true,
@@ -887,7 +917,7 @@ export class MailsService {
     const validateur =
       user.userGroupId != null ? await this.actorName(user.userGroupId) : 'la Direction';
     await Promise.all(mails.map((m) => this.notifyValidationDirection(m, validateur, now)));
-    return { updated: res.count };
+    return { updated: updatedIds.length };
   }
 
   /**
@@ -998,6 +1028,12 @@ export class MailsService {
     const now = new Date();
     const actor = user.userGroupId;
     const target = await this.assertMailActive(mailId);
+    // §13 : la décharge est la preuve de remise d'une RÉPONSE envoyée — elle n'a de sens que sur un
+    // Départ (le lookup `listDechargesEnAttente` n'en propose pas d'autre). Refusé AVANT la
+    // promotion du scan, pour ne pas laisser de document GED orphelin.
+    if (target.mailType !== MailType.Depart) {
+      throw new BadRequestException('La décharge ne s’intègre que sur un courrier départ');
+    }
     // Le PDF de décharge entre par la file §07 comme tout binaire du flux courrier : on le promeut
     // en document GED avant de le rattacher (même chemin qu'à la création d'un Départ, §12).
     const documentId =
@@ -1166,12 +1202,18 @@ export class MailsService {
   /** Vérifie que le courrier existe et n'est pas supprimé, et renvoie de quoi résoudre ses destinataires. */
   private async assertMailActive(mailId: number): Promise<{
     title: string;
+    mailType: number;
     destinataireExpediteur: number | null;
     destinataireRoleId: number | null;
   }> {
     const exists = await this.prisma.mail.findFirst({
       where: { mailId, isDeleted: false },
-      select: { title: true, destinataireExpediteur: true, destinataireRoleId: true },
+      select: {
+        title: true,
+        mailType: true,
+        destinataireExpediteur: true,
+        destinataireRoleId: true,
+      },
     });
     if (!exists) throw new NotFoundException('Courrier introuvable');
     return exists;

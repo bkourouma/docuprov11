@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -34,6 +34,23 @@ export interface MailSearchResult {
   page: number;
   pageSize: number;
   rows: MailSearchRow[];
+}
+
+/**
+ * Borne de date de la recherche : jour calendaire `AAAA-MM-JJ`, ou absente (chaîne vide comprise,
+ * déjà ignorée par `buildWhere`). Sans ce contrôle, une valeur comme « abc » ou « 2026-13-01 »
+ * atteignait le cast SQL `::date` et la requête échouait en 500 au lieu d'un 400 explicite.
+ */
+function assertJour(value: string | undefined, champ: 'dateFrom' | 'dateTo'): void {
+  if (value === undefined || value === '') return;
+  const d = new Date(`${value}T00:00:00Z`);
+  const valide =
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(d.getTime()) &&
+    d.toISOString().slice(0, 10) === value;
+  if (!valide) {
+    throw new BadRequestException(`${champ} : date invalide (format AAAA-MM-JJ attendu)`);
+  }
 }
 
 // Colonnes de tri autorisées (valeurs = SQL de confiance, clés validées en amont).
@@ -101,6 +118,10 @@ export class MailSearchService {
   }
 
   async search(p: MailSearchParams): Promise<MailSearchResult> {
+    // Plage inversée (dateFrom > dateTo) : volontairement NON rejetée — elle ne contredit aucun
+    // format et ne correspond simplement à aucun courrier (résultat vide).
+    assertJour(p.dateFrom, 'dateFrom');
+    assertJour(p.dateTo, 'dateTo');
     const where = this.buildWhere(p);
     const order = this.buildOrder(p);
     const page = Math.max(1, p.page ?? 1);

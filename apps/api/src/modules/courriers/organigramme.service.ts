@@ -3,6 +3,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { HierarchyService } from '../../common/hierarchy.service';
 
 /**
+ * Un parent désactivé est refusé (création ET déplacement) : la désactivation emporte tout le
+ * sous-arbre précisément pour éviter les enfants orphelins ; accepter un enfant ACTIF sous un nœud
+ * inactif en recréait un, que l'écran affichait alors comme une fausse racine.
+ */
+const INACTIVE_PARENT = 'Nœud parent désactivé';
+
+/**
  * Organigramme hiérarchique (§14) — materialized-path, réutilise HierarchyService (comme les
  * arbres plan/localisation/dossier). L'« assignation rôle ↔ organigramme » (§15) écrit
  * `role.organigramme_id` (pas de table dédiée, cf. §02.15).
@@ -54,6 +61,7 @@ export class OrganigrammeService {
         where: { organigrammeId: newParentId },
       });
       if (!parent) throw new BadRequestException('Nœud parent introuvable');
+      if (!parent.isActive) throw new BadRequestException(INACTIVE_PARENT);
       if (parent.path.startsWith(node.path))
         throw new BadRequestException('Déplacement cyclique interdit');
       parentPath = parent.path;
@@ -112,9 +120,12 @@ export class OrganigrammeService {
     if (organigrammeId != null) {
       const node = await this.prisma.organigramme.findUnique({
         where: { organigrammeId },
-        select: { organigrammeId: true },
+        select: { organigrammeId: true, isActive: true },
       });
       if (!node) throw new BadRequestException('Nœud d’organigramme introuvable');
+      // Un nœud désactivé n'apparaît plus dans l'arbre : y rattacher un rôle produirait des
+      // courriers classés sous un service que plus personne ne voit.
+      if (!node.isActive) throw new BadRequestException('Nœud d’organigramme désactivé');
     }
     return this.prisma.role.update({ where: { roleId }, data: { organigrammeId } });
   }
@@ -123,9 +134,10 @@ export class OrganigrammeService {
     if (parentId == null) return { parentPath: null };
     const parent = await this.prisma.organigramme.findUnique({
       where: { organigrammeId: parentId },
-      select: { path: true },
+      select: { path: true, isActive: true },
     });
     if (!parent) throw new BadRequestException('Nœud parent introuvable');
+    if (!parent.isActive) throw new BadRequestException(INACTIVE_PARENT);
     return { parentPath: parent.path };
   }
 

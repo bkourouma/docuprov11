@@ -146,7 +146,12 @@ export function MailViewer({
         </div>
       }
     >
-      {loading || !mail ? (
+      {/* Spinner au PREMIER chargement (ou à l'ouverture d'un autre courrier) seulement. Le
+          rechargement qui suit une action (« Traiter », imputation, archivage) garde le contenu
+          monté : remplacé par le spinner, il démontait les onglets, qui revenaient sur
+          « Courrier » — l'utilisateur perdait de vue le résultat de son action. Même règle que
+          `MailDetailPage`. */}
+      {!mail || (loading && mail.mailId !== mailId) ? (
         <div style={{ display: 'grid', placeItems: 'center', padding: space.xxxl }}>
           <Spin />
         </div>

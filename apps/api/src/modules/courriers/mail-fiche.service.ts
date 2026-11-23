@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MAIL_ACTION_LABELS, MAIL_STATUS_LABELS, MAIL_TYPE_LABELS } from '@archivage/types';
 import { fichePdfDoc, fillDocxTemplate, renderFichePdf } from '@archivage/exports';
 import { PrismaService } from '../prisma/prisma.service';
+import type { AuthUser } from '../auth/auth.types';
+import { MailsService } from './mails.service';
 import { buildFiche, type FicheInputs } from './domain';
 
 /**
@@ -78,8 +80,42 @@ const stamp = (d: Date): string =>
 export class MailFicheService {
   constructor(
     private readonly prisma: PrismaService,
+    // Périmètre de suivi (§09) : résolu EXACTEMENT comme les files Suivi, par le même service —
+    // dupliquer la règle ici la laisserait dériver de celle des listes.
+    private readonly mails: MailsService,
     private readonly config?: ConfigService,
   ) {}
+
+  /**
+   * Garde de périmètre de la fiche (§09). La route s'ouvre au « Suivi permanent » ET au « Suivi
+   * DC » : le menu seul ne suffit donc pas, sans quoi un porteur du Suivi DC lirait la fiche de
+   * n'importe quel courrier en devinant son identifiant.
+   *  - `all` (Suivi permanent, admin) : aucune restriction — l'inexistant tombe en 404 plus loin ;
+   *  - `imputed` (Suivi DC) : seulement les courriers où l'utilisateur porte une imputation
+   *    (traitée ou non, comme la file Suivi DC) ;
+   *  - `none` : refus.
+   * L'existence est vérifiée AVANT le périmètre : un courrier inexistant reste un 404, conforme
+   * aux autres lectures ; le 403 ne porte que sur un courrier réel hors périmètre.
+   */
+  private async assertInScope(mailId: number, user: AuthUser): Promise<void> {
+    const scope = await this.mails.mailScope(user);
+    if (scope === 'all') return;
+    const mail = await this.prisma.mail.findFirst({
+      where: { mailId, isDeleted: false },
+      select: {
+        mailId: true,
+        inputations: {
+          where: { userId: user.userGroupId ?? -1 },
+          select: { mailInputationId: true },
+          take: 1,
+        },
+      },
+    });
+    if (!mail) throw new NotFoundException('Courrier introuvable');
+    if (scope === 'none' || mail.inputations.length === 0) {
+      throw new ForbiddenException('Courrier hors de votre périmètre de suivi');
+    }
+  }
 
   /**
    * Chemin d'un gabarit. En dev `__dirname` est dans `src/`, en prod dans `dist/` : les deux
@@ -182,7 +218,12 @@ export class MailFicheService {
    * Fiche au format DOCX : remplit le gabarit du Sénat, donc **fidèle au modèle d'origine**
    * (polices, tableaux, en-tête). Le nom de fichier reprend celui du source.
    */
-  async renderDocx(mailId: number, now: Date): Promise<{ buffer: Buffer; filename: string }> {
+  async renderDocx(
+    mailId: number,
+    now: Date,
+    user: AuthUser,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    await this.assertInScope(mailId, user);
     const inputs = await this.getFicheInputs(mailId, now);
     const { template, replacements } = buildFiche(inputs);
     const buffer = await fillDocxTemplate(await this.resolveTemplate(template), replacements);
@@ -193,7 +234,12 @@ export class MailFicheService {
    * Fiche au format PDF (aperçu / impression de la modale §09). Re-rendu depuis les MÊMES
    * substitutions que le DOCX — le source, lui, convertit le DOCX (écart assumé, cf. fiche-pdf).
    */
-  async renderPdf(mailId: number, now: Date): Promise<{ buffer: Buffer; filename: string }> {
+  async renderPdf(
+    mailId: number,
+    now: Date,
+    user: AuthUser,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    await this.assertInScope(mailId, user);
     const inputs = await this.getFicheInputs(mailId, now);
     const { template, replacements } = buildFiche(inputs);
     const buffer = await renderFichePdf(fichePdfDoc(template, replacements));

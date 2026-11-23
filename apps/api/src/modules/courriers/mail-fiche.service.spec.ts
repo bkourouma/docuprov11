@@ -10,7 +10,8 @@ describe('MailFicheService — données de la Fiche d’Imputation (§09)', () =
 
   beforeEach(() => {
     prisma = { mail: { findFirst: jest.fn() } };
-    service = new MailFicheService(prisma as never);
+    // Le périmètre (MailsService) n'intervient pas dans l'assemblage des données testé ici.
+    service = new MailFicheService(prisma as never, {} as never);
   });
 
   const baseMail = {
