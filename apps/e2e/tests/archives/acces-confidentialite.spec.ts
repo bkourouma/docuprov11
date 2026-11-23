@@ -398,12 +398,8 @@ test.describe('Accès P3 — refus par permission', () => {
     apiAs,
     uniq,
   }) => {
-    // Le lot socle pose `@RequireAdmin` sur `POST /referentials/document-permissions` ; ce correctif
-    // n'est pas encore fusionné dans cette branche (la route y répond 201 à tout compte connecté).
-    test.fixme(
-      true,
-      'en attente du lot socle : @RequireAdmin sur POST /referentials/document-permissions (403 attendu)',
-    );
+    // `POST /referentials/document-permissions` porte `@RequireAdmin` (lot socle) : un compte
+    // ordinaire reçoit 403 et la pièce reste invisible.
     const jeton = uniq('ARC22R');
     const niveau = await creerConfidentialite(api, uniq('ARC22R Secret'));
     const secret = await creerDocumentArchive(api, {
