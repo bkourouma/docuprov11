@@ -157,6 +157,30 @@ describe('validateConnectorInput', () => {
     ).rejects.toThrow(/droits/);
   });
 
+  // ANO-GED-T4-1 : un identifiant de groupe hors int4 passait la validation et faisait échouer la
+  // requête Prisma de l'API (500). Il doit être refusé ici, comme toute autre saisie invalide.
+  it.each([
+    ['fallbackUserGroupIds', { fallbackUserGroupIds: [2147483648] }],
+    ['principalMap', { principalMap: { 'compta@exemple.fr': 2147483648 } }],
+  ])('refuse un identifiant de groupe hors int4 (%s)', async (_label, rights) => {
+    const err = await validateConnectorInput(registry, {
+      connectorType: 'test',
+      mode: GedSourceMode.Copie,
+      config: { rights },
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(ConnectorConfigError);
+    expect(err.message).toMatch(/droits/);
+  });
+
+  it('accepte l’identifiant de groupe int4 maximal', async () => {
+    const out = await validateConnectorInput(registry, {
+      connectorType: 'test',
+      mode: GedSourceMode.Copie,
+      config: { rights: { fallbackUserGroupIds: [2147483647] } },
+    });
+    expect(out.rights.fallbackUserGroupIds).toEqual([2147483647]);
+  });
+
   it('refuse des identifiants invalides sans en citer la valeur', async () => {
     const err = await validateConnectorInput(registry, {
       connectorType: 'test',

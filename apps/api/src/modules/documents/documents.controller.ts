@@ -59,6 +59,26 @@ export class DocumentsController {
     private readonly config: ConfigService,
   ) {}
 
+  /**
+   * Garde d'ACCÈS des onglets de la fiche (`/documents/:id/...`) : même règle que `GET :id`
+   * (`DocumentsService.canAccess`, confidentialité + droits explicites) et même réponse, 404
+   * « introuvable » plutôt que 403 (PLAN-IMPLEMENTATION-SECURITE-DOCUMENTAIRE §4.1 et §8.4).
+   *
+   * Sans elle, les onglets restaient ouverts à TOUT compte authentifié, par appel direct à l'API :
+   * lire les droits, l'historique ou les habilités d'un document qu'il ne peut pas ouvrir, et
+   * surtout s'y accorder un droit (`POST :id/permissions`) ou en retirer la confidentialité
+   * (`PUT :id/confidentialite`). `DocumentTabsService` suppose que l'appelant a « déjà passé
+   * `canAccess` pour charger la page » : rien ne le garantissait côté serveur.
+   *
+   * Posée ici et non dans `DocumentTabsService` : `grantPermission` y est partagée avec
+   * `AccessInquiriesService.decide`, autorisée par un autre axe (menu « Sécurité Documentaire »).
+   */
+  private async assertCanOpen(id: number, user: AuthUser): Promise<void> {
+    if (!(await this.documents.canAccess(id, user))) {
+      throw new NotFoundException('Document introuvable');
+    }
+  }
+
   @Post('search')
   @HttpCode(200)
   searchDocuments(
@@ -125,21 +145,24 @@ export class DocumentsController {
   // ---- Onglets de consultation (`/documents/:id`) --------------------------
 
   @Get(':id/life-cycle')
-  lifeCycle(@Param('id', ParseIntPipe) id: number) {
+  async lifeCycle(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.assertCanOpen(id, user);
     return this.tabs.getLifeCycle(id);
   }
 
   @Put(':id/life-cycle')
-  saveLifeCycle(
+  async saveLifeCycle(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(documentLifeCycleSchema)) body: DocumentLifeCycleDto,
     @CurrentUser() user: AuthUser,
   ) {
+    await this.assertCanOpen(id, user);
     return this.tabs.saveLifeCycle(id, body, user);
   }
 
   @Get(':id/permissions')
-  permissions(@Param('id', ParseIntPipe) id: number) {
+  async permissions(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.assertCanOpen(id, user);
     return this.tabs.listPermissions(id);
   }
 
@@ -152,41 +175,50 @@ export class DocumentsController {
    * fiche peut donc gérer ses accès. `DocumentTabsService.grantPermission` reste, elle, partagée
    * avec `AccessInquiriesService.decide`, qui a sa propre autorisation (menu « Sécurité
    * Documentaire ») — l'ouvrir ici ne change rien de ce côté.
+   *
+   * « Pouvoir ouvrir la fiche » est en revanche vérifié (`assertCanOpen`) : auparavant, un compte
+   * qui ne voyait pas le document pouvait s'y accorder lui-même un droit par appel direct.
    */
   @Post(':id/permissions')
-  grantPermission(
+  async grantPermission(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(documentPermissionSchema)) body: DocumentPermissionDto,
     @CurrentUser() user: AuthUser,
   ) {
+    await this.assertCanOpen(id, user);
     return this.tabs.grantPermission(id, body, user);
   }
 
   /** Retrait d'un droit sur CE document — même ouverture que l'octroi ci-dessus. */
   @Delete(':id/permissions/:permissionId')
-  revokePermission(
+  async revokePermission(
     @Param('id', ParseIntPipe) id: number,
     @Param('permissionId', ParseIntPipe) permissionId: number,
+    @CurrentUser() user: AuthUser,
   ) {
+    await this.assertCanOpen(id, user);
     return this.tabs.revokePermission(id, permissionId);
   }
 
   @Get(':id/confidentialite')
-  confidentialite(@Param('id', ParseIntPipe) id: number) {
+  async confidentialite(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.assertCanOpen(id, user);
     return this.tabs.getConfidentialite(id);
   }
 
   @Put(':id/confidentialite')
-  setConfidentialite(
+  async setConfidentialite(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(documentConfidentialiteSchema)) body: DocumentConfidentialiteDto,
     @CurrentUser() user: AuthUser,
   ) {
+    await this.assertCanOpen(id, user);
     return this.tabs.setConfidentialite(id, body.confidentialiteId, user);
   }
 
   @Get(':id/lendings')
-  lendings(@Param('id', ParseIntPipe) id: number) {
+  async lendings(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.assertCanOpen(id, user);
     return this.tabs.listLendings(id);
   }
 
@@ -246,7 +278,8 @@ export class DocumentsController {
 
   /** État d'intégrité connu — lecture seule, sans relire les binaires du coffre. */
   @Get(':id/integrity')
-  integrity(@Param('id', ParseIntPipe) id: number) {
+  async integrity(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.assertCanOpen(id, user);
     return this.tabs.getIntegrity(id);
   }
 
@@ -257,14 +290,16 @@ export class DocumentsController {
    */
   @Post(':id/integrity/verify')
   @HttpCode(200)
-  verifyIntegrity(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+  async verifyIntegrity(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.assertCanOpen(id, user);
     const store = new DiskFileStore(this.config.getOrThrow<string>('ARCHIVES_PATH'));
     return this.tabs.verifyIntegrity(id, store, user);
   }
 
   /** État du cachet (signature + horodatage) — vérifié à la lecture, sans relire les binaires. */
   @Get(':id/seal')
-  async seal(@Param('id', ParseIntPipe) id: number) {
+  async seal(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.assertCanOpen(id, user);
     return this.tabs.verifySeal(id, await this.sealingKey.get());
   }
 
@@ -272,6 +307,7 @@ export class DocumentsController {
   @Post(':id/seal')
   @HttpCode(200)
   async applySeal(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.assertCanOpen(id, user);
     return this.tabs.sealDocument(id, await this.sealingKey.get(), user);
   }
 
@@ -284,12 +320,14 @@ export class DocumentsController {
 
   /** Consigne de numérisation du type + numérisation réellement effectuée pour ce document. */
   @Get(':id/scanning')
-  scanning(@Param('id', ParseIntPipe) id: number) {
+  async scanning(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.assertCanOpen(id, user);
     return this.tabs.getScanningSettings(id);
   }
 
   @Get(':id/history')
-  history(@Param('id', ParseIntPipe) id: number) {
+  async history(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    await this.assertCanOpen(id, user);
     return this.tabs.listHistory(id);
   }
 

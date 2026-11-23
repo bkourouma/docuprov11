@@ -10,7 +10,7 @@ import { REQUIRE_MENU_KEY } from '../auth/require-menu.decorator';
 import type { AuthUser } from '../auth/auth.types';
 import { SpacesController } from './spaces.controller';
 import { SPACES_MENU } from './spaces.menus';
-import { SpacesService } from './spaces.service';
+import { NOT_ARCHIVED_MESSAGE, SpacesService } from './spaces.service';
 
 // ---------------------------------------------------------------------------------------------
 // Faux Prisma EN MÉMOIRE : il applique réellement les filtres que le service construit (membres
@@ -70,6 +70,8 @@ interface DocFx {
   documentDate: Date | null;
   confidentialiteId: number | null;
   typeLabel: string | null;
+  /** Absent : archivé (validé). `false` : document en attente (ex. pièce de l'éditeur). */
+  isArchived?: boolean;
 }
 
 type Where = Record<string, unknown>;
@@ -176,6 +178,12 @@ class FakeDb {
 
   client() {
     return {
+      document: {
+        findUnique: jest.fn(async ({ where }: { where: { documentId: number } }) => {
+          const d = this.docs.find((x) => x.documentId === where.documentId);
+          return d ? { isArchived: d.isArchived ?? true } : null;
+        }),
+      },
       appUserGroup: {
         findMany: jest.fn(async ({ where }: { where: { userId: number } }) =>
           this.groups
@@ -505,6 +513,14 @@ function seed(db: FakeDb) {
       confidentialiteId: null,
       typeLabel: null,
     },
+    {
+      documentId: 504,
+      label: 'Doc en attente de validation',
+      documentDate: null,
+      confidentialiteId: null,
+      typeLabel: null,
+      isArchived: false,
+    },
   ];
   const ln = (spaceId: number, documentId: number): LinkFx => ({
     spaceId,
@@ -518,7 +534,7 @@ function seed(db: FakeDb) {
 /** Verdict `DocumentsService.canAccess` simulé : documents accessibles par personne. */
 const ACCESSIBLE: Record<number, number[]> = {
   1: [500, 501, 502, 503],
-  2: [500, 501, 503], // B ne peut pas ouvrir 502
+  2: [500, 501, 503, 504], // B ne peut pas ouvrir 502
   3: [500, 501, 502, 503],
   5: [500, 501, 502],
 };
@@ -722,6 +738,25 @@ describe('SpacesService', () => {
         NotFoundException,
       );
       expect(db.links.filter((l) => l.spaceId === 2)).toHaveLength(2);
+    });
+
+    it('rattacher : 409 si le document n’est pas archivé, sans lien ni audit', async () => {
+      await expect(service.attachDocument(2, { documentId: 504 }, B)).rejects.toThrow(
+        new ConflictException(NOT_ARCHIVED_MESSAGE),
+      );
+      expect(db.links.some((l) => l.documentId === 504)).toBe(false);
+      expect(audit.dataChange).not.toHaveBeenCalled();
+    });
+
+    it('rattacher un document non archivé et inaccessible : 404 (rien n’est révélé de son état)', async () => {
+      await expect(service.attachDocument(2, { documentId: 504 }, C)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      // D est propriétaire de l'espace 5, mais 504 ne lui est pas accessible : 404, pas 409.
+      await expect(service.attachDocument(5, { documentId: 504 }, D)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.document.findUnique).not.toHaveBeenCalled();
     });
 
     it('rattacher : 409 si déjà rattaché', async () => {

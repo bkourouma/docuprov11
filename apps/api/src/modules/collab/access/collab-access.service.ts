@@ -34,7 +34,9 @@ export class CollabAuthError extends Error {
  * charge utile `JwtPayload` -> `AuthUser`), mais le jeton arrive par le protocole WebSocket et non
  * par l'en-tête `Authorization` : le garde HTTP global ne s'applique pas ici. Deux durcissements
  * par rapport à la stratégie HTTP : l'algorithme est figé (HS256, celui de `JwtModule`) et un jeton
- * SANS `exp` est refusé (sinon il ne cesserait jamais d'ouvrir des connexions longues).
+ * SANS `exp` est refusé (sinon il ne cesserait jamais d'ouvrir des connexions longues). Le compte
+ * est ensuite RELU en base (`authenticateToken`, 2026-11-22) : compte supprimé ou désactivé refusé,
+ * `isAdmin` pris de la base et non du jeton.
  *
  * AUTORISATION — refus par défaut. `DocumentsService.canAccess` tranche d'abord (droits par
  * document + confidentialité) ; puis le niveau effectif décide écriture (>= 3) ou lecture. Un
@@ -54,10 +56,35 @@ export class CollabAccessService implements CollabAccessPort {
   }
 
   async authenticate(token: string): Promise<AuthUser> {
-    return this.verifyToken(token).user;
+    return (await this.authenticateToken(token)).user;
   }
 
-  /** Vérifie le JWT ; jette `CollabAuthError` (sans détail) s'il est absent, invalide ou expiré. */
+  /**
+   * Authentification COMPLÈTE d'une connexion : jeton vérifié (`verifyToken`) PUIS compte relu en
+   * base. Un JWT reste valide jusqu'à son expiration même si le compte a été désactivé ou supprimé
+   * entre-temps, ou s'il a perdu ses droits d'administration : faire confiance au seul jeton
+   * laissait ouvrir (et garder ouvertes, au renouvellement) des connexions longues à un compte qui
+   * ne peut plus se connecter à l'API. D'où :
+   *  - compte absent ou désactivé => `CollabAuthError`, le MÊME refus muet qu'un jeton invalide ;
+   *  - `isAdmin` vient de la BASE, jamais du jeton (il ouvre `canAccess` à tout le fonds).
+   * Une panne de base n'est PAS convertie en `CollabAuthError` : elle remonte telle quelle (le
+   * serveur la journalise comme erreur interne, et le client reçoit le même refus uniforme).
+   */
+  async authenticateToken(token: unknown): Promise<VerifiedCollabToken> {
+    const verified = this.verifyToken(token);
+    const account = await this.prisma.appUser.findUnique({
+      where: { userId: verified.user.userId },
+      select: { isAdmin: true, isDisabled: true },
+    });
+    if (!account || account.isDisabled) throw new CollabAuthError();
+    return { ...verified, user: { ...verified.user, isAdmin: account.isAdmin === true } };
+  }
+
+  /**
+   * Vérifie le JWT ; jette `CollabAuthError` (sans détail) s'il est absent, invalide ou expiré.
+   * Contrôle CRYPTOGRAPHIQUE seulement : l'état du compte n'y est pas relu (voir
+   * `authenticateToken`, seul point d'entrée à utiliser pour ouvrir ou prolonger une connexion).
+   */
   verifyToken(token: unknown): VerifiedCollabToken {
     if (typeof token !== 'string' || token.length === 0 || token.length > MAX_TOKEN_LENGTH) {
       throw new CollabAuthError();

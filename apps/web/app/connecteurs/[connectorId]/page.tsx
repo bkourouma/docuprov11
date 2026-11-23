@@ -207,7 +207,12 @@ export default function ConnecteurDetailPage() {
                 Synchroniser maintenant
               </Button>
             )}
-            <Button loading={busy === `toggle:${cid}`} onClick={() => toggle(connector)}>
+            {/* Deux actions, deux boutons (`key`) : voir la liste des connecteurs (ANO-GED-15). */}
+            <Button
+              key={connector.isActive ? 'deactivate' : 'activate'}
+              loading={busy === `toggle:${cid}`}
+              onClick={() => toggle(connector)}
+            >
               {connector.isActive ? 'Désactiver' : 'Activer'}
             </Button>
             <Button
