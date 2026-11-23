@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { latestCivilDate } from './domain/dua';
 
 /** Libellé de référentiel : obligatoire, espaces de bordure ignorés (cf. `normaliseLabel`). */
 const label = z.string().trim().min(1);
@@ -176,6 +177,10 @@ export const purgeDocumentsSchema = z.object({
  * ICI pour qu'elles tiennent quel que soit l'appelant : date de début ≤ aujourd'hui, date de
  * retour prévue ≥ date de début (le « ≥ aujourd'hui » du source est équivalent dès lors que la
  * date de début est passée, et il refusait à tort un prêt court saisi le jour même).
+ *
+ * La règle « début ≤ aujourd'hui » était annoncée ici sans être appliquée (ANO-ARC-T3-02, corrigée
+ * le 2026-11-22). « Aujourd'hui » s'entend au sens du navigateur, qui saisit en date locale :
+ * la borne est la date la plus avancée sur Terre (`latestCivilDate`), pas la date UTC du serveur.
  */
 export const createLendingSchema = z
   .object({
@@ -185,6 +190,10 @@ export const createLendingSchema = z
     startDate: isoDate,
     projectedReturnDate: isoDate,
   })
+  .refine((d) => d.startDate <= latestCivilDate(new Date()), {
+    message: 'La date de début ne peut pas être future',
+    path: ['startDate'],
+  })
   .refine((d) => d.projectedReturnDate >= d.startDate, {
     message: 'La date de retour prévue doit suivre la date de début',
     path: ['projectedReturnDate'],
@@ -193,7 +202,15 @@ export const createLendingSchema = z
 export const lendingQuerySchema = z.object({
   ...listQuery,
   sorting: z
-    .enum(['documentId', 'beneficiary', 'document', 'motive', 'startDate', 'projectedReturnDate', 'returnedDate'])
+    .enum([
+      'documentId',
+      'beneficiary',
+      'document',
+      'motive',
+      'startDate',
+      'projectedReturnDate',
+      'returnedDate',
+    ])
     .default('startDate'),
 });
 

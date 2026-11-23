@@ -3,6 +3,7 @@ import {
   computeDueDates,
   expiryCutoff,
   isExpired,
+  latestCivilDate,
   lifeCycleStartDate,
   toIsoDate,
 } from './dua';
@@ -76,5 +77,17 @@ describe('expiryCutoff', () => {
 
   it("avec anticipation, la coupure ouvre une fenêtre vers l'avenir", () => {
     expect(toIsoDate(expiryCutoff(new Date('2026-07-31T18:00:00.000Z'), 3))).toBe('2026-10-31');
+  });
+});
+
+describe('latestCivilDate', () => {
+  it('donne la date de UTC+14 : le « aujourd’hui » le plus avancé sur Terre', () => {
+    expect(latestCivilDate(new Date('2026-11-22T09:59:00.000Z'))).toBe('2026-11-22');
+    expect(latestCivilDate(new Date('2026-11-22T10:00:00.000Z'))).toBe('2026-11-23');
+  });
+
+  it("n'est jamais antérieure à la date UTC", () => {
+    const now = new Date('2026-12-31T23:59:59.000Z');
+    expect(latestCivilDate(now) >= toIsoDate(now)).toBe(true);
   });
 });

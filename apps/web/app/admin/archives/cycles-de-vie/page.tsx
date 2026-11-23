@@ -42,6 +42,14 @@ import { InfoTooltip } from '../../../components/InfoTooltip';
 const monthsToYears = (months: number): number => Math.round(months / 12);
 const yearsToMonths = (years: number): number => years * 12;
 
+// Saisie des deux durées en années ENTIÈRES (ANO-ARC-T4-04) : `precision={0}` sur leurs
+// InputNumber. Sans lui, « 2,5 » partait en 30 mois, que la relecture affichait « 3 ans »
+// (`Math.round`) et qu'un nouvel enregistrement changeait en 36 mois. Avec lui, l'InputNumber
+// arrondit la saisie à la sortie du champ (2,5 → 3 ; 4,4 → 4) : le champ montre l'entier qui sera
+// envoyé, avant l'enregistrement.
+// `decimalSeparator=","` : la virgule française est lue comme séparateur décimal. Sans lui,
+// l'analyseur par défaut supprime la virgule et lit « 2,5 » comme 25 ans. Le point reste accepté.
+
 /** « 0 » → immédiat, sinon accord singulier/pluriel — plus de mélange mois/ans à formatter. */
 function humanYears(years: number): string {
   if (years === 0) return 'immédiat';
@@ -299,6 +307,8 @@ export default function LifeCyclesPage() {
               <InputNumber
                 style={{ width: '100%' }}
                 min={0}
+                precision={0}
+                decimalSeparator=","
                 value={form.complianceLifespanYears}
                 onChange={(v) => setForm((f) => ({ ...f, complianceLifespanYears: v ?? 0 }))}
               />
@@ -309,6 +319,8 @@ export default function LifeCyclesPage() {
               <InputNumber
                 style={{ width: '100%' }}
                 min={0}
+                precision={0}
+                decimalSeparator=","
                 value={form.usefulnessLifespanYears}
                 onChange={(v) => setForm((f) => ({ ...f, usefulnessLifespanYears: v ?? 0 }))}
               />

@@ -188,6 +188,7 @@ Points que les lots modules peuvent tenir pour acquis :
   `../../../fixtures`) : `testDir: './tests'` est parcouru récursivement ; le glob des seeds reste
   `tests/*/_helpers/global-seed.ts` (un seul niveau) ;
 - `process.env.E2E_WORKER` et `process.env.E2E_CONNECTOR_FS_ROOT` sont posés par le global setup ;
+- `process.env.E2E_ARCHIVES_PATH` (coffre ARCHIVES de la pile, `ARCHIVES_PATH` de l'API) est posé par le global setup ;
   `process.env.E2E_API_URL` (`http://127.0.0.1:<port>/api`) et `process.env.E2E_BASE_URL`
   (origine du web) par `playwright.config.ts`.
 - **Compte à mot de passe à changer (`mustChangePwd`)** : ni `loginAs` ni `apiAs` ne s'en

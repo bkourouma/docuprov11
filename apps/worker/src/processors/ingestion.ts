@@ -149,8 +149,15 @@ export async function persistDocument(opts: PersistOptions): Promise<void> {
 // Mode « sans intercalaire » (normal) — TOUS les fichiers fusionnés en UN document
 // ---------------------------------------------------------------------------
 
-/** Fusionne plusieurs PDF en un seul (toutes les pages, dans l'ordre des fichiers). */
-async function mergePdfBytes(
+/**
+ * Fusionne plusieurs PDF en un seul (toutes les pages, dans l'ordre des fichiers).
+ *
+ * Un fichier illisible est ignoré (meilleur effort, comportement historique). Mais si AUCUNE page
+ * n'a pu être lue, la fusion échoue (ANO-ARC-T1-02) : produire quand même un document à zéro page,
+ * marqué « traité », laissait l'opérateur valider et archiver une coquille vide, sans aucun signal
+ * d'erreur. L'échec fait passer le lot à l'état « échoué » (statut 2), que l'écran signale.
+ */
+export async function mergePdfBytes(
   files: { bytes: Uint8Array }[],
   onMerged?: (filesDone: number) => void | Promise<void>,
 ): Promise<{ bytes: Uint8Array; pageCount: number }> {
@@ -164,6 +171,11 @@ async function mergePdfBytes(
       /* fichier illisible : ignoré (best-effort) */
     }
     if (onMerged) await onMerged(i + 1);
+  }
+  if (merged.getPageCount() === 0) {
+    throw new Error(
+      `Aucune page lisible dans les ${files.length} fichier(s) du lot : aucun document créé.`,
+    );
   }
   const out = await merged.save();
   return { bytes: out, pageCount: merged.getPageCount() };

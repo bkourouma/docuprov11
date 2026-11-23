@@ -1,4 +1,10 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { MetaDataType } from '@archivage/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { findLabelConflict, labelDedupKey, normaliseLabel } from './domain';
 import type {
@@ -23,6 +29,15 @@ export interface BulkCreateResult {
   /** Libellés ignorés parce que déjà portés par un actif (ou en double dans le lot). */
   skipped: string[];
 }
+
+/**
+ * Borne haute d'une durée de conservation, en MOIS : 1 000 ans. Ce n'est pas une règle
+ * d'archivage mais un garde-fou technique : l'échéance est calculée en SQL
+ * (`date + make_interval(months => …)`, `archives-compliance.service.ts`) et une durée démesurée
+ * sort de la plage des `timestamp` PostgreSQL — la requête de « DUA expirés » échouerait alors
+ * pour TOUS les documents, et au-delà de 2^31 l'écriture même tombait en 500.
+ */
+export const MAX_LIFESPAN_MONTHS = 12_000;
 
 /**
  * Paramétrage Docu-Archives : paramétrage des types de documents, cycles de vie, référentiels du
@@ -64,7 +79,8 @@ export class ArchivesSettingsService {
             select: { destructionModeId: true, label: true },
           })
         ).map((r) => ({ id: r.destructionModeId, label: r.label })),
-      create: (label) => this.prisma.destructionMode.create({ data: { label } }).then(() => undefined),
+      create: (label) =>
+        this.prisma.destructionMode.create({ data: { label } }).then(() => undefined),
     });
   }
 
@@ -85,7 +101,10 @@ export class ArchivesSettingsService {
       destructionModeId,
       'Un mode de destruction actif porte déjà ce libellé',
     );
-    return this.prisma.destructionMode.update({ where: { destructionModeId }, data: { label: value } });
+    return this.prisma.destructionMode.update({
+      where: { destructionModeId },
+      data: { label: value },
+    });
   }
 
   async deactivateDestructionModes(ids: number[]) {
@@ -157,7 +176,8 @@ export class ArchivesSettingsService {
             select: { lendingMotiveId: true, label: true },
           })
         ).map((r) => ({ id: r.lendingMotiveId, label: r.label })),
-      create: (label) => this.prisma.lendingMotive.create({ data: { label } }).then(() => undefined),
+      create: (label) =>
+        this.prisma.lendingMotive.create({ data: { label } }).then(() => undefined),
     });
   }
 
@@ -216,9 +236,28 @@ export class ArchivesSettingsService {
    */
   async saveDocumentTypeSetting(input: DocumentTypeSettingDto) {
     await this.assertFound(
-      await this.prisma.documentType.findUnique({ where: { documentTypeId: input.documentTypeId } }),
+      await this.prisma.documentType.findUnique({
+        where: { documentTypeId: input.documentTypeId },
+      }),
       'Type de document introuvable',
     );
+    await this.assertReferences([
+      [
+        input.dossierId,
+        (id) => this.prisma.dossier.findUnique({ where: { dossierId: id } }),
+        'Dossier introuvable',
+      ],
+      [
+        input.planId,
+        (id) => this.prisma.classificationPlan.findUnique({ where: { planId: id } }),
+        'Plan de classement introuvable',
+      ],
+      [
+        input.confidentialiteId,
+        (id) => this.prisma.confidentialite.findUnique({ where: { confidentialiteId: id } }),
+        'Niveau de confidentialité introuvable',
+      ],
+    ]);
     const data = {
       dossierId: input.dossierId ?? null,
       planId: input.planId ?? null,
@@ -271,9 +310,14 @@ export class ArchivesSettingsService {
   /** Crée ou met à jour la règle de conservation d'un type (une règle par type). */
   async saveDocumentTypeLifeCycle(input: DocumentTypeLifeCycleDto) {
     await this.assertFound(
-      await this.prisma.documentType.findUnique({ where: { documentTypeId: input.documentTypeId } }),
+      await this.prisma.documentType.findUnique({
+        where: { documentTypeId: input.documentTypeId },
+      }),
       'Type de document introuvable',
     );
+    this.assertLifespan(input.usefulnessLifespan, "La durée d'utilité administrative");
+    this.assertLifespan(input.complianceLifespan, 'La durée de conformité');
+    await this.assertLifeCycleReferences(input.finalFateId, input.destructionModeId);
     const data = {
       usefulnessLifespan: input.usefulnessLifespan,
       complianceLifespan: input.complianceLifespan,
@@ -303,6 +347,7 @@ export class ArchivesSettingsService {
       await this.prisma.document.findUnique({ where: { documentId: input.documentId } }),
       'Document introuvable',
     );
+    await this.assertLifeCycleReferences(input.finalFateId, input.destructionModeId);
     const data = {
       usefulnessLifespan: new Date(`${input.usefulnessLifespan}T00:00:00.000Z`),
       complianceLifespan: new Date(`${input.complianceLifespan}T00:00:00.000Z`),
@@ -425,10 +470,11 @@ export class ArchivesSettingsService {
 
   /** Création en masse des valeurs d'une même métadonnée (§9). */
   async createMetaDataListItems(input: CreateMetaDataListItemsDto): Promise<BulkCreateResult> {
-    await this.assertFound(
-      await this.prisma.metaData.findUnique({ where: { metaDataId: input.metaDataId } }),
-      'Métadonnée introuvable',
-    );
+    const metaData = await this.prisma.metaData.findUnique({
+      where: { metaDataId: input.metaDataId },
+    });
+    await this.assertFound(metaData, 'Métadonnée introuvable');
+    this.assertListMetaData(metaData!);
     return this.bulkCreate(input.labels, {
       existing: async () =>
         (
@@ -448,6 +494,15 @@ export class ArchivesSettingsService {
     const row = await this.prisma.metaDataListItem.findUnique({ where: { metaDataListItemId } });
     await this.assertFound(row, 'Élément de liste introuvable');
     const metaDataId = input.metaDataId ?? row!.metaDataId;
+    // Changement de rattachement : la nouvelle métadonnée doit exister ET être une liste active
+    // (sinon violation de clé en 500, ou valeur rattachée à un champ qui ne l'affichera jamais).
+    if (input.metaDataId !== undefined && input.metaDataId !== row!.metaDataId) {
+      const target = await this.prisma.metaData.findUnique({
+        where: { metaDataId: input.metaDataId },
+      });
+      if (!target) throw new BadRequestException('Métadonnée introuvable');
+      this.assertListMetaData(target);
+    }
     if (input.label !== undefined || input.metaDataId !== undefined) {
       await this.assertLabelFree(
         (
@@ -500,7 +555,11 @@ export class ArchivesSettingsService {
     const rows = await this.listMetaDataDocumentTypes();
     const byType = new Map<
       number,
-      { documentTypeId: number; documentType: string; metaDatas: Array<{ metaDataId: number; label: string; dataType: number }> }
+      {
+        documentTypeId: number;
+        documentType: string;
+        metaDatas: Array<{ metaDataId: number; label: string; dataType: number }>;
+      }
     >();
     for (const r of rows) {
       const entry = byType.get(r.documentTypeId) ?? {
@@ -524,6 +583,8 @@ export class ArchivesSettingsService {
    * non bloquant du source.
    */
   async linkMetaDataDocumentTypes(input: LinkMetaDataDocumentTypesDto) {
+    await this.assertDocumentTypesExist(input.documentTypeIds);
+    await this.assertMetaDatasExist(input.metaDataIds);
     const { count } = await this.prisma.metaDataDocumentType.createMany({
       data: input.documentTypeIds.flatMap((documentTypeId) =>
         input.metaDataIds.map((metaDataId) => ({ documentTypeId, metaDataId })),
@@ -541,9 +602,12 @@ export class ArchivesSettingsService {
    */
   async setMetaDatasForType(input: SetMetaDatasForTypeDto) {
     await this.assertFound(
-      await this.prisma.documentType.findUnique({ where: { documentTypeId: input.documentTypeId } }),
+      await this.prisma.documentType.findUnique({
+        where: { documentTypeId: input.documentTypeId },
+      }),
       'Type de document introuvable',
     );
+    await this.assertMetaDatasExist(input.metaDataIds);
     return this.prisma.$transaction(async (tx) => {
       await tx.metaDataDocumentType.deleteMany({
         where: { documentTypeId: input.documentTypeId, metaDataId: { notIn: input.metaDataIds } },
@@ -637,5 +701,90 @@ export class ArchivesSettingsService {
 
   private async assertFound<T>(row: T | null, message: string): Promise<void> {
     if (!row) throw new NotFoundException(message);
+  }
+
+  // -------------------------------------------------------------------------
+  // Références du CORPS d'une requête
+  //
+  // Une clé étrangère inexistante n'était vérifiée que par la base : Prisma levait une violation
+  // de contrainte (P2003) que le filtre global rend en 500 générique. C'est une erreur de saisie
+  // du client — 400, avec le nom de ce qui manque. (L'entité visée par l'URL ou la clé métier,
+  // elle, reste en 404 via `assertFound`.)
+  // -------------------------------------------------------------------------
+
+  private async assertReferences(
+    checks: Array<[number | null | undefined, (id: number) => Promise<unknown>, string]>,
+  ): Promise<void> {
+    for (const [id, find, message] of checks) {
+      if (id == null) continue;
+      if (!(await find(id))) throw new BadRequestException(message);
+    }
+  }
+
+  private assertLifeCycleReferences(
+    finalFateId: number | null | undefined,
+    destructionModeId: number | null | undefined,
+  ): Promise<void> {
+    return this.assertReferences([
+      [
+        finalFateId,
+        (id) => this.prisma.finalFate.findUnique({ where: { finalFateId: id } }),
+        'Sort final introuvable',
+      ],
+      [
+        destructionModeId,
+        (id) => this.prisma.destructionMode.findUnique({ where: { destructionModeId: id } }),
+        'Mode de destruction introuvable',
+      ],
+    ]);
+  }
+
+  private assertLifespan(months: number, what: string): void {
+    if (months > MAX_LIFESPAN_MONTHS) {
+      throw new BadRequestException(
+        `${what} ne peut pas dépasser ${MAX_LIFESPAN_MONTHS} mois (${MAX_LIFESPAN_MONTHS / 12} ans)`,
+      );
+    }
+  }
+
+  private async assertDocumentTypesExist(ids: number[]): Promise<void> {
+    const wanted = [...new Set(ids)];
+    const found = await this.prisma.documentType.findMany({
+      where: { documentTypeId: { in: wanted } },
+      select: { documentTypeId: true },
+    });
+    const known = new Set(found.map((r) => r.documentTypeId));
+    const missing = wanted.filter((id) => !known.has(id));
+    if (missing.length) {
+      throw new BadRequestException(`Type(s) de document introuvable(s) : ${missing.join(', ')}`);
+    }
+  }
+
+  private async assertMetaDatasExist(ids: number[]): Promise<void> {
+    const wanted = [...new Set(ids)];
+    if (!wanted.length) return;
+    const found = await this.prisma.metaData.findMany({
+      where: { metaDataId: { in: wanted } },
+      select: { metaDataId: true },
+    });
+    const known = new Set(found.map((r) => r.metaDataId));
+    const missing = wanted.filter((id) => !known.has(id));
+    if (missing.length) {
+      throw new BadRequestException(`Métadonnée(s) introuvable(s) : ${missing.join(', ')}`);
+    }
+  }
+
+  /**
+   * Seule une métadonnée ACTIVE de type « Liste de valeurs » porte des valeurs : c'est la règle
+   * que l'écran « Éléments des listes » applique en ne proposant que ces métadonnées. Sans ce
+   * contrôle, l'API rattachait une valeur à un champ Texte ou Date, qui ne l'affiche jamais.
+   */
+  private assertListMetaData(metaData: { isActive: boolean; dataType: number }): void {
+    if (!metaData.isActive) throw new BadRequestException('Cette métadonnée est désactivée');
+    if (metaData.dataType !== MetaDataType.Liste) {
+      throw new BadRequestException(
+        'Seule une métadonnée de type « Liste de valeurs » peut porter des valeurs',
+      );
+    }
   }
 }

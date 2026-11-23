@@ -222,9 +222,18 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.19.21
+      exceljs:
+        specifier: ^4.4.0
+        version: 4.4.0
       ioredis:
         specifier: ^5.4.2
         version: 5.11.1
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
+      pdf-lib:
+        specifier: ^1.17.1
+        version: 1.17.1
       tsx:
         specifier: ^4.19.2
         version: 4.22.4

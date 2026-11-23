@@ -57,7 +57,8 @@ export class ArchivesController {
 
   /**
    * Épuration des documents sélectionnés (passage à l'état « Épuré »). `@HttpCode(200)` : c'est
-   * une transition d'état sur des ressources existantes, pas une création.
+   * une transition d'état sur des ressources existantes, pas une création. La DUA de chaque
+   * document est revérifiée côté serveur (409 en bloc sinon, cf. `ArchivesComplianceService.purge`).
    */
   @RequireMenu(ARCHIVES_MENUS.duaExpired)
   @Post('dua-expired/purge')
@@ -121,6 +122,10 @@ export class ArchivesController {
 
   // ---- Retour et commentaires ---------------------------------------------
 
+  // Les trois gestes ci-dessous sont ouverts à plusieurs menus ; le garde dit seulement que
+  // l'appelant en porte un. Le PÉRIMÈTRE (tout prêt ou ses seuls prêts) est décidé par le service
+  // selon lequel (ANO-ARC-T3-05, `domain/lending-scope.ts`) : il reçoit donc l'utilisateur.
+
   /**
    * Retour d'un document prêté. Accessible depuis « Documents communiqués » comme depuis « Mes
    * documents communiqués » : ce sont deux vues du même geste, à des périmètres différents.
@@ -128,8 +133,8 @@ export class ArchivesController {
   @RequireMenu(ARCHIVES_MENUS.lentDocuments, ARCHIVES_MENUS.myLentDocuments)
   @Post('lendings/details/:id/return')
   @HttpCode(200)
-  returnDetail(@Param('id', ParseIntPipe) id: number) {
-    return this.lending.returnDetail(id);
+  returnDetail(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.lending.returnDetail(id, user);
   }
 
   @RequireMenu(
@@ -138,8 +143,8 @@ export class ArchivesController {
     ARCHIVES_MENUS.lendingHistory,
   )
   @Get('lendings/:id')
-  getLending(@Param('id', ParseIntPipe) id: number) {
-    return this.lending.getLending(id);
+  getLending(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+    return this.lending.getLending(id, user);
   }
 
   @RequireMenu(ARCHIVES_MENUS.lentDocuments, ARCHIVES_MENUS.myLentDocuments)
@@ -148,6 +153,6 @@ export class ArchivesController {
     @Body(new ZodValidationPipe(lendingCommentSchema)) body: LendingCommentDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.lending.addComment(body.lendingDocumentId, body.comments, user.userGroupId);
+    return this.lending.addComment(body.lendingDocumentId, body.comments, user);
   }
 }

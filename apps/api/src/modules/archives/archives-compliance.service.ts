@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { DocumentState } from '@archivage/types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -109,6 +109,20 @@ export class ArchivesComplianceService {
   }
 
   /**
+   * « La DUA du document est échue à la date `cutoff` » — UNE seule expression SQL, partagée par la
+   * liste « DUA expirés » et par le contrôle de l'épuration (ANO-ARC-T3-06) : ce que l'écran
+   * propose et ce que l'API accepte d'épurer ne peuvent pas diverger. Un document qu'aucune règle
+   * ne régit (ni cycle propre, ni règle de son type) n'est jamais échu.
+   */
+  private usefulnessDueBy(cutoff: string): Prisma.Sql {
+    return Prisma.sql`(dlc.document_life_cycle_id IS NOT NULL OR dtlc.document_type_life_cycle_id IS NOT NULL)
+        AND COALESCE(
+              dlc.usefulness_lifespan,
+              (COALESCE(d.document_date, d.created_at::date) + make_interval(months => dtlc.usefulness_lifespan))::date
+            ) <= ${cutoff}::date`;
+  }
+
+  /**
    * Documents dont la DUA est arrivée à échéance et qui ne sont pas déjà épurés.
    * `monthsAhead` ouvre une fenêtre d'anticipation (0 = strictement échu).
    */
@@ -116,11 +130,7 @@ export class ArchivesComplianceService {
     const cutoff = toIsoDate(expiryCutoff(new Date(), query.monthsAhead));
     const where = Prisma.sql`
       WHERE d.document_state <> ${DocumentState.Epure}
-        AND (dlc.document_life_cycle_id IS NOT NULL OR dtlc.document_type_life_cycle_id IS NOT NULL)
-        AND COALESCE(
-              dlc.usefulness_lifespan,
-              (COALESCE(d.document_date, d.created_at::date) + make_interval(months => dtlc.usefulness_lifespan))::date
-            ) <= ${cutoff}::date
+        AND ${this.usefulnessDueBy(cutoff)}
         ${this.searchClause(query.search)}
     `;
     return this.paginate(where, EXPIRED_SORT, query, cutoff);
@@ -204,14 +214,46 @@ export class ArchivesComplianceService {
    *
    * Le binaire disque n'est PAS supprimé : « épuré » est un état fonctionnel, la destruction
    * physique relève du mode de destruction et reste une opération séparée.
+   *
+   * Contrôles refusés EN BLOC, avant toute écriture (ANO-ARC-T3-06 : l'API épurait tout
+   * identifiant reçu, l'écran étant seul à ne proposer que des échus) :
+   *  - identifiant inexistant → 404 ;
+   *  - DUA non échue AUJOURD'HUI (même règle que « DUA expirés » sans anticipation, y compris pour
+   *    un document qu'aucune règle ne régit) → 409 qui nomme les documents. La fenêtre
+   *    d'anticipation de l'écran sert à PRÉPARER une campagne, pas à épurer par avance.
+   * Un document déjà épuré n'est pas un refus : l'épuration reste idempotente (`purged: 0`).
    */
   async purge(documentIds: number[]) {
+    const ids = [...new Set(documentIds)];
+    const cutoff = toIsoDate(expiryCutoff(new Date(), 0));
+    const states = await this.prisma.$queryRaw<
+      Array<{ document_id: number; label: string; document_state: number; is_due: boolean }>
+    >(Prisma.sql`
+      SELECT d.document_id, d.label, d.document_state,
+             COALESCE((${this.usefulnessDueBy(cutoff)}), false) AS is_due
+      ${this.joins}
+      WHERE d.document_id IN (${Prisma.join(ids)})
+    `);
+
+    const missing = ids.filter((id) => !states.some((s) => s.document_id === id));
+    if (missing.length) {
+      throw new NotFoundException(`Document(s) introuvable(s) : ${missing.join(', ')}`);
+    }
+    const notDue = states.filter((s) => s.document_state !== DocumentState.Epure && !s.is_due);
+    if (notDue.length) {
+      throw new ConflictException(
+        `Document(s) dont la DUA n'est pas échue : ${notDue
+          .map((s) => s.label)
+          .join(', ')}. Aucun document n'a été épuré.`,
+      );
+    }
+
     const stillLent = await this.prisma.lendingDocumentDetail.findMany({
-      where: { documentId: { in: documentIds }, returnedDate: null },
+      where: { documentId: { in: ids }, returnedDate: null },
       select: { documentId: true, document: { select: { label: true } } },
     });
     const blocked = new Map(stillLent.map((l) => [l.documentId, l.document.label]));
-    const eligible = documentIds.filter((id) => !blocked.has(id));
+    const eligible = ids.filter((id) => !blocked.has(id));
 
     const { count } = eligible.length
       ? await this.prisma.document.updateMany({
