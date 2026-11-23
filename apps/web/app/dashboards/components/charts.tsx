@@ -18,7 +18,7 @@ const Pie = dynamic(() => import('@ant-design/plots').then((m) => m.Pie), {
   ssr: false,
   loading,
 }) as ComponentType<Record<string, unknown>>;
-const Column = dynamic(() => import('@ant-design/plots').then((m) => m.Column), {
+const Bar = dynamic(() => import('@ant-design/plots').then((m) => m.Bar), {
   ssr: false,
   loading,
 }) as ComponentType<Record<string, unknown>>;
@@ -46,12 +46,12 @@ export function CumulativeArea({ data, height = 280 }: { data: TimelinePoint[]; 
       animate={false}
       style={{ fill: t.primary, fillOpacity: 0.5 }}
       axis={{
-        x: { labelFormatter: (v: string) => fmtDateFr(v), labelFill: t.label },
+        x: { labelFormatter: (v: string) => fmtDateFr(v), labelFill: t.label, labelFontFamily: t.fontFamily },
         y: {
           labelFormatter: (v: number) => fmtInt(v),
           title: 'Fonds cumulé',
-          labelFill: t.label,
-          titleFill: t.label,
+          labelFill: t.label, labelFontFamily: t.fontFamily,
+          titleFill: t.label, titleFontFamily: t.fontFamily,
         },
       }}
       legend={false}
@@ -72,13 +72,13 @@ export function TypeDonut({ data, height = 280 }: { data: DistributionSlice[]; h
       autoFit
       animate={false}
       scale={{ color: { range: t.palette } }}
-      legend={{ color: { position: 'right', maxRows: 6 } }}
+      legend={{ color: { position: 'right', maxRows: 6, itemLabelFontFamily: t.fontFamily, itemLabelFill: t.label } }}
       label={false}
     />
   );
 }
 
-/** Barres — répartition par dimension catégorielle (localisation, plan…). */
+/** Barres horizontales — répartition par dimension catégorielle (dossier, plan…) : les libellés longs se lisent à l'horizontale. */
 export function DistributionBars({
   data,
   height = 280,
@@ -88,22 +88,21 @@ export function DistributionBars({
 }) {
   const t = useChartTheme();
   return (
-    <Column
+    <Bar
       data={data}
       xField="name"
       yField="value"
       height={height}
       autoFit
       animate={false}
-      style={{ fill: t.primary, radiusTopLeft: radii.sm, radiusTopRight: radii.sm }}
+      style={{ fill: t.primary, radiusTopRight: radii.sm, radiusBottomRight: radii.sm }}
       axis={{
         x: {
-          labelAutoRotate: true,
-          labelAutoHide: true,
+          labelAutoRotate: false,
           labelFormatter: (v: string) => v,
-          labelFill: t.label,
+          labelFill: t.label, labelFontFamily: t.fontFamily,
         },
-        y: { labelFormatter: (v: number) => fmtInt(v), labelFill: t.label },
+        y: { labelFormatter: (v: number) => fmtInt(v), labelFill: t.label, labelFontFamily: t.fontFamily },
       }}
       legend={false}
     />

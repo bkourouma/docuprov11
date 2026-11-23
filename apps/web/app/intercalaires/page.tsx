@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 import { API_BASE, apiJson } from '../lib/api';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
+import { LoadFailure } from '../components/LoadFailure';
 import { TableSkeleton } from '../components/skeletons';
 import { icons, type IconName } from '../theme/icons';
 import { fade } from '../theme/motion';
@@ -127,12 +128,16 @@ export default function IntercalairesPage() {
       .catch(() => undefined);
   }, []);
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const loadItems = useCallback(async (cat: string) => {
     setLoading(true);
     setSelected([]);
     setQuery('');
     try {
       setItems(await apiJson<Item[]>(`/intercalaires/items?category=${cat}`));
+      setLoadFailed(false);
+    } catch {
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -277,6 +282,8 @@ export default function IntercalairesPage() {
               </Card>
             ) : loading ? (
               <TableSkeleton rows={6} columns={1} />
+            ) : loadFailed && items.length === 0 ? (
+              <LoadFailure title="Les éléments n’ont pas pu être chargés" onRetry={() => loadItems(category)} />
             ) : items.length === 0 ? (
               <EmptyState icon="folderTree" title="Aucun élément" />
             ) : (

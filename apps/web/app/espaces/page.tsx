@@ -7,6 +7,7 @@ import { App, Button, Card, Input, Select, Space, Table, Typography } from 'antd
 import type { TableColumnsType } from 'antd';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
+import { LoadFailure } from '../components/LoadFailure';
 import { TableSkeleton } from '../components/skeletons';
 import { AccessTag, PublicationTag, SpaceKindTag } from '../components/espaces/SpaceBadges';
 import { DocumentCount } from '../components/espaces/SpaceCount';
@@ -44,11 +45,14 @@ export default function EspacesPage() {
   const [kind, setKind] = useState<GedSpaceKind | undefined>();
   const [creating, setCreating] = useState(false);
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setRows(await espacesApi.list());
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Chargement des espaces impossible');
     } finally {
       setLoading(false);
@@ -119,6 +123,8 @@ export default function EspacesPage() {
       <Card>
         {loading && rows.length === 0 ? (
           <TableSkeleton rows={5} columns={7} />
+        ) : loadFailed && rows.length === 0 ? (
+          <LoadFailure title="Les espaces n’ont pas pu être chargés" onRetry={load} />
         ) : rows.length === 0 ? (
           <EmptyState
             icon="dossier"

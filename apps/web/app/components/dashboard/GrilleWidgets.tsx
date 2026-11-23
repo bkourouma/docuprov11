@@ -280,6 +280,7 @@ function CadreWidget<Ctx>({
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* En-tête toujours visible (identifie le widget dans la grille) ; en mode édition, cette
           même zone devient la poignée de glissement + le bouton de retrait. */}
+      {(edition || widget.titre) && (
       <div
         className={edition ? 'tdb-poignee' : undefined}
         style={{
@@ -339,6 +340,7 @@ function CadreWidget<Ctx>({
           </Tooltip>
         )}
       </div>
+      )}
 
       {/* Défilement VERTICAL seulement. Les zones composent leurs tuiles avec `Row gutter`, dont
           Ant Design implémente les gouttières par une marge négative (`margin-inline: -8px`) : en

@@ -52,10 +52,10 @@ export function FluxColonnes({ points, height = 260 }: { points: FluxPoint[]; he
       animate={false}
       scale={{ color: { range: [t.palette[0], t.palette[2]] } }}
       axis={{
-        x: { labelFormatter: (v: string) => fmtDateFr(v), labelFill: t.label },
-        y: { labelFormatter: (v: number) => fmtInt(v), labelFill: t.label },
+        x: { labelFormatter: (v: string) => fmtDateFr(v), labelFill: t.label, labelFontFamily: t.fontFamily },
+        y: { labelFormatter: (v: number) => fmtInt(v), labelFill: t.label, labelFontFamily: t.fontFamily },
       }}
-      legend={{ color: { itemLabelFill: t.label } }}
+      legend={{ color: { itemLabelFill: t.label, itemLabelFontFamily: t.fontFamily } }}
     />
   );
 }
@@ -77,12 +77,12 @@ export function BacklogAire({ points, height = 200 }: { points: FluxPoint[]; hei
       animate={false}
       style={{ fill: t.primary, fillOpacity: 0.4 }}
       axis={{
-        x: { labelFormatter: (v: string) => fmtDateFr(v), labelFill: t.label },
+        x: { labelFormatter: (v: string) => fmtDateFr(v), labelFill: t.label, labelFontFamily: t.fontFamily },
         y: {
           labelFormatter: (v: number) => fmtInt(v),
           title: 'Encours',
-          labelFill: t.label,
-          titleFill: t.label,
+          labelFill: t.label, labelFontFamily: t.fontFamily,
+          titleFill: t.label, titleFontFamily: t.fontFamily,
         },
       }}
       legend={false}
@@ -110,7 +110,7 @@ export function RepartitionAnneau({
       animate={false}
       scale={{ color: { range: t.palette } }}
       label={false}
-      legend={{ color: { itemLabelFill: t.label, maxRows: 3 } }}
+      legend={{ color: { itemLabelFill: t.label, itemLabelFontFamily: t.fontFamily, maxRows: 3 } }}
     />
   );
 }
@@ -134,8 +134,8 @@ export function RepartitionBarres({
       animate={false}
       style={{ fill: t.primary }}
       axis={{
-        x: { labelFill: t.label },
-        y: { labelFormatter: (v: number) => fmtInt(v), labelFill: t.label },
+        x: { labelFill: t.label, labelFontFamily: t.fontFamily },
+        y: { labelFormatter: (v: number) => fmtInt(v), labelFill: t.label, labelFontFamily: t.fontFamily },
       }}
       legend={false}
     />

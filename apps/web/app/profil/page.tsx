@@ -22,6 +22,7 @@ import { StateTag } from '../components/documents/shared';
 import { icons } from '../theme/icons';
 import { fontSize, space } from '../theme/tokens';
 import { changeMyPassword, getMyProfile, type MyProfile } from '../lib/auth';
+import { LoadFailure } from '../components/LoadFailure';
 
 const { Text } = Typography;
 
@@ -54,6 +55,7 @@ export default function ProfilPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
     void getMyProfile()
@@ -69,7 +71,7 @@ export default function ProfilPage() {
     return () => {
       cancelled = true;
     };
-  }, [message]);
+  }, [message, attempt]);
 
   const submit = async (v: PasswordForm) => {
     setSaving(true);
@@ -95,7 +97,20 @@ export default function ProfilPage() {
   }
 
   if (!profile) {
-    return <Alert type="error" showIcon message="Profil indisponible" />;
+    return (
+      <div style={{ maxWidth: 1100 }}>
+        <PageHeader icon="users" title="Mon profil" />
+        <Card>
+          <LoadFailure
+            title="Le profil n’a pas pu être chargé"
+            onRetry={() => {
+              setLoading(true);
+              setAttempt((n) => n + 1);
+            }}
+          />
+        </Card>
+      </div>
+    );
   }
 
   return (

@@ -28,6 +28,7 @@ import { API_BASE, apiJson } from '../lib/api';
 import { PageHeader } from '../components/PageHeader';
 import { CountBadge } from '../components/CountBadge';
 import { EmptyState } from '../components/EmptyState';
+import { LoadFailure } from '../components/LoadFailure';
 import { TableSkeleton } from '../components/skeletons';
 import { icons } from '../theme/icons';
 import { colors } from '../theme/tokens';
@@ -209,6 +210,7 @@ export default function SearchPage() {
     [fileTypes],
   );
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -218,7 +220,9 @@ export default function SearchPage() {
       });
       setRows(res.rows);
       setTotal(res.total);
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de recherche');
     } finally {
       setLoading(false);
@@ -617,6 +621,8 @@ export default function SearchPage() {
         title={
           loading && firstLoad ? (
             'Recherche…'
+          ) : loadFailed && total === 0 ? (
+            'Recherche'
           ) : (
             <CountBadge value={total} label={`résultat${total > 1 ? 's' : ''}`} />
           )
@@ -641,6 +647,8 @@ export default function SearchPage() {
       >
         {firstLoad && loading ? (
           <TableSkeleton rows={8} columns={6} />
+        ) : loadFailed && total === 0 && !loading ? (
+          <LoadFailure title="La recherche n’a pas pu aboutir" onRetry={load} />
         ) : total === 0 && !loading ? (
           <EmptyState
             icon="search"

@@ -22,6 +22,8 @@ import { StatTile } from '../../components/StatTile';
 import { useFeedback } from '../../components/feedback';
 import { icons } from '../../theme/icons';
 import { colors, fontSize, space } from '../../theme/tokens';
+import { EmptyState } from '../../components/EmptyState';
+import { LoadFailure } from '../../components/LoadFailure';
 
 /**
  * Ligne du rôle en cours d'édition : le formulaire est à droite, la table à gauche, et rien
@@ -111,6 +113,7 @@ export default function RolesAdminPage() {
     selected: [],
   });
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     try {
       const [r, m] = await Promise.all([
@@ -119,7 +122,9 @@ export default function RolesAdminPage() {
       ]);
       setRoles(r);
       setMenus(m);
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     }
   }, [message]);
@@ -306,19 +311,21 @@ export default function RolesAdminPage() {
     },
   ];
 
+  const failed = loadFailed && roles.length === 0;
+
   return (
     <div>
       <PageHeader icon="roles" title="Rôles" />
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} md={8}>
-          <StatTile tone="ink" label="Rôles" value={roles.length} icon="roles" />
+          <StatTile tone="ink" label="Rôles" value={failed ? null : roles.length} icon="roles" />
         </Col>
         <Col xs={12} md={8}>
           <StatTile
             tone="sky"
             label="Personnalisés"
-            value={roles.filter((r) => !r.isSystem).length}
+            value={failed ? null : roles.filter((r) => !r.isSystem).length}
             icon="edit"
           />
         </Col>
@@ -326,7 +333,7 @@ export default function RolesAdminPage() {
           <StatTile
             tone="violet"
             label="Système"
-            value={roles.filter((r) => r.isSystem).length}
+            value={failed ? null : roles.filter((r) => r.isSystem).length}
             icon="lock"
           />
         </Col>
@@ -334,7 +341,7 @@ export default function RolesAdminPage() {
 
       <Row gutter={[16, 16]} align="top">
         <Col xs={24} lg={14}>
-          <Card title="Rôles">
+          <Card title="Rôles" className="da-ref-card" styles={{ body: { padding: 0 } }}>
             <Table<RoleDto>
               rowKey="roleId"
               dataSource={roles}
@@ -348,6 +355,13 @@ export default function RolesAdminPage() {
                     ? EDITING_ROW_CLASS
                     : ''
               }
+              locale={{
+                emptyText: failed ? (
+                  <LoadFailure title="Les rôles n’ont pas pu être chargés" onRetry={load} compact />
+                ) : (
+                  <EmptyState icon="roles" compact title="Aucun rôle" />
+                ),
+              }}
               pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `${t} rôle(s)` }}
             />
           </Card>

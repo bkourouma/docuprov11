@@ -18,6 +18,7 @@ import type { SorterResult } from 'antd/es/table/interface';
 import dayjs from 'dayjs';
 import { PageHeader } from '../../components/PageHeader';
 import { EmptyState } from '../../components/EmptyState';
+import { LoadFailure } from '../../components/LoadFailure';
 import { icons } from '../../theme/icons';
 import { colors } from '../../theme/tokens';
 import { complianceApi, type ComplianceResult, type ComplianceRow } from '../../lib/archives';
@@ -73,11 +74,14 @@ export default function DuaExpireesPage() {
     search: undefined as string | undefined,
   });
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setData(await complianceApi.expired(query));
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     } finally {
       setLoading(false);
@@ -212,7 +216,7 @@ export default function DuaExpireesPage() {
         }
       />
 
-      <Card>
+      <Card className="da-ref-card" styles={{ body: { padding: 0 } }}>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Space wrap>
             <Select
@@ -249,8 +253,10 @@ export default function DuaExpireesPage() {
               onChange: (keys) => setSelected(keys as number[]),
             }}
             locale={{
-              emptyText: (
-                <EmptyState compact icon="alert" title="Aucun document échu sur cette période" />
+              emptyText: loadFailed ? (
+                <LoadFailure title="La liste n’a pas pu être chargée" onRetry={load} compact />
+              ) : (
+                <EmptyState compact icon="archive" title="Aucun document échu sur cette période" />
               ),
             }}
             pagination={{

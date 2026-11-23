@@ -75,6 +75,8 @@ export interface ChartTheme {
   label: string;
   /** Couleur des lignes de grille. */
   grid: string;
+  /** Famille de police résolue (Archivo) : le canevas des graphiques ne lit pas `var(--font-sans)`. */
+  fontFamily: string;
   /** false si l'utilisateur a demandé une réduction du mouvement. */
   animate: boolean;
 }
@@ -93,6 +95,10 @@ export function useChartTheme(): ChartTheme {
       // Texte des axes/légendes en quasi-noir en mode clair (pas de gris, cf. demande dashboards).
       label: isDark ? '#E3EAE6' : '#12201B',
       grid: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(18,32,27,0.08)',
+      fontFamily:
+        typeof document !== 'undefined'
+          ? getComputedStyle(document.body).fontFamily
+          : 'system-ui, sans-serif',
       animate: !reduced,
     };
   }, [mode]);

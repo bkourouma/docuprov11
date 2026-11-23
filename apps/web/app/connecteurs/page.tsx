@@ -7,6 +7,7 @@ import { GED_WHATSAPP_CONNECTOR_TYPE } from './_components/whatsapp-config';
 import type { TableColumnsType } from 'antd';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState } from '../components/EmptyState';
+import { LoadFailure } from '../components/LoadFailure';
 import { TableSkeleton } from '../components/skeletons';
 import { icons, iconDefaults } from '../theme/icons';
 import { space as spacing } from '../theme/tokens';
@@ -44,6 +45,7 @@ export default function ConnecteursPage() {
   const [editing, setEditing] = useState<GedConnectorView | undefined>();
   const [formOpen, setFormOpen] = useState(false);
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -51,9 +53,11 @@ export default function ConnecteursPage() {
       setRows(list);
       setTypes(t);
       setForbidden(false);
+      setLoadFailed(false);
     } catch (e) {
       if (isForbiddenError(e)) setForbidden(true);
-      else message.error(e instanceof Error ? e.message : 'Chargement des connecteurs impossible');
+      else setLoadFailed(true);
+      if (!isForbiddenError(e)) message.error(e instanceof Error ? e.message : 'Chargement des connecteurs impossible');
     } finally {
       setLoading(false);
     }
@@ -203,6 +207,8 @@ export default function ConnecteursPage() {
         <Card>
           {loading && rows.length === 0 ? (
             <TableSkeleton rows={4} columns={9} />
+          ) : loadFailed && rows.length === 0 ? (
+            <LoadFailure title="Les connecteurs n’ont pas pu être chargés" onRetry={load} />
           ) : rows.length === 0 ? (
             <EmptyState
               icon="download"

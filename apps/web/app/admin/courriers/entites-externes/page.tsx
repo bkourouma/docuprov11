@@ -165,6 +165,7 @@ export default function ExternalEntitiesPage() {
       dataIndex: 'email',
       key: 'email',
       width: 220,
+      onCell: () => ({ style: { maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }),
       render: (_, r) => (
         <EditableText
           value={r.email}
@@ -176,7 +177,7 @@ export default function ExternalEntitiesPage() {
       title: 'Téléphone',
       dataIndex: 'telephone',
       key: 'telephone',
-      width: 170,
+      width: 150,
       render: (_, r) => (
         <EditableText
           value={r.telephone}

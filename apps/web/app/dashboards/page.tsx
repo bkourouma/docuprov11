@@ -93,6 +93,12 @@ export default function DashboardsPage() {
   }, [message]);
 
   const widgetsAffiches = brouillon ?? agencement?.widgets ?? [];
+  // Ces widgets sont des cartes qui portent déjà leur titre : hors édition, le cadre de la
+  // grille ne le répète pas (un seul intitulé par widget).
+  const AVEC_TITRE_PROPRE = ['type', 'dossier', 'plan', 'evolution'];
+  const widgetsRendus = edition
+    ? widgetsAffiches
+    : widgetsAffiches.map((w) => (AVEC_TITRE_PROPRE.includes(w.id) ? { ...w, titre: '' } : w));
 
   // --- Données -------------------------------------------------------------
   const charger = useCallback(async () => {
@@ -257,7 +263,7 @@ export default function DashboardsPage() {
         <DashboardSkeleton />
       ) : (
         <GrilleWidgets
-          widgets={widgetsAffiches}
+          widgets={widgetsRendus}
           ctx={ctx}
           edition={edition}
           onLayoutChange={majPositions}

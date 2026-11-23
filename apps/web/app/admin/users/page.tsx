@@ -20,6 +20,7 @@ import type { TableColumnsType } from 'antd';
 import { apiJson } from '../../lib/api';
 import { normalizeText } from '../../lib/filters';
 import { EmptyState } from '../../components/EmptyState';
+import { LoadFailure } from '../../components/LoadFailure';
 import { PageHeader } from '../../components/PageHeader';
 import { StatTile } from '../../components/StatTile';
 import { useFeedback } from '../../components/feedback';
@@ -119,6 +120,7 @@ export default function UsersAdminPage() {
   const [disabled, setDisabled] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     try {
       const [u, r, c] = await Promise.all([
@@ -134,7 +136,9 @@ export default function UsersAdminPage() {
       // Le rôle système (Admin système) n'est pas assignable : on l'exclut des sélecteurs.
       setRoles(r.filter((x) => !x.isSystem));
       setConfidentialites(c);
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     }
   }, [message]);
@@ -322,19 +326,21 @@ export default function UsersAdminPage() {
     },
   ];
 
+  const failed = loadFailed && rows.length === 0;
+
   return (
     <div>
       <PageHeader icon="users" title="Utilisateurs" />
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={12} md={8}>
-          <StatTile tone="ink" label="Comptes" value={rows.length} icon="users" />
+          <StatTile tone="ink" label="Comptes" value={failed ? null : rows.length} icon="users" />
         </Col>
         <Col xs={12} md={8}>
           <StatTile
             tone="sky"
             label="Actifs"
-            value={rows.filter((r) => !r.isDisabled).length}
+            value={failed ? null : rows.filter((r) => !r.isDisabled).length}
             icon="validated"
           />
         </Col>
@@ -342,7 +348,7 @@ export default function UsersAdminPage() {
           <StatTile
             tone="violet"
             label="Désactivés"
-            value={rows.filter((r) => r.isDisabled).length}
+            value={failed ? null : rows.filter((r) => r.isDisabled).length}
             icon="lock"
           />
         </Col>
@@ -350,6 +356,8 @@ export default function UsersAdminPage() {
 
       <Card
         title="Comptes"
+        className="da-ref-card"
+        styles={{ body: { padding: 0 } }}
         extra={
           <Space wrap size={8}>
             <Input
@@ -375,7 +383,9 @@ export default function UsersAdminPage() {
           scroll={{ x: 'max-content' }}
           rowClassName={(r) => (r.userId === highlightId ? 'da-row-flash' : '')}
           locale={{
-            emptyText: (
+            emptyText: failed ? (
+              <LoadFailure title="La liste des comptes n’a pas pu être chargée" onRetry={load} compact />
+            ) : (
               <EmptyState
                 icon="users"
                 compact
