@@ -23,7 +23,12 @@ interface FakeDoc {
   documentState: number;
 }
 
-function setup(doc: FakeDoc | null) {
+interface FakeAccount {
+  isAdmin: boolean;
+  isDisabled: boolean;
+}
+
+function setup(doc: FakeDoc | null, account: FakeAccount | null = { isAdmin: false, isDisabled: false }) {
   const calls: string[] = [];
   const documents = {
     canAccess: jest.fn(async () => {
@@ -39,6 +44,11 @@ function setup(doc: FakeDoc | null) {
     document: {
       findUnique: jest.fn(async () =>
         doc ? { isFrozen: doc.isFrozen, documentState: doc.documentState } : null,
+      ),
+    },
+    appUser: {
+      findUnique: jest.fn(async (_args: { where: { userId: number }; select: unknown }) =>
+        account ? { ...account } : null,
       ),
     },
   };
@@ -104,6 +114,63 @@ describe('CollabAccessService.verifyToken', () => {
     } catch (error) {
       expect((error as Error).message).toBe('Jeton invalide');
     }
+  });
+});
+
+describe('CollabAccessService.authenticateToken : compte relu en base', () => {
+  it('cas nominal : jeton valide, compte actif => même projection, compte relu par son userId', async () => {
+    const { service, prisma } = setup(base);
+    const verified = await service.authenticateToken(token(PAYLOAD));
+    expect(verified.user).toEqual({
+      userId: 7,
+      username: 'alice',
+      isAdmin: false,
+      userGroupId: 70,
+      fullName: 'Alice Martin',
+    });
+    expect(verified.expiresAt).toBeGreaterThan(Date.now());
+    expect(prisma.appUser.findUnique).toHaveBeenCalledWith({
+      where: { userId: 7 },
+      select: { isAdmin: true, isDisabled: true },
+    });
+    await expect(service.authenticate(token(PAYLOAD))).resolves.toEqual(verified.user);
+  });
+
+  it('compte désactivé depuis l’émission du jeton => refus muet (CollabAuthError)', async () => {
+    const { service } = setup(base, { isAdmin: false, isDisabled: true });
+    await expect(service.authenticateToken(token(PAYLOAD))).rejects.toBeInstanceOf(CollabAuthError);
+    await expect(service.authenticate(token(PAYLOAD))).rejects.toThrow('Jeton invalide');
+  });
+
+  it('compte supprimé => même refus muet', async () => {
+    const { service } = setup(base, null);
+    await expect(service.authenticateToken(token(PAYLOAD))).rejects.toBeInstanceOf(CollabAuthError);
+    await expect(service.authenticate(token(PAYLOAD))).rejects.toBeInstanceOf(CollabAuthError);
+  });
+
+  it('isAdmin=true dans le jeton mais false en base => NON administrateur', async () => {
+    const { service } = setup(base, { isAdmin: false, isDisabled: false });
+    const user = await service.authenticate(token({ ...PAYLOAD, isAdmin: true }));
+    expect(user.isAdmin).toBe(false);
+  });
+
+  it('isAdmin=false dans le jeton mais true en base => la base fait foi', async () => {
+    const { service } = setup(base, { isAdmin: true, isDisabled: false });
+    expect((await service.authenticate(token(PAYLOAD))).isAdmin).toBe(true);
+  });
+
+  it('jeton invalide : refusé AVANT toute lecture en base', async () => {
+    const { service, prisma } = setup(base);
+    await expect(service.authenticateToken('pas.un.jwt')).rejects.toBeInstanceOf(CollabAuthError);
+    expect(prisma.appUser.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('panne de base : l’erreur remonte telle quelle (pas confondue avec un jeton invalide)', async () => {
+    const { service, prisma } = setup(base);
+    prisma.appUser.findUnique.mockRejectedValueOnce(new Error('base indisponible'));
+    const error = await service.authenticateToken(token(PAYLOAD)).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(CollabAuthError);
   });
 });
 

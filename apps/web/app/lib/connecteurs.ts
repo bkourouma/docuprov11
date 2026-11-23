@@ -367,6 +367,16 @@ export function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
 }
 
+/**
+ * Ordre d'affichage de la liste des connecteurs : le plus récent (identifiant le plus grand) en
+ * tête. L'API les renvoie du plus ancien au plus récent ; avec la pagination par 20, un connecteur
+ * tout juste créé tombait sur la dernière page, hors de vue (ANO-GED-14). Copie : l'entrée est
+ * laissée intacte.
+ */
+export function newestFirst<T extends { gedSourceConnectorId: number }>(rows: readonly T[]): T[] {
+  return [...rows].sort((a, b) => b.gedSourceConnectorId - a.gedSourceConnectorId);
+}
+
 /** Config prête à l'affichage : sans la clé `rights` (présentée à part) ; valeurs aplaties en texte. */
 export function displayConfig(
   config: Record<string, unknown> | null,

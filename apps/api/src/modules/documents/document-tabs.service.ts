@@ -55,7 +55,9 @@ const DATA_CHANGE_LABELS: Record<string, string> = {
  * pas ici, car `AccessInquiriesService.decide` réutilise `grantPermission` sous une autre
  * autorisation (menu). Les LECTURES (listPermissions, confidentialité, prêts, historique, état
  * d'intégrité et du cachet) restent ouvertes à quiconque a déjà passé `canAccess` pour charger la
- * page — c'est la consultation de la fiche, pas une action sur elle.
+ * page — c'est la consultation de la fiche, pas une action sur elle. Ce passage par `canAccess`
+ * est vérifié par `DocumentsController.assertCanOpen` sur chaque route `:id/...` (2026-11-22) :
+ * les méthodes de ce service, elles, ne le refont pas.
  */
 @Injectable()
 export class DocumentTabsService {
