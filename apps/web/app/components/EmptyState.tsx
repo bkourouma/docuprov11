@@ -8,11 +8,12 @@ import { icons, type IconName } from '../theme/icons';
 import { fontSize } from '../theme/tokens';
 
 /**
- * État vide illustré, toujours porteur d'une action. Ton dans la voix de
- * l'interface — jamais d'excuse, on dit quoi faire ensuite.
+ * État vide (ou d'échec), toujours porteur d'une action quand il y en a une. Ton dans la voix
+ * de l'interface — jamais d'excuse, on dit quoi faire ensuite.
  *
- * Pas de description : les sous-titres gris ont été retirés de toute l'application
- * (2026-09-08). Le titre et le bouton d'action portent seuls le message.
+ * Un glyphe seul, un titre, l'action : le glyphe n'est plus posé sur une pastille grise, il
+ * suffit à dire de quoi l'on parle. Pas de description non plus : les sous-titres gris ont été
+ * retirés de toute l'application (2026-09-08).
  */
 export function EmptyState({
   icon = 'archive',
@@ -37,25 +38,16 @@ export function EmptyState({
         alignItems: 'center',
         textAlign: 'center',
         gap: 12,
-        padding: compact ? '28px 16px' : '52px 24px',
+        padding: compact ? '28px 16px' : '48px 24px',
       }}
     >
-      {/* Illustration : disque gris neutre du thème + glyphe primaire (aucune teinte
-          figée) ; pastille = cercle, comme les pastilles d'icône de PageHeader. */}
-      <span
-        style={{
-          display: 'grid',
-          placeItems: 'center',
-          width: 64,
-          height: 64,
-          borderRadius: 'var(--da-radius-pill)',
-          background: 'var(--ant-color-fill-tertiary)',
-          color: 'var(--ant-color-primary)',
-        }}
-      >
-        <Glyph size={30} strokeWidth={1.6} />
-      </span>
-      <Typography.Text strong style={{ fontSize: fontSize.md }}>
+      <Glyph
+        size={30}
+        strokeWidth={1.5}
+        aria-hidden
+        style={{ color: 'var(--ant-color-text-tertiary)' }}
+      />
+      <Typography.Text strong style={{ fontSize: fontSize.md, textWrap: 'balance' }}>
         {title}
       </Typography.Text>
       {action && <div style={{ marginTop: 4 }}>{action}</div>}

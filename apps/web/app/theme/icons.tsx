@@ -9,8 +9,10 @@
 
 import {
   Archive,
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   BarChart3,
   Bell,
   Calendar,
@@ -156,6 +158,8 @@ export const icons = {
   chevronDown: ChevronDown,
   arrowRight: ArrowRight,
   arrowLeft: ArrowLeft,
+  arrowUp: ArrowUp,
+  arrowDown: ArrowDown,
 
   // Thème
   light: Sun,

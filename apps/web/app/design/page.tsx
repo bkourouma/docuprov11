@@ -280,15 +280,16 @@ export default function DesignPage() {
       {/* 4. Signatures du thème --------------------------------------------- */}
       <Section title="Signatures du thème">
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          {/* 1 : top bar + bouton de repli (la languette rose, ex-signature n°2, a été retirée) */}
+          {/* 1 : barre supérieure posée sur le fond de page */}
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 12,
-              height: 60,
+              height: 56,
               background: 'var(--da-topbar-bg)',
               color: 'var(--da-on-topbar)',
+              border: '1px solid var(--da-topbar-line)',
               borderRadius: radii.card,
               overflow: 'hidden',
             }}
@@ -302,39 +303,55 @@ export default function DesignPage() {
                 height: 32,
                 marginInlineStart: 12,
                 borderRadius: 4,
-                background: 'rgba(255, 255, 255, 0.14)',
+                background: 'var(--da-topbar-soft)',
               }}
               aria-hidden
             >
               <CollapseGlyph size={20} strokeWidth={1.75} />
             </span>
-            <span style={{ fontWeight: 300 }}>
-              1 · Top bar bleu roi constante ({colors.topbarBg}) + bouton de repli discret
+            <span>
+              1 · Barre supérieure posée sur le fond de page ({colors.topbarBg}), un filet pour
+              seule limite
             </span>
           </div>
-          {/* 3 : item de menu actif rempli */}
+          {/* 2 : écran courant du panneau de navigation */}
           <div
             style={{
-              background: colors.menuActiveBg,
-              color: '#fff',
+              background: colors.menuSelectedBg,
+              color: colors.menuSelectedColor,
               fontWeight: 600,
-              padding: '10px 16px',
+              padding: '8px 12px',
+              borderRadius: radii.field,
             }}
           >
-            2 · Item de menu actif rempli pleine largeur ({colors.menuActiveBg})
+            2 · Écran courant : aplat de toile, libellé blanc ({colors.menuSelectedBg})
           </div>
-          {/* 4 : dégradé signature */}
+          {/* 3 : la marge numérotée */}
           <div
             style={{
-              background: 'linear-gradient(to right, var(--da-brand-from), var(--da-brand-to))',
-              borderRadius: radii.card,
-              padding: '18px 20px',
               display: 'flex',
-              justifyContent: 'flex-end',
+              border: '1px solid var(--ant-color-border)',
+              borderRadius: radii.card,
+              overflow: 'hidden',
+              background: 'var(--ant-color-bg-container)',
             }}
           >
-            <span style={{ color: 'var(--da-on-brand)', fontWeight: 600 }}>
-              3 · Dégradé signature cyan → bleu roi (texte posé côté bleu)
+            <span
+              style={{
+                flex: 'none',
+                width: 148,
+                padding: '10px 18px 10px 12px',
+                textAlign: 'right',
+                fontWeight: 700,
+                background: 'var(--da-margin-bg)',
+                boxShadow:
+                  'inset -1px 0 0 var(--da-margin-rule), inset -3px 0 0 var(--da-margin-bg), inset -4px 0 0 var(--da-margin-rule)',
+              }}
+            >
+              A-2026-1836
+            </span>
+            <span style={{ padding: '10px 14px' }}>
+              3 · Marge numérotée : le numéro à gauche du double filet rouge
             </span>
           </div>
           {/* 5 : cartes plates bordées */}
@@ -342,17 +359,14 @@ export default function DesignPage() {
             4 · Carte plate bordée : bordure fine, <Text strong>aucune ombre</Text> — la hiérarchie
             vient du fond de page, pas des ombres.
           </Card>
-          {/* 6-7 : rayons nets + badges pleins */}
-          <Space wrap>
-            <Text>5 · Petits rayons nets (section précédente) · 6 · Badges pleins AA :</Text>
+          {/* 5-6 : coins nets + états en pastille */}
+          <Space wrap size={[16, 8]}>
+            <Text>5 · Coins nets (section précédente) · 6 · États en pastille + libellé :</Text>
             {semantics.map((s) => (
-              <Tag
-                key={`badge-${s.name}`}
-                color={s.strong}
-                style={{ color: '#fff', fontWeight: 600, fontSize: 11 }}
-              >
+              <span key={`etat-${s.name}`} className="da-state" style={{ color: s.strong }}>
+                <span className="da-state-dot" aria-hidden />
                 {s.name}
-              </Tag>
+              </span>
             ))}
             <Text type="secondary">et pastilles vives sans texte :</Text>
             {semantics.map((s) => (
@@ -430,7 +444,7 @@ export default function DesignPage() {
       {/* 7. Tuiles ---------------------------------------------------------- */}
       <Section
         title="Tuiles de synthèse"
-        hint="StatTile (décoratives) et StatusTile (sémantiques fortes AA) — aplats du registre."
+        hint="StatTile (pastille décorative) et StatusTile (pastille et chiffre à la couleur d’état) — tuiles de papier."
       >
         <Row gutter={[16, 16]}>
           <Col xs={12} lg={6}>

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-22T18:14:50.875Z",
+  "generatedAt": "2026-11-22T19:15:27.414Z",
   "title": "Design System: DocuPro — Registre",
   "extensions": {
     "colorMeta": {
@@ -259,6 +259,111 @@
           "oklch(95% 0.183 28.2)"
         ]
       },
+      "success-border": {
+        "role": "tertiary",
+        "displayName": "Filet d'alerte — succès",
+        "canonical": "oklch(83.5% 0.057 161)",
+        "tonalRamp": [
+          "oklch(15% 0.057 161)",
+          "oklch(26% 0.057 161)",
+          "oklch(38% 0.057 161)",
+          "oklch(50% 0.057 161)",
+          "oklch(62% 0.057 161)",
+          "oklch(74% 0.057 161)",
+          "oklch(85% 0.057 161)",
+          "oklch(95% 0.057 161)"
+        ]
+      },
+      "warning-border": {
+        "role": "tertiary",
+        "displayName": "Filet d'alerte — attention",
+        "canonical": "oklch(85.8% 0.078 85)",
+        "tonalRamp": [
+          "oklch(15% 0.078 85)",
+          "oklch(26% 0.078 85)",
+          "oklch(38% 0.078 85)",
+          "oklch(50% 0.078 85)",
+          "oklch(62% 0.078 85)",
+          "oklch(74% 0.078 85)",
+          "oklch(85% 0.078 85)",
+          "oklch(95% 0.078 85)"
+        ]
+      },
+      "danger-border": {
+        "role": "secondary",
+        "displayName": "Filet d'alerte — danger",
+        "canonical": "oklch(82% 0.067 25.5)",
+        "tonalRamp": [
+          "oklch(15% 0.067 25.5)",
+          "oklch(26% 0.067 25.5)",
+          "oklch(38% 0.067 25.5)",
+          "oklch(50% 0.067 25.5)",
+          "oklch(62% 0.067 25.5)",
+          "oklch(74% 0.067 25.5)",
+          "oklch(85% 0.067 25.5)",
+          "oklch(95% 0.067 25.5)"
+        ]
+      },
+      "info-border": {
+        "role": "tertiary",
+        "displayName": "Filet d'alerte — information",
+        "canonical": "oklch(82.1% 0.035 233.2)",
+        "tonalRamp": [
+          "oklch(15% 0.035 233.2)",
+          "oklch(26% 0.035 233.2)",
+          "oklch(38% 0.035 233.2)",
+          "oklch(50% 0.035 233.2)",
+          "oklch(62% 0.035 233.2)",
+          "oklch(74% 0.035 233.2)",
+          "oklch(85% 0.035 233.2)",
+          "oklch(95% 0.035 233.2)"
+        ]
+      },
+      "tile-mark-sky": {
+        "role": "tertiary",
+        "displayName": "Pastille de tuile — vert de reliure clair",
+        "canonical": "oklch(58.5% 0.075 163.1)",
+        "tonalRamp": [
+          "oklch(15% 0.075 163.1)",
+          "oklch(26% 0.075 163.1)",
+          "oklch(38% 0.075 163.1)",
+          "oklch(50% 0.075 163.1)",
+          "oklch(62% 0.075 163.1)",
+          "oklch(74% 0.075 163.1)",
+          "oklch(85% 0.075 163.1)",
+          "oklch(95% 0.075 163.1)"
+        ]
+      },
+      "tile-mark-violet": {
+        "role": "tertiary",
+        "displayName": "Pastille de tuile — violet d'encre",
+        "canonical": "oklch(45.8% 0.101 293.7)",
+        "tonalRamp": [
+          "oklch(15% 0.101 293.7)",
+          "oklch(26% 0.101 293.7)",
+          "oklch(38% 0.101 293.7)",
+          "oklch(50% 0.101 293.7)",
+          "oklch(62% 0.101 293.7)",
+          "oklch(74% 0.101 293.7)",
+          "oklch(85% 0.101 293.7)",
+          "oklch(95% 0.101 293.7)"
+        ]
+      },
+      "tile-mark-coral": {
+        "role": "tertiary",
+        "displayName": "Pastille de tuile — brun de reliure",
+        "canonical": "oklch(43.9% 0.061 60.5)",
+        "tonalRamp": [
+          "oklch(15% 0.061 60.5)",
+          "oklch(26% 0.061 60.5)",
+          "oklch(38% 0.061 60.5)",
+          "oklch(50% 0.061 60.5)",
+          "oklch(62% 0.061 60.5)",
+          "oklch(74% 0.061 60.5)",
+          "oklch(85% 0.061 60.5)",
+          "oklch(95% 0.061 60.5)"
+        ]
+      },
       "bg-layout": {
         "role": "neutral",
         "displayName": "Papier teinté",
@@ -397,16 +502,16 @@
       "text-tertiary": {
         "role": "neutral",
         "displayName": "Encre tertiaire",
-        "canonical": "oklch(55% 0.023 164)",
+        "canonical": "oklch(52.6% 0.023 163.9)",
         "tonalRamp": [
-          "oklch(15% 0.023 164)",
-          "oklch(26% 0.023 164)",
-          "oklch(38% 0.023 164)",
-          "oklch(50% 0.023 164)",
-          "oklch(62% 0.023 164)",
-          "oklch(74% 0.023 164)",
-          "oklch(85% 0.023 164)",
-          "oklch(95% 0.023 164)"
+          "oklch(15% 0.023 163.9)",
+          "oklch(26% 0.023 163.9)",
+          "oklch(38% 0.023 163.9)",
+          "oklch(50% 0.023 163.9)",
+          "oklch(62% 0.023 163.9)",
+          "oklch(74% 0.023 163.9)",
+          "oklch(85% 0.023 163.9)",
+          "oklch(95% 0.023 163.9)"
         ]
       },
       "text-quaternary": {
@@ -728,7 +833,7 @@
       "refersTo": "input",
       "description": "Champ de 36 px, bordure de contrôle, focus en contour net sans halo.",
       "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Objet du courrier\" />",
-      "css": ".ds-input { height: 36px; width: 280px; padding: 0 11px; border: 1px solid #7c9086; border-radius: 6px; background: #ffffff; color: #12201b; font-family: var(--font-sans), 'Archivo', system-ui, sans-serif; font-size: 14px; transition: border-color 0.14s ease; } .ds-input::placeholder { color: #66766e; } .ds-input:hover { border-color: #17513f; } .ds-input:focus-visible { border-color: #0e3b2e; outline: 2px solid var(--da-accent, #0e3b2e); outline-offset: 2px; }"
+      "css": ".ds-input { height: 36px; width: 280px; padding: 0 11px; border: 1px solid #7c9086; border-radius: 6px; background: #ffffff; color: #12201b; font-family: var(--font-sans), 'Archivo', system-ui, sans-serif; font-size: 14px; transition: border-color 0.14s ease; } .ds-input::placeholder { color: #5f6f67; } .ds-input:hover { border-color: #17513f; } .ds-input:focus-visible { border-color: #0e3b2e; outline: 2px solid var(--da-accent, #0e3b2e); outline-offset: 2px; }"
     },
     {
       "name": "Recherche de la barre supérieure",
@@ -781,15 +886,15 @@
     {
       "name": "Tuiles de synthèse",
       "kind": "card",
-      "refersTo": "tile-ink",
-      "description": "Aplats sans dégradé ni ombre pour les bandeaux de tableaux de bord : tuile de toile, tuile douce, tuile de statut.",
-      "html": "<div class=\"ds-tiles\"><div class=\"ds-tile ds-tile-ink\"><span class=\"ds-tile-label\">Documents versés</span><span class=\"ds-tile-value\">12 480</span></div><div class=\"ds-tile ds-tile-sky\"><span class=\"ds-tile-label\">Lots en cours</span><span class=\"ds-tile-value\">7</span></div><div class=\"ds-tile ds-tile-danger\"><span class=\"ds-tile-label\">DUA expirées</span><span class=\"ds-tile-value\">31</span></div></div>",
-      "css": ".ds-tiles { display: grid; grid-template-columns: repeat(3, 190px); gap: 16px; font-family: var(--font-sans), 'Archivo', system-ui, sans-serif; } .ds-tile { display: flex; flex-direction: column; gap: 6px; min-height: 108px; padding: 18px 20px; border-radius: 6px; } .ds-tile-label { font-size: 13px; } .ds-tile-value { font-size: 28px; font-weight: 600; line-height: 1.1; font-stretch: 72%; font-variant-numeric: tabular-nums lining-nums; } .ds-tile-ink { background: #0e3b2e; color: #ffffff; } .ds-tile-ink .ds-tile-label { color: #bdd3c9; } .ds-tile-sky { background: #e3efe7; color: #0e3b2e; } .ds-tile-sky .ds-tile-label { color: #3f5a4e; } .ds-tile-danger { background: #b3261e; color: #ffffff; } .ds-tile-danger .ds-tile-label { color: #f6cfcb; }"
+      "refersTo": "tile",
+      "description": "Tuiles de papier bordées : pastille de 8 px et libellé, chiffre à l'encre. La tuile d'état teinte pastille et chiffre à la couleur sémantique ; une tuile liée voit sa bordure passer au vert de toile.",
+      "html": "<div class=\"ds-tiles\"><a class=\"ds-tile\" tabindex=\"0\"><span class=\"ds-tile-label\"><i style=\"background:#0e3b2e\"></i>Documents versés</span><span class=\"ds-tile-value\">12 480</span></a><a class=\"ds-tile\" tabindex=\"0\"><span class=\"ds-tile-label\"><i style=\"background:#5b4b8a\"></i>Lots en cours</span><span class=\"ds-tile-value\">7</span></a><a class=\"ds-tile ds-tile-danger\" tabindex=\"0\"><span class=\"ds-tile-label\"><i></i>DUA expirées</span><span class=\"ds-tile-value\">31</span><span class=\"ds-tile-hint\">à traiter</span></a></div>",
+      "css": ".ds-tiles { display: grid; grid-template-columns: repeat(3, 190px); gap: 16px; font-family: var(--font-sans), 'Archivo', system-ui, sans-serif; } .ds-tile { display: flex; flex-direction: column; gap: 6px; min-height: 96px; padding: 14px 16px; border: 1px solid var(--da-rule, #c6d3df); border-radius: 6px; background: #ffffff; color: #12201b; cursor: pointer; transition: border-color 0.14s ease; } .ds-tile:hover, .ds-tile:focus-visible { border-color: var(--da-accent, #0e3b2e); } .ds-tile:focus-visible { outline: 2px solid var(--da-accent, #0e3b2e); outline-offset: 2px; } .ds-tile-label { display: inline-flex; align-items: center; gap: 8px; color: #4d5e56; font-size: 13px; } .ds-tile-label i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: currentColor; } .ds-tile-value { font-size: 28px; font-weight: 600; line-height: 1.1; font-stretch: 72%; font-variant-numeric: tabular-nums lining-nums; } .ds-tile-hint { color: #4d5e56; font-size: 12px; } .ds-tile-danger .ds-tile-label i { background: #b3261e; } .ds-tile-danger .ds-tile-value { color: #b3261e; }"
     }
   ],
   "narrative": {
     "northStar": "Le registre du courrier à colonnes",
-    "overview": "L'unité de travail de DocuPro est la ligne numérotée d'un registre : un numéro d'ordre dans la marge, un double filet rouge, puis des colonnes que l'on lit d'un trait. Tout le système sert cette ligne. Le chrome est une toile vert bouteille (rail des modules) posée contre du papier (panneau des écrans, cartes, tableaux) ; la page elle-même est un papier légèrement teinté de vert. Ce qui structure est le filet, jamais l'ombre : réglure bleu-gris entre les lignes, filet d'encre sous les en-têtes et au-dessus des totaux.\n\nLa voix typographique tient à une seule famille, Archivo, dont l'axe de largeur fait le travail : largeur normale pour le texte, étroite et grasse pour les titres d'écran, étroite en capitales pour les en-têtes de colonne et les titres de groupe, très étroite pour les chiffres clés. Les états s'écrivent comme une annotation de marge — une pastille ou un glyphe, puis le mot — et le rouge n'apparaît que là où quelque chose est en retard ou en erreur. La densité est celle d'un outil de production : contrôles de 36 px, lignes de tableau resserrées, aucun sous-titre gris sous les titres d'écran.\n\nCe document décrit le système tel qu'il est construit dans `app/theme/tokens.ts`, `app/theme/antdTheme.ts` et `app/globals.css`. Deux limites sont à lire avec lui. Le mode sombre est désactivé dans l'application : une palette sombre existe dans `tokens.ts` pour garder la forme du thème, elle n'a pas été vérifiée à l'écran et ne fait pas partie des jetons ci-dessus. L'écran de connexion (co-branding AGEF, palette locale, carte en verre dépoli, filigrane du logo) n'a pas été repris et reste hors du système Registre. Les référentiels, eux, sont dans le système : leur tableau court bord à bord dans sa carte comme une liste de courriers et un échec de lecture s'y dit comme tel ; seuls les référentiels à arbre ou à filtre n'ont pas été vérifiés avec des données réelles.",
+    "overview": "L'unité de travail de DocuPro est la ligne numérotée d'un registre : un numéro d'ordre dans la marge, un double filet rouge, puis des colonnes que l'on lit d'un trait. Tout le système sert cette ligne. Le chrome est une toile vert bouteille (rail des modules) posée contre du papier (panneau des écrans, cartes, tableaux) ; la page elle-même est un papier légèrement teinté de vert. Ce qui structure est le filet, jamais l'ombre : réglure bleu-gris entre les lignes, filet d'encre sous les en-têtes et au-dessus des totaux.\n\nLa voix typographique tient à une seule famille, Archivo, dont l'axe de largeur fait le travail : largeur normale pour le texte, étroite et grasse pour les titres d'écran, étroite en capitales pour les en-têtes de colonne et les titres de groupe, très étroite pour les chiffres clés. Les états s'écrivent comme une annotation de marge — une pastille ou un glyphe, puis le mot — et le rouge n'apparaît que là où quelque chose pose problème. La densité est celle d'un outil de production : contrôles de 36 px, lignes de tableau resserrées, aucun sous-titre gris sous les titres d'écran.\n\nCe document décrit le système tel qu'il est construit dans `app/theme/tokens.ts`, `app/theme/antdTheme.ts` et `app/globals.css`. Deux limites sont à lire avec lui. Le mode sombre est désactivé dans l'application : une palette sombre existe dans `tokens.ts` pour garder la forme du thème, elle n'a pas été vérifiée à l'écran et ne fait pas partie des jetons ci-dessus. L'écran de connexion (co-branding AGEF, palette locale, carte en verre dépoli, filigrane du logo) n'a pas été repris et reste hors du système Registre. Les référentiels, eux, sont dans le système : leur tableau court bord à bord dans sa carte comme une liste de courriers et un échec de lecture s'y dit comme tel ; seuls les référentiels à arbre ou à filtre n'ont pas été vérifiés avec des données réelles.",
     "keyCharacteristics": [
       "Toile vert bouteille pour le rail et les actions primaires, papier blanc sur fond teinté de vert.",
       "La marge numérotée : colonne d'identifiant calée à droite, bordée d'un double filet rouge.",
@@ -803,7 +908,7 @@
     "rules": [
       {
         "name": "La règle du rouge de marge",
-        "body": "Le rouge #B3261E a deux emplois et pas un de plus : le double filet qui borde la marge numérotée, et ce qui est en retard ou en erreur. Il n'est jamais décoratif, n'entre dans aucune tuile de synthèse décorative et n'occupe aucune case de la palette de graphiques.",
+        "body": "Le rouge #B3261E a deux emplois et pas un de plus : le double filet qui borde la marge numérotée, et ce qui signale un problème — retard, erreur, suppression, évolution défavorable d'un indicateur. Il n'est jamais décoratif, jamais posé sur une simple marque de forme (l'astérisque d'un champ obligatoire est à l'encre secondaire), ne sert de pastille à aucune tuile décorative et n'occupe aucune case de la palette de graphiques.",
         "section": "colors"
       },
       {
@@ -861,12 +966,14 @@
       "Do composer un titre d'écran en Archivo étroit et gras de 30 px, un en-tête de colonne en capitales étroites de 11.5 px.",
       "Do distinguer l'échec de lecture de la liste vide, avec de quoi relancer, dans une liste de travail comme dans un référentiel.",
       "Do poser le tableau d'un référentiel bord à bord dans sa carte, première et dernière cellules alignées sur la gouttière de 24 px.",
-      "Do garder l'encre tertiaire sur le papier blanc (4,8:1) ; sur le fond de page elle tombe à 4,3:1, où l'encre secondaire prend le relais.",
+      "Do composer une tuile de synthèse en papier bordé : pastille, libellé, chiffre à l'encre ; la teinte sémantique sur le chiffre est réservée aux tuiles d'état.",
+      "Do mettre l'astérisque d'un champ obligatoire à l'encre secondaire.",
       "Do ranger un nouvel écran dans un groupe de geste d'un des quatre modules.",
       "Do garder les cibles tactiles à 44 px au pointeur grossier et les champs à 16 px sous 768 px."
     ],
     "donts": [
-      "Don't employer le rouge #B3261E hors du double filet de marge et de ce qui est en retard ou en erreur.",
+      "Don't employer le rouge #B3261E hors du double filet de marge et de ce qui signale un problème (retard, erreur, suppression, évolution défavorable), ni sur une marque de forme.",
+      "Don't remplir une tuile de synthèse d'un aplat de couleur, ni donner à sa pastille une teinte sémantique : c'est le rôle de la tuile d'état.",
       "Don't écrire un état de ligne en étiquette pleine à texte blanc : dans une liste de cinquante lignes, cinquante pavés colorés disputent l'œil à ce qui est en retard.",
       "Don't mettre d'ombre sous une carte, une tuile ou un bouton, ni de dégradé dans un aplat.",
       "Don't faire porter du texte à une teinte `*-vivid`.",

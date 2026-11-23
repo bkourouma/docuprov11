@@ -19,6 +19,13 @@ colors:
   info-vivid: "#4A90B8"
   warning-vivid: "#D9902B"
   danger-vivid: "#D8473C"
+  success-border: "#A9D5BD"
+  warning-border: "#E8CD95"
+  danger-border: "#EDB4AE"
+  info-border: "#AFC9D8"
+  tile-mark-sky: "#4F8A6F"
+  tile-mark-violet: "#5B4B8A"
+  tile-mark-coral: "#6B4A2E"
   bg-layout: "#EFF4F0"
   bg-container: "#FFFFFF"
   panel-bg: "#F9FBF9"
@@ -28,7 +35,7 @@ colors:
   chrome-edge: "#D2DED6"
   text: "#12201B"
   text-secondary: "#4D5E56"
-  text-tertiary: "#66766E"
+  text-tertiary: "#5F6F67"
   text-quaternary: "#A9B5AE"
   sidebar-label: "#22332C"
   chart-1-vert: "#17855E"
@@ -184,16 +191,15 @@ components:
     textColor: "{colors.text}"
   state-mark:
     typography: "{typography.state}"
-  tile-ink:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.bg-container}"
+  tile:
+    backgroundColor: "{colors.bg-container}"
+    textColor: "{colors.text}"
     rounded: "{rounded.card}"
-    padding: "18px 20px"
-  tile-status-danger:
-    backgroundColor: "{colors.danger}"
-    textColor: "{colors.bg-container}"
+    padding: "14px 16px"
+  alert-danger:
+    backgroundColor: "{colors.danger-soft}"
+    textColor: "{colors.text}"
     rounded: "{rounded.card}"
-    padding: "18px 20px"
 ---
 
 # Design System: DocuPro — Registre
@@ -204,7 +210,7 @@ components:
 
 L'unité de travail de DocuPro est la ligne numérotée d'un registre : un numéro d'ordre dans la marge, un double filet rouge, puis des colonnes que l'on lit d'un trait. Tout le système sert cette ligne. Le chrome est une toile vert bouteille (rail des modules) posée contre du papier (panneau des écrans, cartes, tableaux) ; la page elle-même est un papier légèrement teinté de vert. Ce qui structure est le filet, jamais l'ombre : réglure bleu-gris entre les lignes, filet d'encre sous les en-têtes et au-dessus des totaux.
 
-La voix typographique tient à une seule famille, Archivo, dont l'axe de largeur fait le travail : largeur normale pour le texte, étroite et grasse pour les titres d'écran, étroite en capitales pour les en-têtes de colonne et les titres de groupe, très étroite pour les chiffres clés. Les états s'écrivent comme une annotation de marge — une pastille ou un glyphe, puis le mot — et le rouge n'apparaît que là où quelque chose est en retard ou en erreur. La densité est celle d'un outil de production : contrôles de 36 px, lignes de tableau resserrées, aucun sous-titre gris sous les titres d'écran.
+La voix typographique tient à une seule famille, Archivo, dont l'axe de largeur fait le travail : largeur normale pour le texte, étroite et grasse pour les titres d'écran, étroite en capitales pour les en-têtes de colonne et les titres de groupe, très étroite pour les chiffres clés. Les états s'écrivent comme une annotation de marge — une pastille ou un glyphe, puis le mot — et le rouge n'apparaît que là où quelque chose pose problème. La densité est celle d'un outil de production : contrôles de 36 px, lignes de tableau resserrées, aucun sous-titre gris sous les titres d'écran.
 
 Ce document décrit le système tel qu'il est construit dans `app/theme/tokens.ts`, `app/theme/antdTheme.ts` et `app/globals.css`. Deux limites sont à lire avec lui. Le mode sombre est désactivé dans l'application : une palette sombre existe dans `tokens.ts` pour garder la forme du thème, elle n'a pas été vérifiée à l'écran et ne fait pas partie des jetons ci-dessus. L'écran de connexion (co-branding AGEF, palette locale, carte en verre dépoli, filigrane du logo) n'a pas été repris et reste hors du système Registre. Les référentiels, eux, sont dans le système : leur tableau court bord à bord dans sa carte comme une liste de courriers et un échec de lecture s'y dit comme tel ; seuls les référentiels à arbre ou à filtre n'ont pas été vérifiés avec des données réelles.
 
@@ -223,18 +229,19 @@ Ce document décrit le système tel qu'il est construit dans `app/theme/tokens.t
 Une palette à une seule teinte de marque, sombre et froide, complétée par des neutres tirés vers le vert et un rouge tenu en réserve.
 
 ### Primary
-- **Toile vert bouteille** (`primary`, #0E3B2E — 12,5:1 sur blanc) : fond du rail des modules, boutons primaires, liens, écran courant dans le panneau, anneau de focus, tuile principale.
+- **Toile vert bouteille** (`primary`, #0E3B2E — 12,5:1 sur blanc) : fond du rail des modules, boutons primaires, liens, écran courant dans le panneau, anneau de focus, pastille de la tuile principale.
 - **Toile survolée** (`primary-hover`, #17513F — 9,2:1 avec du blanc) : survol des boutons primaires et des boutons du rail, fond de la pastille aux initiales sur le rail.
 - **Toile pressée** (`primary-active`, #0A2C22) : état pressé.
-- **Vert de sélection** (`primary-soft`, #E3EFE7) : survol et sélection d'une ligne de tableau, survol d'une entrée du panneau, tuile douce. Le blanc entre les deux filets de la marge prend cette teinte quand la ligne est survolée ou sélectionnée.
+- **Vert de sélection** (`primary-soft`, #E3EFE7) : survol et sélection d'une ligne de tableau, survol d'une entrée du panneau. Le blanc entre les deux filets de la marge prend cette teinte quand la ligne est survolée ou sélectionnée.
 - **Encre sur toile** (`on-rail`, #BDD3C9 — 7,9:1 sur la toile) : libellés et icônes des modules non courants.
 
 ### Secondary
-- **Rouge de marge** (`danger`, #B3261E — 6,5:1 sur blanc) : le double filet de la marge numérotée, et ce qui est en retard ou en erreur (numéro de marge d'une ligne en retard, délai dépassé, « n en retard sur cette page », état d'échec, tuile de statut d'alerte). Fond pâle associé : `danger-soft` (#FBE6E3).
+- **Rouge de marge** (`danger`, #B3261E — 6,5:1 sur blanc) : le double filet de la marge numérotée, et ce qui signale un problème : retard (numéro de marge, délai dépassé, « n en retard sur cette page »), erreur (état d'échec, validation d'un champ), suppression (statut « Supprimé »), évolution défavorable d'un indicateur, pastille et chiffre d'une tuile d'état en alerte. Fond pâle associé : `danger-soft` (#FBE6E3) ; filet de bandeau d'alerte : `danger-border` (#EDB4AE).
 
 ### Tertiary
-- **Vert d'état** (`success`, #0C6641 — 7,0:1), **ambre brun** (`warning`, #8A5200 — 6,4:1), **encre bleu-gris** (`info`, #2B5F7C — 6,9:1) : texte d'état, pastilles, fonds de tuile de statut à texte blanc. Chacun a son fond pâle (`success-soft`, `warning-soft`, `info-soft`). L'ambre marque une échéance à trois jours ou moins.
+- **Vert d'état** (`success`, #0C6641 — 7,0:1), **ambre brun** (`warning`, #8A5200 — 6,4:1), **encre bleu-gris** (`info`, #2B5F7C — 6,9:1) : texte d'état, pastilles, pastille et chiffre d'une tuile d'état. Chacun a son fond pâle (`success-soft`, `warning-soft`, `info-soft`) et son filet de bandeau d'alerte (`success-border` #A9D5BD, `warning-border` #E8CD95, `info-border` #AFC9D8), décoratif : le texte et l'icône portent l'état. L'ambre marque une échéance à trois jours ou moins.
 - **Sémantiques vives** (`success-vivid` #2FA36B, `info-vivid` #4A90B8, `warning-vivid` #D9902B, `danger-vivid` #D8473C) : surfaces sans texte uniquement — pastilles, icônes, remplissages, bordures.
+- **Pastilles de tuile** (toile `primary`, vert de reliure clair `tile-mark-sky` #4F8A6F, violet d'encre `tile-mark-violet` #5B4B8A, brun de reliure `tile-mark-coral` #6B4A2E) : la pastille de 8 px qui distingue entre elles les tuiles de synthèse d'un bandeau. Décoratives, jamais lues comme un état ; aucune ne reprend une teinte sémantique.
 - **Palette de graphiques** (`chart-1-vert` à `chart-8-magenta`) : huit teintes dans un ordre fixe — vert, bleu, orange, violet, brun, sarcelle, ambre, magenta. La couleur suit l'entité, jamais son rang. Toutes tiennent au moins 3:1 sur le papier blanc (de 3,1:1 pour la sarcelle et l'orange à 5,8:1 pour le violet). Aucune case n'est rouge. Axes et légendes à l'encre, grille en `rgba(18,32,27,0.08)`.
 
 ### Neutral
@@ -246,11 +253,11 @@ Une palette à une seule teinte de marque, sombre et froide, complétée par des
 - **Filet de chrome** (`chrome-edge`, #D2DED6) : limite entre panneau, barre et page.
 - **Encre** (`text`, #12201B) : texte, filet sous les en-têtes de table et au-dessus des totaux, fond des infobulles.
 - **Encre secondaire** (`text-secondary`, #4D5E56 — 6,2:1 sur le fond de page) : en-têtes de colonne, titres de groupe, compteurs du panneau, fil d'Ariane, état neutre.
-- **Encre tertiaire** (`text-tertiary`, #66766E — 4,8:1 sur blanc, 4,3:1 sur le fond de page) et **quaternaire** (`text-quaternary`, #A9B5AE — 2,1:1, jamais porteuse de texte utile).
+- **Encre tertiaire** (`text-tertiary`, #5F6F67 — 5,3:1 sur blanc, 4,8:1 sur le fond de page : glyphe d'un état vide, icône d'une tuile ou d'une carte d'indicateur) et **quaternaire** (`text-quaternary`, #A9B5AE — 2,1:1, jamais porteuse de texte utile).
 - **Libellé de panneau** (`sidebar-label`, #22332C) : entrées du panneau des écrans.
 
 ### Named Rules
-**La règle du rouge de marge.** Le rouge #B3261E a deux emplois et pas un de plus : le double filet qui borde la marge numérotée, et ce qui est en retard ou en erreur. Il n'est jamais décoratif, n'entre dans aucune tuile de synthèse décorative et n'occupe aucune case de la palette de graphiques.
+**La règle du rouge de marge.** Le rouge #B3261E a deux emplois et pas un de plus : le double filet qui borde la marge numérotée, et ce qui signale un problème — retard, erreur, suppression, évolution défavorable d'un indicateur. Il n'est jamais décoratif, jamais posé sur une simple marque de forme (l'astérisque d'un champ obligatoire est à l'encre secondaire), ne sert de pastille à aucune tuile décorative et n'occupe aucune case de la palette de graphiques.
 
 **La règle des vives sans texte.** Les teintes `*-vivid` ne portent jamais de texte. Tout texte d'état passe par les dérivés forts (`success`, `warning`, `danger`, `info`), qui tiennent AA sur le papier blanc.
 
@@ -315,6 +322,7 @@ Le registre est plat. Aucune carte, aucun tableau, aucun bouton ne porte d'ombre
 - **Relevé** (`box-shadow: 0 1px 2px rgba(18, 32, 27, 0.08)`) : jeton disponible pour un léger décollement.
 - **Flottant** (`box-shadow: 0 8px 24px rgba(18, 32, 27, 0.16)`) : menus déroulants, popovers, menu utilisateur.
 - **Modale** (`box-shadow: 0 16px 40px rgba(18, 32, 27, 0.22)`) : modales et tiroirs.
+- **Indice de défilement** (fondu de 8 px, `rgba(18, 32, 27, 0.16)` vers transparent, en haut et en bas du panneau des écrans) : n'apparaît que lorsqu'il reste des entrées hors champ et s'efface en butée. C'est un signal de contenu masqué, pas une élévation.
 
 Le double filet de la marge est dessiné en ombres internes sans flou (`inset -1px 0 0`, `inset -3px 0 0`, `inset -4px 0 0`) : c'est un tracé, pas une profondeur.
 
@@ -350,18 +358,21 @@ L'état d'une ligne se lit comme une annotation, pas comme un bouton posé dessu
 - **Border:** réglure bleu-gris de 1 px.
 - **Internal Padding:** 16 px pour une carte d'indicateur (12 px en compact) ; aucune pour une liste de travail ou une carte de référentiel, dont le tableau touche les bords de la carte.
 - **Carte d'indicateur :** libellé en 12 px secondaire, chiffre en `figure`, teinte d'état optionnelle sur le chiffre ; si elle mène à un écran, sa bordure passe au vert de toile au survol (0.14 s).
-- **Tuiles de synthèse :** aplat sans dégradé ni ombre, 6 px de rayon, 18 px × 20 px de marge, 108 px de haut au moins, libellé en 13 px atténué, chiffre en `figure`. Tuiles décoratives : toile, vert pâle, bleu-gris, ambre brun — réservées aux bandeaux d'accueil des tableaux de bord. Tuiles de statut : succès, alerte, danger, info à texte blanc — réservées aux chiffres qui portent un vrai sens de statut ; une tuile rouge signifie toujours un problème.
+- **Tuiles de synthèse :** des tuiles de papier, pas des aplats — fond blanc, réglure de 1 px, 6 px de rayon, 14 px × 16 px de marge, 96 px de haut au moins. Une pastille de 8 px puis le libellé en 13 px à l'encre secondaire, une icône optionnelle de 18 px à l'encre tertiaire à droite, le chiffre en `figure`, suffixe et précision en 12 px. Tuile de synthèse : pastille décorative (toile, vert de reliure, violet d'encre, brun de reliure), chiffre à l'encre. Tuile d'état : pastille et chiffre à la teinte sémantique forte (succès, alerte, danger, info), réservée aux chiffres qui disent un statut ; un rouge y signifie toujours un problème. Une tuile qui mène à un écran voit sa bordure passer au vert de toile au survol et au focus (0.14 s).
+- **Variation d'un indicateur :** flèche de 12 px (trait de 2.25) suivie du pourcentage en 12 px, le sens dit en toutes lettres aux lecteurs d'écran. La couleur suit le sens métier et non le signe : vert d'état si l'évolution est favorable, rouge si elle ne l'est pas ; « = » si stable, un tiret quand la comparaison est impossible.
+- **Bandeau d'alerte :** fond pâle de l'état, filet assorti de 1 px, 6 px de rayon ; le texte et l'icône portent l'état, le filet l'accompagne.
 - **Bandeau de raccourcis :** bande de papier bordée, 14 px × 20 px, titre à gauche en 16 px, actions à droite ; pas d'aplat de couleur.
 
 ### Inputs / Fields
 - **Style:** papier blanc, bordure `border-control` de 1 px, 6 px de rayon, hauteur unique de 36 px, texte en 14 px.
 - **Focus:** contour de 2 px en vert de toile ; pas de halo.
+- **Champ obligatoire :** astérisque à l'encre secondaire, jamais en rouge — une marque de forme n'est pas un problème.
 - **Sélecteur segmenté :** piste un cran plus soutenue que la page (#DCE7E0), segment actif en papier blanc à texte vert de toile.
 - **Mobile:** texte à 16 px sous 768 px ; 44 px de haut au pointeur grossier.
 
 ### Navigation
 - **Rail des modules :** toile, 80 px. Bouton de 64 × 58 px, icône de 20 px au trait de 1.75, libellé court en 11 px et 600, largeur 88 %. Repos : encre sur toile. Survol : `primary-hover`, texte blanc. Courant : papier blanc, texte vert de toile. Compteur cumulé : pilule blanche de 18 px cernée de 2 px de toile, inversée sur le bouton courant.
-- **Panneau des écrans :** papier de marge, 216 px. Titres de groupe en capitales étroites (11.5 px, 600, largeur 80 %, approche 0.1em). Entrée de 34 px au moins, libellé sur deux lignes plutôt que tronqué, survol en vert de sélection, écran courant en aplat de toile à libellé blanc et 600. Compteur : chiffre tabulaire de 12.5 px, sans pastille, blanc sur l'écran courant.
+- **Panneau des écrans :** papier de marge, 216 px. Titres de groupe en capitales étroites (11.5 px, 600, largeur 80 %, approche 0.1em). Entrée de 34 px au moins, libellé sur deux lignes plutôt que tronqué, survol en vert de sélection, écran courant en aplat de toile à libellé blanc et 600. Compteur : chiffre tabulaire de 12.5 px, sans pastille, blanc sur l'écran courant. Quand la liste dépasse la hauteur, une ombre courte en haut ou en bas signale les entrées hors champ.
 - **Barre supérieure :** voir Layout. Popovers portés hors de la barre.
 - **Menu utilisateur :** pastille ronde aux initiales (36 px au pied du rail, 32 px dans la barre en mobile) ; le panneau s'ouvre sur l'identité en en-tête à l'encre, puis « Mon profil » et « Déconnexion ».
 - **Mobile:** même rail et même panneau, rangés dans le tiroir de 296 px.
@@ -390,7 +401,7 @@ Le même papier que le registre, pour les tables de paramétrage.
 
 ### Squelettes et états vides
 - **Squelettes :** ils reprennent la forme du contenu — colonnes de tableau, grille de cartes, zones d'un tableau de bord — avec la bordure et le rayon des vraies cartes.
-- **État vide :** un titre en 16 px gras et, quand il y a quelque chose à faire, un bouton ; pas de phrase d'excuse ni de description.
+- **État vide :** un glyphe nu de 30 px (trait de 1.5, encre tertiaire, sans disque ni fond), un titre en 16 px gras équilibré sur ses lignes et, quand il y a quelque chose à faire, un bouton ; 12 px entre les éléments, 48 px × 24 px de marge (28 px × 16 px en compact). Pas de phrase d'excuse ni de description. L'état d'échec a la même forme, avec le glyphe d'alerte.
 
 ### Mouvement
 Le mouvement sert la continuité, jamais le décor. Trois durées : 0.14 s (survol, pressé), 0.22 s (transition courante), 0.32 s (entrée d'écran ou de liste), sur une courbe de sortie `cubic-bezier(0.16, 1, 0.3, 1)`. Les en-têtes de page et les états vides entrent en fondu avec 8 px de montée. Une ligne créée ou modifiée s'éclaire en vert de sélection pendant 1.4 s. `prefers-reduced-motion` coupe transformations et animations.
@@ -406,12 +417,14 @@ Le mouvement sert la continuité, jamais le décor. Trois durées : 0.14 s (surv
 - **Do** composer un titre d'écran en Archivo étroit et gras de 30 px, un en-tête de colonne en capitales étroites de 11.5 px.
 - **Do** distinguer l'échec de lecture de la liste vide, avec de quoi relancer, dans une liste de travail comme dans un référentiel.
 - **Do** poser le tableau d'un référentiel bord à bord dans sa carte, première et dernière cellules alignées sur la gouttière de 24 px.
-- **Do** garder l'encre tertiaire sur le papier blanc (4,8:1) ; sur le fond de page elle tombe à 4,3:1, où l'encre secondaire prend le relais.
+- **Do** composer une tuile de synthèse en papier bordé : pastille, libellé, chiffre à l'encre ; la teinte sémantique sur le chiffre est réservée aux tuiles d'état.
+- **Do** mettre l'astérisque d'un champ obligatoire à l'encre secondaire.
 - **Do** ranger un nouvel écran dans un groupe de geste d'un des quatre modules.
 - **Do** garder les cibles tactiles à 44 px au pointeur grossier et les champs à 16 px sous 768 px.
 
 ### Don't:
-- **Don't** employer le rouge #B3261E hors du double filet de marge et de ce qui est en retard ou en erreur.
+- **Don't** employer le rouge #B3261E hors du double filet de marge et de ce qui signale un problème (retard, erreur, suppression, évolution défavorable), ni sur une marque de forme.
+- **Don't** remplir une tuile de synthèse d'un aplat de couleur, ni donner à sa pastille une teinte sémantique : c'est le rôle de la tuile d'état.
 - **Don't** écrire un état de ligne en étiquette pleine à texte blanc : dans une liste de cinquante lignes, cinquante pavés colorés disputent l'œil à ce qui est en retard.
 - **Don't** mettre d'ombre sous une carte, une tuile ou un bouton, ni de dégradé dans un aplat.
 - **Don't** faire porter du texte à une teinte `*-vivid`.

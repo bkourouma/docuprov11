@@ -219,7 +219,7 @@ export function MailRefPage<T extends { label: string }>({
               }}
             >
               Libellé{' '}
-              <span aria-hidden style={{ color: 'var(--ant-color-error)' }}>
+              <span aria-hidden style={{ color: 'var(--ant-color-text-secondary)' }}>
                 *
               </span>
             </label>

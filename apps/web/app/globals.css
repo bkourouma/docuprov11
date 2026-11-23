@@ -1059,3 +1059,37 @@ a:not([href]) {
 .da-ref-card .ant-table-tbody > tr > td:last-child {
   padding-right: 24px !important;
 }
+
+/* Tuiles de synthèse (StatTile, StatusTile) : du papier bordé d'un filet. Une tuile qui mène
+   quelque part le dit au survol et au focus par son filet, qui passe à la toile. */
+.da-tile {
+  background: var(--ant-color-bg-container, #ffffff);
+  border: 1px solid var(--ant-color-border, #c6d3df);
+  color: var(--ant-color-text, #12201b);
+  transition: border-color 0.14s ease;
+}
+.da-tile-link:hover .da-tile,
+.da-tile-link:focus-visible .da-tile {
+  border-color: var(--ant-color-primary, #0e3b2e);
+}
+
+/* Astérisque des champs obligatoires : à l'encre secondaire. Le rouge est réservé au filet de
+   marge et à ce qui signale un problème ; une marque de forme n'en est pas un.
+   `!important` : AntD pose la couleur de la marque après cette feuille. */
+.ant-form-item
+  .ant-form-item-label
+  > label.ant-form-item-required:not(.ant-form-item-required-mark-optional)::before {
+  color: var(--ant-color-text-secondary, #4d5e56) !important;
+}
+
+/* Indice de défilement du panneau des écrans : une ombre courte en haut et en bas quand il
+   reste des entrées hors champ (le module Réglages en compte vingt-six). Deux caches à la
+   couleur du panneau défilent AVEC le contenu et masquent l'ombre en butée ; les ombres, elles,
+   restent fixes. Aucun script. */
+.da-panel-scroll {
+  background:
+    linear-gradient(var(--da-panel-bg) 40%, transparent) top / 100% 24px no-repeat local,
+    linear-gradient(transparent, var(--da-panel-bg) 60%) bottom / 100% 24px no-repeat local,
+    linear-gradient(rgba(18, 32, 27, 0.16), transparent) top / 100% 8px no-repeat scroll,
+    linear-gradient(transparent, rgba(18, 32, 27, 0.16)) bottom / 100% 8px no-repeat scroll;
+}

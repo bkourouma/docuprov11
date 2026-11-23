@@ -40,5 +40,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 ## Décisions ouvertes
 
 - Regroupement par geste des écrans de Docu-Archives et Docu-Flow : libellés de groupe à valider par le propriétaire du produit.
-- Référentiels (traité le 2026-11-22) : tableaux bord à bord dans leur carte et échec de chargement affiché comme tel, via `RefLayout`. Reste à contrôler avec de vraies données : les référentiels arborescents (plan de classement, dossiers, géolocalisation, organigrammes) et ceux à filtre (entités externes, éléments des listes).
+- Référentiels (traité le 2026-11-22) : tableaux bord à bord dans leur carte et échec de chargement affiché comme tel, via `RefLayout`. Contrôlés sur captures avec données simulées : liste plate, barre de lot, arborescence (plan de classement), filtre (entités externes).
+- Tuiles de synthèse : passées de l'aplat coloré au papier (pastille + chiffre à l'encre) pour tenir la thèse « pas de back-office à cartes d'indicateurs ».
+- Jamais vu avec de vraies données : l'API ne démarre pas sur le poste de développement. Tableau de bord Docu-Archives contrôlé avec une synthèse simulée ; celui de Docu-Courriers seulement à vide.
+- Graphiques : l'axe des barres bascule ses libellés à la verticale dès qu'ils sont longs, ce qui écrase le tracé (configuration antérieure, non revue).
 - Gabarits d'e-mails et exports (`packages/mailer`, `packages/exports`) : hors de ce chantier.

@@ -29,6 +29,17 @@ function buildToken(c: ColorScheme, mode: Mode): ThemeConfig['token'] {
     colorPrimaryActive: c.primaryActive,
     colorPrimaryBg: c.primarySoft,
     colorPrimaryBgHover: mode === 'dark' ? c.primarySoft : '#D3E5DA',
+    // Bandeaux d'alerte : fonds et filets épinglés sur la palette. Dérivés par l'algorithme
+    // d'AntD depuis des encres aussi sombres, ils sortaient grisâtres (le bandeau
+    // d'information de la gouvernance, par exemple).
+    colorSuccessBg: c.successSoft,
+    colorSuccessBorder: c.successBorder,
+    colorWarningBg: c.warningSoft,
+    colorWarningBorder: c.warningBorder,
+    colorErrorBg: c.dangerSoft,
+    colorErrorBorder: c.dangerBorder,
+    colorInfoBg: c.infoSoft,
+    colorInfoBorder: c.infoBorder,
 
     colorBgLayout: c.bgLayout,
     colorBgContainer: c.bgContainer,

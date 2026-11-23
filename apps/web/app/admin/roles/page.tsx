@@ -53,7 +53,7 @@ function FieldLabel({
     >
       {children}
       {required && (
-        <span aria-hidden style={{ marginLeft: 4, color: 'var(--ant-color-error)' }}>
+        <span aria-hidden style={{ marginLeft: 4, color: 'var(--ant-color-text-secondary)' }}>
           *
         </span>
       )}

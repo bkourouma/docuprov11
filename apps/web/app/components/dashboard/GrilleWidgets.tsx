@@ -116,6 +116,19 @@ export function GrilleWidgets<Ctx>({
   const { width, mounted, containerRef } = useContainerWidth();
 
   /**
+   * Les graphiques (G2, `autoFit`) ne se recalent que sur l'évènement `resize` de la FENÊTRE.
+   * Or la grille change de largeur sans que la fenêtre bouge : à la première mesure (le hook
+   * part de 1280 px), puis à chaque repli ou dépli du panneau de navigation. Sans ce relais, un
+   * graphique monté trop large reste rogné à droite. On relaie donc tout changement de largeur
+   * en `resize`, une fois la transition de la grille terminée (200 ms).
+   */
+  useEffect(() => {
+    if (!mounted || width <= 0) return;
+    const timer = window.setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
+    return () => window.clearTimeout(timer);
+  }, [mounted, width]);
+
+  /**
    * Mode compact : sous 768 px, on SORT de react-grid-layout et on empile les widgets.
    *
    * Sur la grille de 12 colonnes, un widget de 6 colonnes tombe à ~156 px de large sur un

@@ -27,6 +27,9 @@ import {
 import { InboxCard } from './_components/InboxCard';
 import { InboxDrawer, type DrawerActions, type PendingAction } from './_components/InboxDrawer';
 import { InboxFilters } from './_components/InboxFilters';
+// `workflows.css` porte la mise en ligne des filtres (`.wf-toolbar`, `.wf-field`) : sans cet
+// import, un accès direct à la boîte les affichait empilés sur toute la largeur.
+import '../workflows.css';
 import './boite.css';
 
 const AUTO_REFRESH_MS = 60_000;

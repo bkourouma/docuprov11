@@ -860,7 +860,7 @@ export default function AcquisitionPage() {
                   <Text type="secondary">
                     Type de document{' '}
                     {!useIntercalaires && (
-                      <span style={{ color: 'var(--ant-color-error)' }}>*</span>
+                      <span style={{ color: 'var(--ant-color-text-secondary)' }}>*</span>
                     )}
                   </Text>
                   <Select
@@ -910,7 +910,7 @@ export default function AcquisitionPage() {
                     <Col xs={24} md={8}>
                       <Text type="secondary">
                         Dossier de destination{' '}
-                        <span style={{ color: 'var(--ant-color-error)' }}>*</span>
+                        <span style={{ color: 'var(--ant-color-text-secondary)' }}>*</span>
                       </Text>
                       <TreeSelect
                         style={{ width: '100%', marginTop: 4 }}
@@ -927,7 +927,7 @@ export default function AcquisitionPage() {
                     <Col xs={24} md={8}>
                       <Text type="secondary">
                         Plan de classement{' '}
-                        <span style={{ color: 'var(--ant-color-error)' }}>*</span>
+                        <span style={{ color: 'var(--ant-color-text-secondary)' }}>*</span>
                       </Text>
                       <TreeSelect
                         style={{ width: '100%', marginTop: 4 }}

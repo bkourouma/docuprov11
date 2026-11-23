@@ -168,12 +168,23 @@ function BadgeVariation({
   return (
     <InfoTooltip title="Comparé à la période précédente de même durée">
       <Typography.Text
+        // Le sens est dit en toutes lettres aux lecteurs d'écran : la flèche est décorative.
+        aria-label={`${hausse ? 'Hausse' : 'Baisse'} de ${fmtPct(Math.abs(variation.ratio), 0)}`}
         style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 2,
           fontSize: fontSize.xs,
+          fontWeight: 600,
           color: bon ? 'var(--ant-color-success)' : 'var(--ant-color-error)',
         }}
       >
-        {hausse ? '▲' : '▼'} {fmtPct(Math.abs(variation.ratio), 0)}
+        {hausse ? (
+          <icons.arrowUp size={12} strokeWidth={2.25} aria-hidden />
+        ) : (
+          <icons.arrowDown size={12} strokeWidth={2.25} aria-hidden />
+        )}
+        {fmtPct(Math.abs(variation.ratio), 0)}
       </Typography.Text>
     </InfoTooltip>
   );

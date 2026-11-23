@@ -294,7 +294,7 @@ export default function GouvernancePage() {
                   icon="alert"
                   title={loadError}
                   action={
-                    <Button type="primary" onClick={refresh}>
+                    <Button onClick={refresh}>
                       Réessayer
                     </Button>
                   }

@@ -10,7 +10,9 @@
  *
  * Règles d'or :
  * - le ROUGE DE MARGE (`marginRule`, `danger`) ne sert qu'à deux choses : le double filet qui
- *   borde la marge numérotée des listes, et ce qui est en retard ou en erreur. Jamais décoratif ;
+ *   borde la marge numérotée des listes, et ce qui signale un problème — retard, erreur,
+ *   suppression, évolution défavorable d'un indicateur. Jamais décoratif, jamais sur une
+ *   simple marque de forme (l'astérisque des champs obligatoires est à l'encre) ;
  * - les sémantiques VIVES (`*Vivid`) ne portent JAMAIS de texte : pastilles, icônes,
  *   remplissages, bordures uniquement. Tout texte d'état passe par les dérivés AA (`success`,
  *   `warning`, `danger`, `info`, `secondaryStrong`) ;
@@ -25,8 +27,7 @@ export const colors = {
   primaryActive: '#0A2C22', // état pressé
   primarySoft: '#E3EFE7', // remplissage discret (survol, sélection de ligne)
 
-  // Fond des badges de comptage et des étiquettes pleines (CountBadge, StatusBadge, tags).
-  // Porte toujours du blanc.
+  // Toile un cran plus claire : survol du rail, aplats secondaires. Porte toujours du blanc.
   menuActiveBg: '#17513F', // blanc dessus : 9,2:1
 
   // Écran courant dans le panneau de navigation : aplat vert plein, libellé blanc.
@@ -45,7 +46,7 @@ export const colors = {
   text: '#12201B', // encre
   textStrong: '#12201B',
   textSecondary: '#4D5E56', // 6,2:1 sur le fond de page
-  textTertiary: '#66766E', // 4,8:1 sur blanc
+  textTertiary: '#5F6F67', // 4,8:1 sur le fond de page, 5,3:1 sur blanc
   textQuaternary: '#A9B5AE',
   sidebarLabel: '#22332C', // libellés du panneau de navigation
 
@@ -58,6 +59,11 @@ export const colors = {
   dangerSoft: '#FBE6E3',
   info: '#2B5F7C', // encre bleu-gris — 6,9:1
   infoSoft: '#E2EDF3',
+  // Filets des bandeaux d'alerte (décoratifs : le texte et l'icône portent l'état).
+  successBorder: '#A9D5BD',
+  warningBorder: '#E8CD95',
+  dangerBorder: '#EDB4AE',
+  infoBorder: '#AFC9D8',
   secondary: '#93A69C',
   secondaryStrong: '#5B6B63', // 5,6:1
 
@@ -136,6 +142,10 @@ export const colorsDark = {
   dangerSoft: '#3A1917',
   info: '#7FB7D6',
   infoSoft: '#15303E',
+  successBorder: '#1F5A40',
+  warningBorder: '#5C4416',
+  dangerBorder: '#6B2A25',
+  infoBorder: '#27536B',
   secondary: '#93A69C',
   secondaryStrong: '#A9B5AE',
 
@@ -252,52 +262,28 @@ export const shadows = {
 } as const;
 
 /**
- * Palette « tuiles » (StatTile). Aplats, sans dégradé : `from` et `to` sont identiques, la
- * paire n'est conservée que pour ne pas changer la forme consommée par les tuiles.
- * Réservée aux tuiles de synthèse ; ne remplace jamais les couleurs sémantiques, et aucune
- * teinte ne réutilise le rouge de marge.
+ * Tuiles de synthèse (StatTile) : des tuiles de PAPIER, bordées d'un filet. La teinte d'une
+ * tuile n'est plus un aplat mais une pastille devant son libellé — purement décorative, elle
+ * distingue les tuiles d'un bandeau entre elles. Aucune ne reprend une couleur sémantique
+ * (succès, alerte, danger, info) ni le rouge de marge : une tuile décorative ne doit jamais se
+ * lire comme un état. Les tuiles d'état (StatusTile) prennent, elles, les sémantiques fortes
+ * via les variables AntD.
  */
 export type TileTone = 'ink' | 'sky' | 'violet' | 'coral';
-export interface TileStyle {
-  from: string;
-  to: string;
-  fg: string;
-  fgMuted: string;
-}
 
-export const tiles: Record<TileTone, TileStyle> = {
-  // Toile vert bouteille — tuile principale.
-  ink: { from: '#0E3B2E', to: '#0E3B2E', fg: '#FFFFFF', fgMuted: '#BDD3C9' },
-  // Vert pâle — fond clair, texte foncé (tuile douce).
-  sky: { from: '#E3EFE7', to: '#E3EFE7', fg: '#0E3B2E', fgMuted: '#3F5A4E' },
-  // Encre bleu-gris — distincte du primaire.
-  violet: { from: '#2B5F7C', to: '#2B5F7C', fg: '#FFFFFF', fgMuted: '#C9DDE8' },
-  // Ambre brun — distinct du rouge de marge, purement décoratif.
-  coral: { from: '#8A5200', to: '#8A5200', fg: '#FFFFFF', fgMuted: '#F3DDB5' },
+export const tileMarks: Record<TileTone, string> = {
+  ink: '#0E3B2E', // toile
+  sky: '#4F8A6F', // vert de reliure clair
+  violet: '#5B4B8A', // violet d'encre
+  coral: '#6B4A2E', // brun de reliure
 };
 
-export const tilesDark: Record<TileTone, TileStyle> = {
-  ink: { from: '#17513F', to: '#17513F', fg: '#E3EFE7', fgMuted: '#9FC4B3' },
-  sky: { from: '#1C3229', to: '#1C3229', fg: '#BDD3C9', fgMuted: '#8AA79A' },
-  violet: { from: '#1F4760', to: '#1F4760', fg: '#DDEAF2', fgMuted: '#9BBBCD' },
-  coral: { from: '#6B4000', to: '#6B4000', fg: '#F7E7C8', fgMuted: '#D9B877' },
+export const tileMarksDark: Record<TileTone, string> = {
+  ink: '#7CC7A6',
+  sky: '#9FC4B3',
+  violet: '#A79BD6',
+  coral: '#C9A27C',
 };
 
-/**
- * Tuiles « de statut » — calées sur les sémantiques FORTES AA (texte blanc conforme).
- */
+/** Tons des tuiles d'état (StatusTile). */
 export type StatusTone = 'success' | 'warning' | 'danger' | 'info';
-
-export const statusTiles: Record<StatusTone, TileStyle> = {
-  success: { from: '#0C6641', to: '#0C6641', fg: '#FFFFFF', fgMuted: '#C5E6D5' },
-  warning: { from: '#8A5200', to: '#8A5200', fg: '#FFFFFF', fgMuted: '#F3DDB5' },
-  danger: { from: '#B3261E', to: '#B3261E', fg: '#FFFFFF', fgMuted: '#F6CFCB' },
-  info: { from: '#2B5F7C', to: '#2B5F7C', fg: '#FFFFFF', fgMuted: '#C9DDE8' },
-};
-
-export const statusTilesDark: Record<StatusTone, TileStyle> = {
-  success: { from: '#0A4F33', to: '#0A4F33', fg: '#DDF0E4', fgMuted: '#8FCDB0' },
-  warning: { from: '#6B4000', to: '#6B4000', fg: '#F7E7C8', fgMuted: '#D9B877' },
-  danger: { from: '#8A1D17', to: '#8A1D17', fg: '#FBE6E3', fgMuted: '#F0A69F' },
-  info: { from: '#1F4760', to: '#1F4760', fg: '#DDEAF2', fgMuted: '#9BBBCD' },
-};
