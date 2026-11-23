@@ -302,6 +302,8 @@ export function workflowErrorMessage(e: unknown): string {
         : 'Les informations envoyées sont refusées par le serveur. Corrigez-les puis réessayez.';
     }
     if (e.status === 0) return 'Le serveur est injoignable. Vérifiez votre connexion.';
+    // Message brut du routeur (« Route GET /api/... not found ») : jamais montré tel quel.
+    if (/^(Route|Cannot) [A-Z]+ /.test(e.message)) return 'Cette fonction n’est pas disponible sur ce serveur.';
     if (e.message && !/^HTTP \d+$/.test(e.message)) return e.message;
     if (e.status === 403) return 'Votre niveau d’accès ne permet pas cette action.';
     if (e.status === 404) return 'Élément introuvable ou hors de votre périmètre.';

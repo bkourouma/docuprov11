@@ -408,3 +408,9 @@ test('workflowErrorMessage : 429, 403, 404, 409, 422 gardent le message françai
   }
   assert.match(workflowErrorMessage(new WorkflowApiError(429, 'HTTP 429')), /Trop de demandes/);
 });
+
+test('workflowErrorMessage : le message brut du routeur n’est jamais affiché', () => {
+  const msg = workflowErrorMessage(new WorkflowApiError(404, 'Route GET /api/workflows/inbox not found'));
+  assert.doesNotMatch(msg, /Route|\/api/);
+  assert.match(msg, /pas disponible/);
+});
