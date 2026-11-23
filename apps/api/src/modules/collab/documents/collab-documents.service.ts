@@ -282,33 +282,44 @@ export class CollabDocumentsService {
         );
       }
 
-      // La salle est réinitialisée AVANT la restauration : plus aucune connexion ne peut sauvegarder
-      // l'état d'avant restauration après coup (le verrou ci-dessus bloque aussi les sauvegardes REST).
-      // Si la salle ne peut pas être fermée, on s'arrête : rien n'est restauré (réessai possible).
+      // Barrière de chargement (ANO-GED-08) posée AVANT `resetRoom` et levée APRÈS la suppression
+      // de l'état de travail : `resetRoom` ferme les connexions en `Reload` et le client se
+      // reconnecte aussitôt. Le verrou `documentLocks` ne protège que les routes REST ; sans cette
+      // barrière, la reconnexion rechargeait l'état d'AVANT la restauration (version courante pas
+      // encore remplacée), que la salle re-versionnait ensuite par-dessus la version restaurée.
+      // Levée dans TOUS les cas (`finally`) : un échec ne laisse jamais la salle suspendue.
+      const releaseRoomLoads = this.collab.holdRoomLoads(id);
       try {
-        await this.collab.resetRoom(id);
-      } catch (e) {
-        this.logger.error(`Salle non réinitialisée (document=${id}) : ${(e as Error).message}`);
-        throw new ConflictException("Restauration impossible : la salle d'édition est indisponible");
-      }
+        // La salle est réinitialisée AVANT la restauration : plus aucune connexion ne peut sauvegarder
+        // l'état d'avant restauration après coup (le verrou ci-dessus bloque aussi les sauvegardes REST).
+        // Si la salle ne peut pas être fermée, on s'arrête : rien n'est restauré (réessai possible).
+        try {
+          await this.collab.resetRoom(id);
+        } catch (e) {
+          this.logger.error(`Salle non réinitialisée (document=${id}) : ${(e as Error).message}`);
+          throw new ConflictException("Restauration impossible : la salle d'édition est indisponible");
+        }
 
-      // Si `restore` jette, la salle (déjà réinitialisée) se recharge à la prochaine ouverture depuis
-      // la version courante, inchangée : les clients reconnectés retrouvent l'état d'avant, qui vient
-      // d'être figé dans la version « Avant restauration ».
-      const row = await this.versions.restore(
-        id,
-        dto.versionId,
-        { changeSummary: dto.changeSummary },
-        user,
-      );
+        // Si `restore` jette, la salle (déjà réinitialisée) se recharge à la prochaine ouverture depuis
+        // la version courante, inchangée : les clients reconnectés retrouvent l'état d'avant, qui vient
+        // d'être figé dans la version « Avant restauration ».
+        const row = await this.versions.restore(
+          id,
+          dto.versionId,
+          { changeSummary: dto.changeSummary },
+          user,
+        );
 
-      // La restauration est acquise : un échec de suppression de l'état de travail ne doit pas la masquer.
-      try {
-        await this.persistence.discardWorkingState(id);
-      } catch (e) {
-        this.logger.error(`État de travail non supprimé (document=${id}) : ${(e as Error).message}`);
+        // La restauration est acquise : un échec de suppression de l'état de travail ne doit pas la masquer.
+        try {
+          await this.persistence.discardWorkingState(id);
+        } catch (e) {
+          this.logger.error(`État de travail non supprimé (document=${id}) : ${(e as Error).message}`);
+        }
+        return row;
+      } finally {
+        releaseRoomLoads();
       }
-      return row;
     });
   }
 

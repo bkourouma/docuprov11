@@ -394,8 +394,19 @@ export class DocumentsService {
    * Exige le niveau 3 « Modification » (2026-08-04) : Consultation seule (2) ne donne accès qu'à
    * la lecture, pas à l'écriture des attributs/métadonnées — c'est le pendant serveur de l'onglet
    * Indexation masqué côté frontend pour ce niveau.
+   *
+   * `canAccess` D'ABORD (2026-11-22), avec le même 404 que `GET /documents/:id` : le niveau
+   * effectif ne tient compte ni de la confidentialité ni d'un refus explicite, si bien qu'un droit
+   * par TYPE >= 3 laissait indexer — voire valider — une pièce que son titulaire ne peut pas
+   * ouvrir (sous-habilité, ou visé par un `Denied`). Sans effet sur le contrôle qualité de
+   * l'acquisition : l'opérateur y est le CRÉATEUR des pièces du lot (`created_by` = compte-groupe
+   * du lot), qui passe `canAccess` (passe-droit du créateur, sur les droits comme sur la
+   * confidentialité) — et sa visionneuse PDF (`getFileForDownload`) exigeait déjà `canAccess`.
    */
   async indexDocument(documentId: number, input: IndexationDto, user: AuthUser) {
+    if (!(await this.canAccess(documentId, user))) {
+      throw new NotFoundException('Document introuvable');
+    }
     const level = await this.getEffectivePermissionLevel(documentId, user);
     if (level == null) throw new NotFoundException('Document introuvable');
     if (level < 3) throw new ForbiddenException('Modification non autorisée sur ce document');

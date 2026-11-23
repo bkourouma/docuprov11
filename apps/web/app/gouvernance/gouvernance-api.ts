@@ -146,6 +146,10 @@ export function errorMessage(e: GovernanceApiError, context: 'load' | 'review' |
       if (context === 'review') return 'Votre niveau d’accès ne vous permet pas de relire cette proposition.';
       return 'Vous n’avez pas accès à la gouvernance.';
     case 'not_found':
+      // Analyse : le 404 porte sur le DOCUMENT saisi (« Document introuvable. »), pas sur une proposition.
+      if (context === 'analyze') {
+        return 'Ce document est introuvable, n’est pas archivé ou ne vous est pas accessible.';
+      }
       return 'Cette proposition n’existe plus ou n’est plus accessible.';
     case 'conflict':
       return 'Cette proposition a déjà été traitée ou n’est plus à jour. La liste a été actualisée.';

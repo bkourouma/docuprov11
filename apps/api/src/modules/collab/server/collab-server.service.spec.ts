@@ -333,11 +333,18 @@ class FakePersistence implements CollabPersistencePort {
   }
 }
 
+interface FakeAccount {
+  isAdmin: boolean;
+  isDisabled: boolean;
+}
+
 interface Harness {
   service: CollabServerService;
   http: HttpServer;
   url: string;
   rows: Map<number, FakeDocRow>;
+  /** Comptes en base (absent = compte supprimé). */
+  accounts: Map<number, FakeAccount>;
   persistence: FakePersistence;
   audit: { dataChange: jest.Mock };
   documents: { canAccess: jest.Mock; getEffectivePermissionLevel: jest.Mock };
@@ -371,11 +378,21 @@ async function setup(
       return row ? (row.levels[user.userId] ?? 2) : null;
     }),
   };
+  // Comptes relus à l'authentification (`CollabAccessService.authenticateToken`).
+  const accounts = new Map<number, FakeAccount>(
+    [ALICE, BOB, CARL].map((u) => [u.sub, { isAdmin: false, isDisabled: false }]),
+  );
   const prisma = {
     document: {
       findUnique: jest.fn(async ({ where }: { where: { documentId: number } }) => {
         const row = rows.get(where.documentId);
         return row ? { isFrozen: row.isFrozen, documentState: row.documentState } : null;
+      }),
+    },
+    appUser: {
+      findUnique: jest.fn(async ({ where }: { where: { userId: number } }) => {
+        const account = accounts.get(where.userId);
+        return account ? { ...account } : null;
       }),
     },
   };
@@ -411,6 +428,7 @@ async function setup(
     http,
     url,
     rows,
+    accounts,
     persistence,
     audit,
     documents,
@@ -563,6 +581,32 @@ describe('(a) contrôle d’accès à la connexion', () => {
     const c = await h.client('1').connect(makeToken());
     await waitFor(() => c.close !== null, 'fermeture');
     expectUniformRefusal(c);
+  });
+
+  it.each([
+    ['désactivé', (h: Harness) => h.accounts.set(ALICE.sub, { isAdmin: false, isDisabled: true })],
+    ['supprimé', (h: Harness) => h.accounts.delete(ALICE.sub)],
+  ])('jeton valide d’un compte %s : refus uniforme, rien n’est ouvert', async (_label, arrange) => {
+    addDoc(1);
+    arrange(h);
+    const c = await h.client('1').connect(jwtFor(ALICE));
+    await waitFor(() => c.close !== null, 'fermeture');
+    expectUniformRefusal(c);
+    expect(h.documents.canAccess).not.toHaveBeenCalled();
+    expect(h.audit.dataChange).not.toHaveBeenCalled();
+  });
+
+  it('isAdmin pris de la base : un jeton « administrateur » d’un compte qui ne l’est plus n’ouvre pas en admin', async () => {
+    addDoc(1);
+    const adminToken = sign(
+      { sub: ALICE.sub, username: ALICE.username, isAdmin: true, userGroupId: ALICE.userGroupId, fullName: ALICE.fullName },
+      SECRET,
+      { expiresIn: '1h' },
+    );
+    const c = await h.client('1').connect(adminToken);
+    expect(c.scope).toBe('read-write');
+    const seen = h.documents.canAccess.mock.calls[0][1] as AuthUser;
+    expect(seen.isAdmin).toBe(false);
   });
 
   it('aucun jeton ni détail sensible dans les journaux de refus', async () => {
@@ -952,6 +996,83 @@ describe('(d) persistance et restauration', () => {
 
     const b = await h.client('7').connect(jwtFor(BOB));
     expect(b.text).toBe('restauré');
+  });
+
+  // ANO-GED-08 — ordre RÉEL de la restauration : `resetRoom` PUIS remplacement de l'état persisté.
+  it('resetRoom seul : une reconnexion avant le remplacement de l’état recharge l’état d’AVANT (la course)', async () => {
+    addDoc(7, { state: stateWithText('ancien') });
+    const a = await h.client('7').connect(jwtFor(ALICE));
+    await h.service.resetRoom(7);
+    await waitFor(() => a.close !== null, 'fermeture Reload');
+    // Le client se reconnecte aussitôt (Reload) — la restauration n'a pas encore écrit.
+    const b = await h.client('7').connect(jwtFor(BOB));
+    h.rows.get(7)!.state = stateWithText('restauré');
+    expect(b.text).toBe('ancien'); // l'éditeur montre l'état d'avant : c'est le défaut
+  });
+
+  it('barrière de chargement : la reconnexion ATTEND la fin de la restauration et charge l’état restauré', async () => {
+    addDoc(7, { state: stateWithText('ancien') });
+    const a = await h.client('7').connect(jwtFor(ALICE));
+    const release = h.service.holdRoomLoads(7);
+    await h.service.resetRoom(7);
+    await waitFor(() => a.close !== null, 'fermeture Reload');
+    expect(a.close).toEqual({ code: CollabCloseCode.Reload, reason: 'reload' });
+    const loadsBefore = h.persistence.loadCalls;
+
+    // Reconnexion pendant la restauration : authentification en attente, RIEN n'est chargé.
+    const b = h.client('7');
+    await b.open();
+    b.authenticate(jwtFor(BOB));
+    await sleep(150);
+    expect(b.synced).toBe(false);
+    expect(b.close).toBeNull();
+    expect(b.deniedReason).toBeNull();
+    expect(h.persistence.loadCalls).toBe(loadsBefore);
+
+    // La restauration remplace l'état persisté, puis lève la barrière.
+    h.rows.get(7)!.state = stateWithText('restauré');
+    release();
+    await waitFor(() => b.synced, 'synchronisation après levée');
+    expect(b.text).toBe('restauré');
+    expect(b.scope).toBe('read-write');
+    expect(h.service.isRoomLoadHeld(7)).toBe(false);
+  });
+
+  it('barrière plus longue que le délai d’authentification : fermeture Reload (le client réessaie), pas un refus', async () => {
+    await restart({ authTimeoutMs: 800 });
+    addDoc(7, { state: stateWithText('ancien') });
+    const release = h.service.holdRoomLoads(7);
+    try {
+      const b = h.client('7');
+      await b.open();
+      b.authenticate(jwtFor(BOB));
+      await waitFor(() => b.close !== null, 'fermeture Reload', 3000);
+      expect(b.close).toEqual({ code: CollabCloseCode.Reload, reason: 'reload' });
+      expect(b.deniedReason).toBeNull();
+      expect(b.scope).toBeNull();
+    } finally {
+      release();
+    }
+  });
+
+  it('barrière : tout chargement direct est refusé (pas d’attente, donc pas d’interblocage avec resetRoom)', async () => {
+    addDoc(7, { state: stateWithText('ancien') });
+    const actor: AuthUser = { userId: 1, username: 'alice', isAdmin: false, userGroupId: 11 };
+    const release = h.service.holdRoomLoads(7);
+    await expect(h.service.mutateDocument(7, () => undefined, actor)).rejects.toBeDefined();
+    await h.service.resetRoom(7); // ne s'interbloque pas sur le chargement refusé
+    release();
+    release(); // levée idempotente
+    await expect(h.service.mutateDocument(7, () => undefined, actor)).resolves.toBeUndefined();
+  });
+
+  it('barrières chevauchantes : la salle reste suspendue jusqu’à la levée de la dernière', () => {
+    const first = h.service.holdRoomLoads(7);
+    const second = h.service.holdRoomLoads(7);
+    first();
+    expect(h.service.isRoomLoadHeld(7)).toBe(true);
+    second();
+    expect(h.service.isRoomLoadHeld(7)).toBe(false);
   });
 
   it('arrêt propre : salles stockées, version de fermeture, sockets fermés', async () => {
