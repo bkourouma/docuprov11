@@ -287,6 +287,7 @@ export default function RechercheCourrierPage() {
           <Col flex="auto">
             <Input
               allowClear
+              aria-label="Texte recherché"
               prefix={
                 <icons.search
                   size={18}
@@ -321,6 +322,7 @@ export default function RechercheCourrierPage() {
           <Col xs={24} md={12} lg={8}>
             <Field label="Sens">
               <Select
+                aria-label="Sens"
                 style={{ width: '100%' }}
                 allowClear
                 placeholder="Tous"
@@ -336,6 +338,7 @@ export default function RechercheCourrierPage() {
           <Col xs={24} md={12} lg={8}>
             <Field label="Statut">
               <Select
+                aria-label="Statut"
                 style={{ width: '100%' }}
                 allowClear
                 placeholder="Tous"
@@ -351,6 +354,7 @@ export default function RechercheCourrierPage() {
           <Col xs={24} md={12} lg={8}>
             <Field label="Correspondant">
               <Select
+                aria-label="Correspondant"
                 style={{ width: '100%' }}
                 allowClear
                 showSearch
@@ -365,6 +369,7 @@ export default function RechercheCourrierPage() {
           <Col xs={24} md={12} lg={8}>
             <Field label="Nature">
               <Select
+                aria-label="Nature"
                 style={{ width: '100%' }}
                 allowClear
                 showSearch

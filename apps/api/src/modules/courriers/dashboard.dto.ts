@@ -10,16 +10,25 @@ import type { Variation } from './domain';
  * ⚠️ Le périmètre (`MailScope`) n'est délibérément PAS un champ : il est résolu côté serveur à
  * partir des menus du rôle. L'accepter du client permettrait à un agent de demander la vue globale.
  */
+/**
+ * Le jour existe-t-il au calendrier ? La seule expression régulière laissait passer « 2026-13-01 »
+ * (mois 13) : `new Date()` en tire une date invalide, et le service plantait en 500 au premier
+ * `toISOString()` de la période. « 2026-02-31 », lui, était silencieusement décalé au 3 mars.
+ */
+function estJourCalendaire(v: string): boolean {
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}
+
+const jourIso = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine(estJourCalendaire, { message: 'Date inexistante (AAAA-MM-JJ attendu)' });
+
 export const dashboardFilterSchema = z
   .object({
-    dateFrom: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
-    dateTo: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
+    dateFrom: jourIso.optional(),
+    dateTo: jourIso.optional(),
     /** 0 Arrivée · 1 Départ · 2 Interne */
     mailType: z.coerce.number().int().min(0).max(2).optional(),
     /** Filtre par service : inclut les descendants (materialized-path). */

@@ -29,6 +29,7 @@ import {
   type MailLinkOption,
 } from '../../lib/courriers';
 import { fmt } from '../../components/mail/mailFormat';
+import { readableApiError } from '../../components/mail/mailErrors';
 
 /**
  * Largeur maximale de la colonne de saisie : au-delà, la ligne devient trop longue à parcourir
@@ -37,6 +38,8 @@ import { fmt } from '../../components/mail/mailFormat';
  */
 const FIELD_COL_MAX = 640;
 const CONTENT_MAX_WIDTH = FIELD_COL_MAX * 2 + 16;
+
+const TITLE_REQUIRED = "L'objet est obligatoire";
 
 /**
  * L'émetteur n'est plus saisi : le back retient le rédacteur du Départ (acteur courant). Référence,
@@ -63,6 +66,9 @@ export default function DepartPage() {
   const [linkables, setLinkables] = useState<MailLinkOption[]>([]);
   const [linkablesLoading, setLinkablesLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  // Dernier PDF déposé dans la file §07 pour CE fichier : réutilisé si la création échoue puis est
+  // relancée, sans redéposer (cf. submit). Oublié dès que le fichier change ou que le départ est créé.
+  const [uploaded, setUploaded] = useState<{ file: File; id: number } | null>(null);
 
   // « Lié au courrier » n'a de sens qu'une fois le correspondant connu : la liste est celle de SES
   // courriers, rechargée à chaque changement de destinataire externe.
@@ -125,16 +131,32 @@ export default function DepartPage() {
   };
 
   const submit = async (v: DepartForm) => {
+    // `onFinish` n'est appelé qu'après la validation du formulaire (dont `whitespace` sur l'objet) :
+    // toute la saisie est donc vérifiée AVANT le dépôt du PDF. Garde-fou si la règle était retirée :
+    // un objet blanc ne doit jamais déposer un scan qui resterait orphelin dans la file §07.
+    const title = v.title?.trim() ?? '';
+    if (!title) {
+      message.error(TITLE_REQUIRED);
+      return;
+    }
     setSaving(true);
     try {
       // Le PDF entre par la file §07, seule porte d'entrée d'un binaire dans le flux courrier :
       // on dépose d'abord, puis la création promeut le scan en document GED et le marque traité.
-      const scannedDocumentId = file
-        ? (await uploadScannedDocument(file)).mailScannedDocumentId
-        : undefined;
+      // Si la création échoue APRÈS le dépôt, le scan déjà déposé est réutilisé au nouvel essai
+      // (même fichier) plutôt que déposé une seconde fois — un échec ne multiplie pas les orphelins.
+      let scannedDocumentId: number | undefined;
+      if (file) {
+        if (uploaded?.file === file) {
+          scannedDocumentId = uploaded.id;
+        } else {
+          scannedDocumentId = (await uploadScannedDocument(file)).mailScannedDocumentId;
+          setUploaded({ file, id: scannedDocumentId });
+        }
+      }
 
       await createDepart({
-        title: v.title.trim(),
+        title,
         date: v.date.format('YYYY-MM-DD'),
         mailDepartTypeId: v.mailDepartTypeId,
         nReference: v.nReference?.trim() || undefined,
@@ -145,8 +167,10 @@ export default function DepartPage() {
       message.success('Courrier de départ créé.');
       form.resetFields();
       setFile(null);
+      setUploaded(null);
     } catch (e) {
-      message.error(e instanceof Error ? e.message : 'Création impossible');
+      // Message du serveur quand il en donne un ; « HTTP 400 » nu est traduit en texte lisible.
+      message.error(readableApiError(e, 'Création impossible'));
     } finally {
       setSaving(false);
     }
@@ -164,7 +188,9 @@ export default function DepartPage() {
                 <Form.Item
                   name="title"
                   label="Objet du courrier"
-                  rules={[{ required: true, message: "L'objet est obligatoire" }]}
+                  // `whitespace` : un objet fait d'espaces est vide pour l'API (trim) — refusé ici,
+                  // avant tout dépôt du PDF, plutôt qu'en 400 après coup.
+                  rules={[{ required: true, whitespace: true, message: TITLE_REQUIRED }]}
                 >
                   <Input placeholder="Ex. Réponse à la demande de subvention" />
                 </Form.Item>
@@ -306,6 +332,7 @@ export default function DepartPage() {
               onClick={() => {
                 form.resetFields();
                 setFile(null);
+                setUploaded(null);
               }}
             >
               Réinitialiser

@@ -79,7 +79,8 @@ export function ZoneFiles({
           // `flex` plutôt que des breakpoints `span` fixes : les tuiles se répartissent sur toute
           // la largeur quel que soit leur nombre, sans orphelin de fin de ligne ni recalcul manuel
           // si la liste change à nouveau (c'est ce qui a cassé le rendu au retrait des 2 tuiles).
-          <Col key={t.cle} xs={12} sm={8} flex="1 1 180px">
+          // `data-testid` : le libellé seul est ambigu (« En cours » figure aussi en Synthèse).
+          <Col key={t.cle} xs={12} sm={8} flex="1 1 180px" data-testid={`tdb-file-${t.cle}`}>
             <StatusTile
               icon={t.icon}
               label={t.label}

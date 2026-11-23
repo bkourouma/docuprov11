@@ -1,3 +1,4 @@
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { MailActionCode, MailInputationTypeId, MailStatus, MailType } from '@archivage/types';
 import { MailsService } from './mails.service';
 import type { AuthUser } from '../auth/auth.types';
@@ -12,6 +13,7 @@ describe('MailsService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
       updateMany: jest.Mock;
+      updateManyAndReturn: jest.Mock;
       count: jest.Mock;
     };
     mailInputation: { updateMany: jest.Mock };
@@ -34,6 +36,7 @@ describe('MailsService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        updateManyAndReturn: jest.fn().mockResolvedValue([]),
         count: jest.fn(),
       },
       mailInputation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -329,7 +332,7 @@ describe('MailsService', () => {
     // Valider en Direction déclare le courrier traité : sans ça, il resterait indéfiniment dans
     // le parapheur personnel de chacun de ses destinataires (§08, filtré sur dateTreated: null).
     it('traite toutes les imputations de chaque courrier validé (pas seulement le drapeau)', async () => {
-      prisma.mail.updateMany.mockResolvedValue({ count: 2 });
+      prisma.mail.updateManyAndReturn.mockResolvedValue([{ mailId: 1 }, { mailId: 2 }]);
       prisma.mail.findMany.mockResolvedValue([
         {
           mailId: 1,
@@ -347,20 +350,67 @@ describe('MailsService', () => {
         },
       ]);
 
-      await service.validationDirection([1, 2], user);
+      await expect(service.validationDirection([1, 2], user)).resolves.toEqual({ updated: 2 });
 
-      expect(prisma.mail.updateMany).toHaveBeenCalledWith({
-        where: { mailId: { in: [1, 2] }, isDeleted: false },
+      expect(prisma.mail.updateManyAndReturn).toHaveBeenCalledWith({
+        where: { mailId: { in: [1, 2] }, isDeleted: false, valider: true, dateTraited: null },
         data: expect.objectContaining({
           validationDirection: true,
           status: MailStatus.Traite,
           dateTraited: expect.any(Date),
         }),
+        select: { mailId: true },
       });
       expect(prisma.mailInputation.updateMany).toHaveBeenCalledWith({
         where: { mailId: { in: [1, 2] }, dateTreated: null },
         data: { dateTreated: expect.any(Date) },
       });
+    });
+
+    // ANO-COU-13 : seuls les courriers de la FILE Validation sont validés. Un courrier déjà traité
+    // ou archivé n'est plus re-tamponné, et les effets de bord ne portent que sur les validés.
+    it('ignore les ids hors file Validation : effets de bord limités aux courriers mis à jour', async () => {
+      // 1 est dans la file ; 2 (déjà traité) et 3 (archivé) sont exclus par le filtre SQL.
+      prisma.mail.updateManyAndReturn.mockResolvedValue([{ mailId: 1 }]);
+      prisma.mail.findMany.mockResolvedValue([
+        {
+          mailId: 1,
+          title: 'A',
+          destinataireExpediteur: 5,
+          destinataireRoleId: null,
+          inputations: [],
+        },
+      ]);
+
+      await expect(service.validationDirection([1, 2, 3], user)).resolves.toEqual({ updated: 1 });
+
+      expect(prisma.mail.updateManyAndReturn.mock.calls[0][0].where).toEqual({
+        mailId: { in: [1, 2, 3] },
+        isDeleted: false,
+        valider: true,
+        dateTraited: null,
+      });
+      expect(prisma.mail.updateMany).not.toHaveBeenCalled();
+      expect(prisma.mailInputation.updateMany).toHaveBeenCalledWith({
+        where: { mailId: { in: [1] }, dateTreated: null },
+        data: { dateTreated: expect.any(Date) },
+      });
+      expect(prisma.mail.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { mailId: { in: [1] } } }),
+      );
+      expect(notifications.createMany.mock.calls.map((c) => c[2])).toEqual([
+        { type: 'mail', id: 1 },
+      ]);
+    });
+
+    it('aucun courrier dans la file : rien n’est touché ni notifié', async () => {
+      prisma.mail.updateManyAndReturn.mockResolvedValue([]);
+
+      await expect(service.validationDirection([2, 3], user)).resolves.toEqual({ updated: 0 });
+
+      expect(prisma.mailInputation.updateMany).not.toHaveBeenCalled();
+      expect(prisma.mail.findMany).not.toHaveBeenCalled();
+      expect(notifications.createMany).not.toHaveBeenCalled();
     });
 
     // Le message annonce à chacun à quel titre il est concerné (§10 `roleMessage` du source).
@@ -377,7 +427,7 @@ describe('MailsService', () => {
       };
 
       it('groupe les destinataires par rôle, un message par groupe', async () => {
-        prisma.mail.updateMany.mockResolvedValue({ count: 1 });
+        prisma.mail.updateManyAndReturn.mockResolvedValue([{ mailId: 1 }]);
         prisma.mail.findMany.mockResolvedValue([mailAvecRoles]);
         prisma.appUserGroup.findUnique.mockResolvedValue({
           user: { fullName: 'Ibrahim KABLAN' },
@@ -403,7 +453,7 @@ describe('MailsService', () => {
       // Un acteur cumulant deux rôles ne doit recevoir QU'UN message, le plus prioritaire —
       // sinon il reçoit deux e-mails contradictoires pour un seul courrier.
       it('classe un acteur cumulant deux rôles selon la priorité (destinataire d’abord)', async () => {
-        prisma.mail.updateMany.mockResolvedValue({ count: 1 });
+        prisma.mail.updateManyAndReturn.mockResolvedValue([{ mailId: 1 }]);
         prisma.mail.findMany.mockResolvedValue([
           {
             ...mailAvecRoles,
@@ -422,7 +472,7 @@ describe('MailsService', () => {
       });
 
       it('joint le validateur et la date de validation à l’e-mail', async () => {
-        prisma.mail.updateMany.mockResolvedValue({ count: 1 });
+        prisma.mail.updateManyAndReturn.mockResolvedValue([{ mailId: 1 }]);
         prisma.mail.findMany.mockResolvedValue([mailAvecRoles]);
         prisma.appUserGroup.findUnique.mockResolvedValue({
           user: { fullName: 'Ibrahim KABLAN' },
@@ -717,6 +767,7 @@ describe('MailsService', () => {
       prisma.$transaction = jest.fn(async (cb: (t: typeof tx) => unknown) => cb(tx));
       prisma.mail.findFirst.mockResolvedValue({
         title: 'Réponse au courrier',
+        mailType: MailType.Depart,
         destinataireExpediteur: 3,
         destinataireRoleId: null,
       });
@@ -755,6 +806,101 @@ describe('MailsService', () => {
         (c) => c[3]?.subject === 'Décharge reçue',
       );
       expect(appel).toBeUndefined();
+    });
+  });
+
+  // ANO-COU-15 : la décharge est la preuve de remise d'une réponse — un Départ uniquement.
+  describe('integrateDecharge — courrier départ uniquement (§13)', () => {
+    it('refuse en 400 une arrivée, avant toute promotion de scan ou écriture', async () => {
+      prisma.$transaction = jest.fn();
+      prisma.mail.findFirst.mockResolvedValue({
+        title: 'Courrier reçu',
+        mailType: MailType.Arrivee,
+        destinataireExpediteur: null,
+        destinataireRoleId: 4,
+      });
+
+      const call = service.integrateDecharge(50, { scannedDocumentId: 3 }, user);
+
+      await expect(call).rejects.toBeInstanceOf(BadRequestException);
+      await expect(call).rejects.toThrow('La décharge ne s’intègre que sur un courrier départ');
+      expect(scanned.promoteToDocument).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(notifications.createMany).not.toHaveBeenCalled();
+      expect(prisma.mailActionLog.create).not.toHaveBeenCalled();
+    });
+
+    it('courrier inexistant : 404 inchangé', async () => {
+      prisma.mail.findFirst.mockResolvedValue(null);
+
+      await expect(service.integrateDecharge(99, { documentId: 12 }, user)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  // ANO-COU-14 : un « Lié au courrier » inconnu échouait en 500 (FK `mail_parent`) APRÈS la
+  // promotion du scan. Il est désormais refusé en 400 avant toute écriture.
+  describe('createDepart — courrier lié (§12)', () => {
+    const base = { title: 'Réponse', date: new Date('2026-11-20T00:00:00.000Z') };
+
+    it('parent inconnu ou supprimé : 400 « Courrier lié introuvable », rien n’est écrit', async () => {
+      prisma.$transaction = jest.fn();
+      prisma.mail.findFirst.mockResolvedValue(null);
+
+      const call = service.createDepart({ ...base, parentMailId: 404, scannedDocumentId: 3 }, user);
+
+      await expect(call).rejects.toBeInstanceOf(BadRequestException);
+      await expect(call).rejects.toThrow('Courrier lié introuvable');
+      expect(prisma.mail.findFirst).toHaveBeenCalledWith({
+        where: { mailId: 404, isDeleted: false },
+        select: { mailId: true },
+      });
+      expect(scanned.promoteToDocument).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(notifications.createMany).not.toHaveBeenCalled();
+    });
+
+    it('parent existant : vérifié AVANT la promotion du scan, puis création normale', async () => {
+      const order: string[] = [];
+      prisma.mail.findFirst.mockImplementation(async () => {
+        order.push('parent');
+        return { mailId: 7 };
+      });
+      scanned.promoteToDocument.mockImplementation(async () => {
+        order.push('promote');
+        return 12;
+      });
+      const tx = {
+        mail: {
+          create: jest.fn().mockResolvedValue({ mailId: 60, title: 'Réponse', nReference: null }),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        mailDocument: { create: jest.fn(), upsert: jest.fn() },
+        mailScannedDocument: { update: jest.fn() },
+      };
+      prisma.$transaction = jest.fn(async (cb: (t: typeof tx) => unknown) => cb(tx));
+
+      await service.createDepart({ ...base, parentMailId: 7, scannedDocumentId: 3 }, user);
+
+      expect(order).toEqual(['parent', 'promote']);
+      expect(tx.mail.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ mailParent: 7, mailType: MailType.Depart }),
+      });
+    });
+
+    it('sans courrier lié : aucune vérification de parent', async () => {
+      const tx = {
+        mail: { create: jest.fn().mockResolvedValue({ mailId: 61, title: 'Réponse' }) },
+        mailDocument: { create: jest.fn() },
+        mailScannedDocument: { update: jest.fn() },
+      };
+      prisma.$transaction = jest.fn(async (cb: (t: typeof tx) => unknown) => cb(tx));
+
+      await service.createDepart({ ...base }, user);
+
+      expect(prisma.mail.findFirst).not.toHaveBeenCalled();
+      expect(tx.mail.create).toHaveBeenCalled();
     });
   });
 
