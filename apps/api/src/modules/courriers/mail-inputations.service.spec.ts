@@ -14,7 +14,7 @@ describe('MailInputationsService', () => {
       delete: jest.Mock;
       updateMany: jest.Mock;
     };
-    mail: { findUnique: jest.Mock };
+    mail: { findUnique: jest.Mock; findFirst: jest.Mock };
     mailInputationType: { findUnique: jest.Mock };
     appUserGroup: { findUnique: jest.Mock };
     $transaction: jest.Mock;
@@ -34,7 +34,10 @@ describe('MailInputationsService', () => {
         delete: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
-      mail: { findUnique: jest.fn().mockResolvedValue({ title: 'Demande de subvention' }) },
+      mail: {
+        findUnique: jest.fn().mockResolvedValue({ title: 'Demande de subvention' }),
+        findFirst: jest.fn().mockResolvedValue({ mailId: 1 }),
+      },
       mailInputationType: {
         findUnique: jest.fn().mockResolvedValue({ label: 'Pour attribution' }),
       },
@@ -152,6 +155,30 @@ describe('MailInputationsService', () => {
     expect(details.find((d) => d.label === 'Échéance')?.strong).toBe(true);
   });
 
+  // Colonne TIMESTAMPTZ(0) : PostgreSQL ARRONDIT les fractions de seconde. La fin du jour envoyée
+  // par l'écran (23:59:59.999) était stockée au lendemain 00:00:00 — l'échéance changeait de jour.
+  it('create tronque l’échéance à la seconde (jamais arrondie au lendemain)', async () => {
+    await service.create(
+      {
+        mailId: 1,
+        userGroupId: 7,
+        mailInputationTypeId: 10,
+        deadline: new Date('2026-11-29T23:59:59.999Z'),
+      },
+      user,
+    );
+    expect(prisma.mailInputation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ deadline: new Date('2026-11-29T23:59:59.000Z') }),
+    });
+  });
+
+  it('create sans échéance stocke NULL', async () => {
+    await service.create({ mailId: 1, userGroupId: 7, mailInputationTypeId: 10 }, user);
+    expect(prisma.mailInputation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ deadline: null }),
+    });
+  });
+
   it('create omet les lignes non renseignées (ni échéance ni instructions)', async () => {
     await service.create({ mailId: 1, userGroupId: 7, mailInputationTypeId: 10 }, user);
 
@@ -198,6 +225,73 @@ describe('MailInputationsService', () => {
       await service.markRecipientTreated(1, 9, now);
 
       expect(notifications.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // Une erreur de saisie (courrier, acteur ou type inexistant) violait une clé étrangère et
+  // remontait en 500 « Internal server error » : elle doit être refusée proprement, sans écriture.
+  describe('préconditions d’imputation — 404/400 au lieu de 500', () => {
+    it('create sur un courrier inexistant ou supprimé : 404, rien n’est écrit ni notifié', async () => {
+      prisma.mail.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.create({ mailId: 404, userGroupId: 7, mailInputationTypeId: 10 }, user),
+      ).rejects.toThrow('Courrier introuvable');
+      expect(prisma.mail.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { mailId: 404, isDeleted: false } }),
+      );
+      expect(prisma.mailInputation.create).not.toHaveBeenCalled();
+      expect(mails.autoValiderOnImputation).not.toHaveBeenCalled();
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it('create vers un acteur inexistant : 400, aucune imputation créée', async () => {
+      prisma.appUserGroup.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.create({ mailId: 1, userGroupId: 999, mailInputationTypeId: 10 }, user),
+      ).rejects.toThrow("Destinataire de l'imputation introuvable");
+      expect(prisma.mailInputation.create).not.toHaveBeenCalled();
+    });
+
+    it('create avec un type inexistant : 400, aucune imputation créée', async () => {
+      prisma.mailInputationType.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.create({ mailId: 1, userGroupId: 7, mailInputationTypeId: 999 }, user),
+      ).rejects.toThrow("Type d'imputation introuvable");
+      expect(prisma.mailInputation.create).not.toHaveBeenCalled();
+    });
+
+    it('createValidation sur un courrier inexistant : 404, aucun valideur notifié', async () => {
+      prisma.mail.findFirst.mockResolvedValue(null);
+
+      await expect(service.createValidation(404, 5, true, user, now)).rejects.toThrow(
+        'Courrier introuvable',
+      );
+      expect(prisma.mailInputation.create).not.toHaveBeenCalled();
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it('markTreated sur un courrier inexistant : 404, aucune transaction', async () => {
+      prisma.mail.findFirst.mockResolvedValue(null);
+
+      await expect(service.markTreated(404, now)).rejects.toThrow('Courrier introuvable');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('markTreated sur un courrier actif traite tout et passe en Traité', async () => {
+      prisma.mailInputation.findMany.mockResolvedValue([
+        { mailInputationId: 3, dateTreated: null, type: { suivi: false } },
+      ]);
+
+      const res = await service.markTreated(1, now);
+
+      expect(res.inputationsToTreat).toEqual([3]);
+      expect(tx.mail.update).toHaveBeenCalledWith({
+        where: { mailId: 1 },
+        data: { status: MailStatus.Traite, dateTraited: now },
+      });
     });
   });
 

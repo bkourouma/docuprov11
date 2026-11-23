@@ -254,24 +254,33 @@ export class MailsController {
    * Fiche d'Imputation (§09) — PDF pour l'aperçu et l'impression de la modale.
    * POST comme le source (`GenerateFicheImputationPdf`) : c'est un rendu, pas une ressource
    * adressable. Le courrier n'est pas muté (§09 : « opération de lecture/rendu »).
+   *
+   * Ouverte aux deux permissions de suivi, comme la file Suivi : le « Suivi DC » n'y lit QUE les
+   * courriers qui lui sont imputés — périmètre appliqué par `MailFicheService` (403 sinon).
    */
-  @RequireMenu('/courriers/suivi')
+  @RequireMenu(MENU_SUIVI, MENU_SUIVI_DC)
   @Post(':id/fiche-imputation/pdf')
   @HttpCode(200)
-  async fichePdf(@Param('id', ParseIntPipe) id: number): Promise<StreamableFile> {
-    const { buffer, filename } = await this.fiche.renderPdf(id, new Date());
+  async fichePdf(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.fiche.renderPdf(id, new Date(), user);
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `inline; filename="${filename}"`,
     });
   }
 
-  /** Fiche d'Imputation (§09) — DOCX téléchargeable, gabarit du Sénat rempli. */
-  @RequireMenu('/courriers/suivi')
+  /** Fiche d'Imputation (§09) — DOCX téléchargeable, gabarit du Sénat rempli. Même garde que le PDF. */
+  @RequireMenu(MENU_SUIVI, MENU_SUIVI_DC)
   @Post(':id/fiche-imputation')
   @HttpCode(200)
-  async ficheDocx(@Param('id', ParseIntPipe) id: number): Promise<StreamableFile> {
-    const { buffer, filename } = await this.fiche.renderDocx(id, new Date());
+  async ficheDocx(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.fiche.renderDocx(id, new Date(), user);
     return new StreamableFile(buffer, {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       disposition: `attachment; filename="${filename}"`,

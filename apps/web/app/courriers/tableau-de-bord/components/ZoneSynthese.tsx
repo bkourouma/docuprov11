@@ -28,7 +28,7 @@ export function ZoneSynthese({
   return (
     <>
       <Row gutter={[16, 16]}>
-        <Col xs={12} lg={6}>
+        <Col xs={12} lg={6} data-testid="tdb-kpi-enregistres">
           <KpiCard
             icon="add"
             label="Enregistrés"
@@ -38,7 +38,7 @@ export function ZoneSynthese({
             loading={enAttente}
           />
         </Col>
-        <Col xs={12} lg={6}>
+        <Col xs={12} lg={6} data-testid="tdb-kpi-archives">
           <KpiCard
             icon="validated"
             label="Archivés"
@@ -48,7 +48,7 @@ export function ZoneSynthese({
             loading={enAttente}
           />
         </Col>
-        <Col xs={12} lg={6}>
+        <Col xs={12} lg={6} data-testid="tdb-kpi-en-cours">
           <KpiCard
             icon="pending"
             label="En cours"
@@ -58,7 +58,7 @@ export function ZoneSynthese({
             loading={enAttente}
           />
         </Col>
-        <Col xs={12} lg={6}>
+        <Col xs={12} lg={6} data-testid="tdb-kpi-delai">
           <KpiCard
             icon="analytics"
             label="Délai de traitement"

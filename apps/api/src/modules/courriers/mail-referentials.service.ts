@@ -1,6 +1,20 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { MailInputationTypeId } from '@archivage/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { findLabelConflict, normaliseLabel } from './domain';
+
+/**
+ * Types d'imputation référencés EN DUR par le workflow (validation DG/Direction, pour suivi, en
+ * copie). L'écran de paramétrage masquait déjà leur bouton de désactivation ; l'API les protège
+ * aussi, sans quoi un simple DELETE retirait du référentiel un type que le domaine continue
+ * d'écrire.
+ */
+const SYSTEM_INPUTATION_TYPE_IDS: readonly number[] = Object.values(MailInputationTypeId);
 
 /**
  * CRUD des référentiels de paramétrage Docu-Courriers (§14/§16/§17/§18/§19 + natures/objets/
@@ -63,6 +77,13 @@ export class MailReferentialsService {
   }
 
   async deactivateNature(mailNatureId: number) {
+    await this.assertExists(
+      await this.prisma.mailNature.findUnique({
+        where: { mailNatureId },
+        select: { mailNatureId: true },
+      }),
+      'Nature introuvable',
+    );
     await this.prisma.mailNature.update({ where: { mailNatureId }, data: { isActive: false } });
     return { deactivated: true };
   }
@@ -130,6 +151,13 @@ export class MailReferentialsService {
   }
 
   async deactivateObjet(mailObjetId: number) {
+    await this.assertExists(
+      await this.prisma.mailObjet.findUnique({
+        where: { mailObjetId },
+        select: { mailObjetId: true },
+      }),
+      'Objet introuvable',
+    );
     await this.prisma.mailObjet.update({ where: { mailObjetId }, data: { isActive: false } });
     return { deactivated: true };
   }
@@ -198,6 +226,18 @@ export class MailReferentialsService {
   }
 
   async deactivateInputationType(mailInputationTypeId: number) {
+    await this.assertExists(
+      await this.prisma.mailInputationType.findUnique({
+        where: { mailInputationTypeId },
+        select: { mailInputationTypeId: true },
+      }),
+      "Type d'imputation introuvable",
+    );
+    if (SYSTEM_INPUTATION_TYPE_IDS.includes(mailInputationTypeId)) {
+      throw new ConflictException(
+        "Type d'imputation système (référencé par le workflow) : il ne peut pas être désactivé.",
+      );
+    }
     await this.prisma.mailInputationType.update({
       where: { mailInputationTypeId },
       data: { isActive: false },
@@ -249,6 +289,13 @@ export class MailReferentialsService {
   }
 
   async deactivateDepartType(mailDepartTypeId: number) {
+    await this.assertExists(
+      await this.prisma.mailDepartType.findUnique({
+        where: { mailDepartTypeId },
+        select: { mailDepartTypeId: true },
+      }),
+      'Type de courrier départ introuvable',
+    );
     await this.prisma.mailDepartType.update({
       where: { mailDepartTypeId },
       data: { isActive: false },
@@ -301,6 +348,13 @@ export class MailReferentialsService {
   }
 
   async deactivateConfidentialite(mailConfidentialiteId: number) {
+    await this.assertExists(
+      await this.prisma.mailConfidentialite.findUnique({
+        where: { mailConfidentialiteId },
+        select: { mailConfidentialiteId: true },
+      }),
+      'Confidentialité introuvable',
+    );
     await this.prisma.mailConfidentialite.update({
       where: { mailConfidentialiteId },
       data: { isActive: false },
@@ -352,6 +406,13 @@ export class MailReferentialsService {
   }
 
   async deactivateExternalEntityType(externalEntityTypeId: number) {
+    await this.assertExists(
+      await this.prisma.externalEntityType.findUnique({
+        where: { externalEntityTypeId },
+        select: { externalEntityTypeId: true },
+      }),
+      "Type d'entité externe introuvable",
+    );
     await this.prisma.externalEntityType.update({
       where: { externalEntityTypeId },
       data: { isActive: false },
@@ -368,12 +429,27 @@ export class MailReferentialsService {
     });
   }
 
-  createExternalEntity(input: {
+  /**
+   * Un type inconnu violait la clé étrangère `external_entity.external_entity_type_id` et remontait
+   * en 500 : on le refuse en 400 lisible. Seule l'EXISTENCE est vérifiée (pas l'état actif) — choix
+   * le plus prudent, qui ne change rien aux entités déjà rattachées à un type désactivé.
+   */
+  private async assertExternalEntityTypeExists(externalEntityTypeId: number | null | undefined) {
+    if (externalEntityTypeId == null) return;
+    const row = await this.prisma.externalEntityType.findUnique({
+      where: { externalEntityTypeId },
+      select: { externalEntityTypeId: true },
+    });
+    if (!row) throw new BadRequestException("Type d'entité externe introuvable");
+  }
+
+  async createExternalEntity(input: {
     label: string;
     email?: string | null;
     telephone?: string | null;
     externalEntityTypeId?: number | null;
   }) {
+    await this.assertExternalEntityTypeExists(input.externalEntityTypeId);
     return this.prisma.externalEntity.create({
       data: {
         label: this.norm(input.label),
@@ -400,6 +476,7 @@ export class MailReferentialsService {
       }),
       'Entité externe introuvable',
     );
+    await this.assertExternalEntityTypeExists(input.externalEntityTypeId);
     return this.prisma.externalEntity.update({
       where: { externalEntityId },
       data: {
@@ -414,6 +491,13 @@ export class MailReferentialsService {
   }
 
   async deactivateExternalEntity(externalEntityId: number) {
+    await this.assertExists(
+      await this.prisma.externalEntity.findUnique({
+        where: { externalEntityId },
+        select: { externalEntityId: true },
+      }),
+      'Entité externe introuvable',
+    );
     await this.prisma.externalEntity.update({
       where: { externalEntityId },
       data: { isActive: false },
@@ -445,6 +529,13 @@ export class MailReferentialsService {
   }
 
   async deactivateCustomProperty(externalEntityCustomPropertyId: number) {
+    await this.assertExists(
+      await this.prisma.externalEntityCustomProperty.findUnique({
+        where: { externalEntityCustomPropertyId },
+        select: { externalEntityCustomPropertyId: true },
+      }),
+      'Propriété personnalisée introuvable',
+    );
     await this.prisma.externalEntityCustomProperty.update({
       where: { externalEntityCustomPropertyId },
       data: { isActive: false },
@@ -484,6 +575,14 @@ export class MailReferentialsService {
         `« ${entity?.label} » n'a pas de type d'entité externe : impossible d'enregistrer une métadonnée.`,
       );
     }
+    // Propriété inconnue : la clé étrangère de la valeur la refusait en 500 brut.
+    await this.assertExists(
+      await this.prisma.externalEntityCustomProperty.findUnique({
+        where: { externalEntityCustomPropertyId: input.externalEntityCustomPropertyId },
+        select: { externalEntityCustomPropertyId: true },
+      }),
+      'Propriété personnalisée introuvable',
+    );
     return this.prisma.externalEntityCustomValue.upsert({
       where: {
         ux_eecv_entity_property: {

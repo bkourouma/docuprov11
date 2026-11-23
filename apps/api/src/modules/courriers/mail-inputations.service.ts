@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { MailInputationTypeId } from '@archivage/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -14,6 +19,16 @@ import {
 
 /** Échéance par défaut d'une imputation de validation (§08 : Deadline = +48 h). */
 const VALIDATION_DEADLINE_HOURS = 48;
+
+/**
+ * Ramène une échéance à la seconde, par TRONCATURE. La colonne est `TIMESTAMPTZ(0)` : PostgreSQL
+ * y ARRONDIT les fractions de seconde. L'écran envoie la fin du jour choisi (`23:59:59.999`), que
+ * l'arrondi stockait au lendemain 00:00:00 — l'échéance changeait de jour à l'enregistrement.
+ */
+export function deadlineToSecond(deadline: Date | null | undefined): Date | null {
+  if (deadline == null) return null;
+  return new Date(Math.floor(deadline.getTime() / 1000) * 1000);
+}
 
 export interface CreateInputationInput {
   mailId: number;
@@ -40,7 +55,9 @@ export class MailInputationsService {
    * Le contrôle bureau d'ordre (§06) s'ensuit automatiquement quand c'est le destinataire principal
    * qui impute : il n'y a plus de bouton « Valider » côté interface.
    */
-  async create(input: CreateInputationInput, user: AuthUser) {
+  async create(rawInput: CreateInputationInput, user: AuthUser) {
+    const input = { ...rawInput, deadline: deadlineToSecond(rawInput.deadline) };
+    await this.assertImputable(input.mailId, input.userGroupId, input.mailInputationTypeId);
     const row = await this.createRow(input, user);
     await this.mails.autoValiderOnImputation(input.mailId, user);
 
@@ -89,6 +106,7 @@ export class MailInputationsService {
     user: AuthUser,
     now: Date,
   ) {
+    await this.assertImputable(mailId, userGroupId, null);
     const row = await this.createRow(
       {
         mailId,
@@ -123,6 +141,9 @@ export class MailInputationsService {
 
   /** « Marquer comme traité » manuel (§08) : traite toutes les imputations puis Traité. */
   async markTreated(mailId: number, now: Date): Promise<TreatmentResult> {
+    // Le patch de statut est TOUJOURS appliqué (traitement forcé) : sur un courrier absent, la
+    // mise à jour échouerait en 500 au lieu d'un 404 lisible ; supprimé, il serait « traité ».
+    await this.assertMailActive(mailId);
     const views = await this.loadViews(mailId);
     const result = computeManualTreatment(views, now);
     await this.applyTreatment(mailId, result, now);
@@ -223,6 +244,43 @@ export class MailInputationsService {
     return { deleted: true };
   }
 
+  /** Courrier existant et non supprimé, sinon 404 (et non une clé étrangère en échec → 500). */
+  private async assertMailActive(mailId: number): Promise<void> {
+    const mail = await this.prisma.mail.findFirst({
+      where: { mailId, isDeleted: false },
+      select: { mailId: true },
+    });
+    if (!mail) throw new NotFoundException('Courrier introuvable');
+  }
+
+  /**
+   * Préconditions d'une imputation : courrier actif (404), acteur imputé et type existants (400).
+   * Sans elles, l'insertion viole une clé étrangère et la requête finit en 500 « Internal server
+   * error » — une erreur de saisie se présenterait comme une panne. `typeId` nul = type fixé par
+   * le code (validation DG / Direction), inutile de le relire.
+   */
+  private async assertImputable(
+    mailId: number,
+    userGroupId: number,
+    typeId: number | null,
+  ): Promise<void> {
+    await this.assertMailActive(mailId);
+    const [actor, type] = await Promise.all([
+      this.prisma.appUserGroup.findUnique({
+        where: { userGroupId },
+        select: { userGroupId: true },
+      }),
+      typeId == null
+        ? Promise.resolve({ mailInputationTypeId: 0 })
+        : this.prisma.mailInputationType.findUnique({
+            where: { mailInputationTypeId: typeId },
+            select: { mailInputationTypeId: true },
+          }),
+    ]);
+    if (!actor) throw new BadRequestException("Destinataire de l'imputation introuvable");
+    if (!type) throw new BadRequestException("Type d'imputation introuvable");
+  }
+
   private createRow(input: CreateInputationInput, user: AuthUser) {
     return this.prisma.mailInputation.create({
       data: {
@@ -230,7 +288,7 @@ export class MailInputationsService {
         userId: input.userGroupId,
         mailInputationTypeId: input.mailInputationTypeId,
         instructions: input.instructions ?? null,
-        deadline: input.deadline ?? null,
+        deadline: deadlineToSecond(input.deadline),
         createdBy: this.actorId(user),
       },
     });

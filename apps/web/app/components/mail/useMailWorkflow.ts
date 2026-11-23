@@ -5,6 +5,7 @@ import { App } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { getMe } from '../../lib/auth';
 import { personName } from './mailFormat';
+import { imputationOutcomeMessage, summarizeImputations } from './mailErrors';
 import {
   archiver,
   createInputation,
@@ -196,30 +197,53 @@ export function useMailWorkflow({
     [mailId, load, message, onChanged],
   );
 
+  /**
+   * Une imputation par destinataire. `allSettled` et non `all` : avec plusieurs destinataires, un
+   * échec ne doit ni masquer celles déjà créées, ni vider le formulaire comme si tout avait réussi.
+   *  - tout réussi : message de succès, formulaire vidé ;
+   *  - échec (partiel ou total) : bilan « N créée(s), M en échec : raison », et le formulaire ne
+   *    garde QUE les destinataires en échec (type, instructions, échéance conservés) pour réessayer
+   *    sans recréer les autres ;
+   *  - dès qu'au moins une a été créée, le courrier est rechargé pour la montrer.
+   */
   const submitInputation = async () => {
     if (mailId == null || impActors.length === 0 || impType == null) return;
-    await act(
-      'imputer',
-      () =>
-        Promise.all(
-          impActors.map((userGroupId) =>
-            createInputation({
-              mailId,
-              userGroupId,
-              mailInputationTypeId: impType,
-              instructions: impInstr.trim() || undefined,
-              deadline: impDeadline?.toISOString(),
-            }),
-          ),
+    const targets = [...impActors];
+    setBusy('imputer');
+    try {
+      const results = await Promise.allSettled(
+        targets.map((userGroupId) =>
+          createInputation({
+            mailId,
+            userGroupId,
+            mailInputationTypeId: impType,
+            instructions: impInstr.trim() || undefined,
+            deadline: impDeadline?.toISOString(),
+          }),
         ),
-      impActors.length > 1 ? 'Imputations créées.' : 'Imputation créée.',
-    );
-    setImpOpen(false);
-    setImpRole(null);
-    setImpActors([]);
-    setImpType(null);
-    setImpInstr('');
-    setImpDeadline(null);
+      );
+      const outcome = summarizeImputations(targets, results);
+      const failure = imputationOutcomeMessage(outcome);
+      if (failure) {
+        if (failure.level === 'warning') message.warning(failure.text);
+        else message.error(failure.text);
+        setImpActors(outcome.failedIds);
+      } else {
+        message.success(targets.length > 1 ? 'Imputations créées.' : 'Imputation créée.');
+        setImpOpen(false);
+        setImpRole(null);
+        setImpActors([]);
+        setImpType(null);
+        setImpInstr('');
+        setImpDeadline(null);
+      }
+      if (outcome.created > 0) {
+        await load(mailId);
+        onChanged?.();
+      }
+    } finally {
+      setBusy(null);
+    }
   };
 
   const deleteImputation = (mailInputationId: number) =>

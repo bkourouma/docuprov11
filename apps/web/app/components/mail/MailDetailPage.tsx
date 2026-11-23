@@ -423,6 +423,8 @@ export function MailDetailPage({
                               Échéance à la journée : l'heure n'apportait rien au Contrôle. La valeur
                               est calée sur la fin du jour choisi, faute de quoi une échéance au
                               25/07 (stockée 00:00) serait « dépassée » dès le matin du 25.
+                              Millisecondes à zéro : la colonne est à la seconde (TIMESTAMPTZ(0)) et
+                              PostgreSQL ARRONDIT, 23:59:59.999 devenait le lendemain 00:00:00.
                             */}
                             <Form.Item
                               label="Échéance (facultatif)"
@@ -435,7 +437,7 @@ export function MailDetailPage({
                                 format="DD/MM/YYYY"
                                 placeholder="JJ/MM/AAAA"
                                 value={impDeadline}
-                                onChange={(d) => setImpDeadline(d ? d.endOf('day') : null)}
+                                onChange={(d) => setImpDeadline(d ? d.endOf('day').millisecond(0) : null)}
                               />
                             </Form.Item>
                           </Col>
