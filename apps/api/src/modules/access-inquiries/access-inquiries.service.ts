@@ -34,6 +34,12 @@ export class AccessInquiriesService {
       where: { permissionLevelId: input.permissionLevelId },
     });
     if (!level) throw new BadRequestException('Niveau de permission inconnu');
+    if (input.permissionLevelId === 1) {
+      // Demander « Denied » n'a pas de sens, et la demande resterait bloquée : son acceptation
+      // passe par `DocumentTabsService.grantPermission`, qui refuse ce niveau — seul le refus
+      // aurait pu la clore.
+      throw new BadRequestException('Le niveau « Denied » ne peut pas être demandé');
+    }
 
     return this.prisma.documentAccessInquiry.create({
       data: {

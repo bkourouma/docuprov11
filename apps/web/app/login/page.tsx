@@ -9,6 +9,8 @@ import { Logo } from '../components/BrandMark';
 import { CLIENT_BRAND } from '../theme/client-brand';
 import { icons } from '../theme/icons';
 import { fadeUp } from '../theme/motion';
+import { FirstLoginStep } from './FirstLoginStep';
+import { HOME_PATH, stepAfterLogin, type LoginResponse } from './first-login';
 
 interface LoginForm {
   username: string;
@@ -139,6 +141,25 @@ export default function LoginPage() {
   const isWide = screens.lg;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Connexion acceptée mais mot de passe provisoire : étape de changement imposée.
+  const [pending, setPending] = useState<{
+    username: string;
+    accessToken: string;
+    provisionalPassword: string;
+  } | null>(null);
+
+  /** Ouvre la session (jeton en `localStorage`) et entre dans l'application. */
+  const openSession = (accessToken: string) => {
+    window.localStorage.setItem('token', accessToken);
+    // En dev, navigation document (et non client) : si /dashboards se compile encore
+    // à cet instant, une transition client pourrait être avalée par le rebuild HMR
+    // et laisser l'utilisateur sur un spinner. En prod, router.replace (instantané).
+    if (process.env.NODE_ENV === 'development') {
+      window.location.replace(HOME_PATH);
+    } else {
+      router.replace(HOME_PATH);
+    }
+  };
 
   const onFinish = async (values: LoginForm) => {
     setLoading(true);
@@ -157,16 +178,18 @@ export default function LoginPage() {
         );
         return;
       }
-      const data = (await res.json()) as { accessToken: string };
-      window.localStorage.setItem('token', data.accessToken);
-      // En dev, navigation document (et non client) : si /dashboards se compile encore
-      // à cet instant, une transition client pourrait être avalée par le rebuild HMR
-      // et laisser l'utilisateur sur un spinner. En prod, router.replace (instantané).
-      if (process.env.NODE_ENV === 'development') {
-        window.location.replace('/dashboards');
-      } else {
-        router.replace('/dashboards');
+      const data = (await res.json()) as LoginResponse;
+      // Compte créé ou réinitialisé par un administrateur : changement de mot de passe imposé
+      // AVANT d'ouvrir la session (le jeton reste en mémoire, cf. first-login.ts).
+      if (stepAfterLogin(data) === 'change-password') {
+        setPending({
+          username: payload.username,
+          accessToken: data.accessToken,
+          provisionalPassword: payload.password,
+        });
+        return;
       }
+      openSession(data.accessToken);
     } catch {
       setError('Connexion impossible — réessayez ou vérifiez que le serveur est démarré.');
     } finally {
@@ -238,89 +261,103 @@ export default function LoginPage() {
               padding: isWide ? '36px 36px 32px' : '28px 24px 24px',
             }}
           >
-            <motion.div variants={fadeUp} initial="hidden" animate="show">
-              <Typography.Title level={3} className="da-display" style={{ marginBottom: 4 }}>
-                Connexion
-              </Typography.Title>
-              {/* Pas de `type="secondary"` : ce gris est calibré pour un blanc plein,
+            {pending ? (
+              <motion.div key="first-login" variants={fadeUp} initial="hidden" animate="show">
+                <FirstLoginStep
+                  username={pending.username}
+                  accessToken={pending.accessToken}
+                  provisionalPassword={pending.provisionalPassword}
+                  mutedColor={AGEF.inkMuted}
+                  onDone={() => openSession(pending.accessToken)}
+                  // Abandon : le jeton en mémoire est jeté, aucune session n'a été ouverte.
+                  onCancel={() => setPending(null)}
+                />
+              </motion.div>
+            ) : (
+              <motion.div key="login" variants={fadeUp} initial="hidden" animate="show">
+                <Typography.Title level={3} className="da-display" style={{ marginBottom: 4 }}>
+                  Connexion
+                </Typography.Title>
+                {/* Pas de `type="secondary"` : ce gris est calibré pour un blanc plein,
                   il s'affadit sur une carte translucide posée sur le motif. */}
-              <Typography.Paragraph style={{ color: AGEF.inkMuted, marginBottom: 24 }}>
-                {CLIENT_BRAND
-                  ? `Accédez à l'espace d'archivage de ${CLIENT_BRAND.longNameInSentence}.`
-                  : "Accédez à votre espace d'archivage."}
-              </Typography.Paragraph>
+                <Typography.Paragraph style={{ color: AGEF.inkMuted, marginBottom: 24 }}>
+                  {CLIENT_BRAND
+                    ? `Accédez à l'espace d'archivage de ${CLIENT_BRAND.longNameInSentence}.`
+                    : "Accédez à votre espace d'archivage."}
+                </Typography.Paragraph>
 
-              {error && (
-                <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />
-              )}
+                {error && (
+                  <Alert type="error" showIcon message={error} style={{ marginBottom: 16 }} />
+                )}
 
-              <Form layout="vertical" onFinish={onFinish} requiredMark={false} autoComplete="off">
-                <Form.Item
-                  name="username"
-                  label="Nom d'utilisateur"
-                  rules={[{ required: true, message: 'Saisissez votre nom d’utilisateur.' }]}
-                >
-                  <Input
-                    autoFocus
-                    autoComplete="off"
-                    placeholder="ex. agent.archives"
-                    prefix={
-                      <icons.users
-                        size={16}
-                        strokeWidth={1.75}
-                        style={{ color: 'var(--ant-color-text-tertiary)' }}
-                      />
-                    }
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="password"
-                  label="Mot de passe"
-                  rules={[{ required: true, message: 'Saisissez votre mot de passe.' }]}
-                >
-                  <Input.Password
-                    autoComplete="new-password"
-                    placeholder="••••••••"
-                    prefix={
-                      <Lock
-                        size={16}
-                        strokeWidth={1.75}
-                        style={{ color: 'var(--ant-color-text-tertiary)' }}
-                      />
-                    }
-                  />
-                </Form.Item>
-                <Button
-                  type="primary"
-                  htmlType="submit"
-                  block
-                  loading={loading}
-                  className="da-login-cta"
-                  style={{ marginTop: 4 }}
-                >
-                  Se connecter
-                </Button>
-              </Form>
+                <Form layout="vertical" onFinish={onFinish} requiredMark={false} autoComplete="off">
+                  <Form.Item
+                    name="username"
+                    label="Nom d'utilisateur"
+                    rules={[{ required: true, message: 'Saisissez votre nom d’utilisateur.' }]}
+                  >
+                    <Input
+                      autoFocus
+                      autoComplete="off"
+                      placeholder="ex. agent.archives"
+                      prefix={
+                        <icons.users
+                          size={16}
+                          strokeWidth={1.75}
+                          style={{ color: 'var(--ant-color-text-tertiary)' }}
+                        />
+                      }
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="password"
+                    label="Mot de passe"
+                    rules={[{ required: true, message: 'Saisissez votre mot de passe.' }]}
+                  >
+                    <Input.Password
+                      autoComplete="new-password"
+                      placeholder="••••••••"
+                      prefix={
+                        <Lock
+                          size={16}
+                          strokeWidth={1.75}
+                          style={{ color: 'var(--ant-color-text-tertiary)' }}
+                        />
+                      }
+                    />
+                  </Form.Item>
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    block
+                    loading={loading}
+                    className="da-login-cta"
+                    style={{ marginTop: 4 }}
+                  >
+                    Se connecter
+                  </Button>
+                </Form>
 
-              {/* Un flex, et non `Space` : les enfants de `Space` sont des blocs, si bien
+                {/* Un flex, et non `Space` : les enfants de `Space` sont des blocs, si bien
               qu'un texte replié sur deux lignes (carte étroite, mobile) laisse le
               cadenas seul sur la sienne. Aligné en tête, l'icône reste au texte. */}
-              <div
-                style={{
-                  marginTop: 20,
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 6,
-                  // Secondaire et non tertiaire : le tertiaire tombe sous les 4,5:1
-                  // dès que le motif affleure derrière le verre.
-                  color: 'var(--ant-color-text-secondary)',
-                  fontSize: 12,
-                }}
-              >
-                <Lock size={13} strokeWidth={1.75} style={{ flex: 'none', marginTop: 2 }} />
-                <span>Connexion sécurisée — vos accès sont journalisés.</span>
-              </div>
-            </motion.div>
+                <div
+                  style={{
+                    marginTop: 20,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 6,
+                    // Secondaire et non tertiaire : le tertiaire tombe sous les 4,5:1
+                    // dès que le motif affleure derrière le verre.
+                    color: 'var(--ant-color-text-secondary)',
+                    fontSize: 12,
+                  }}
+                >
+                  <Lock size={13} strokeWidth={1.75} style={{ flex: 'none', marginTop: 2 }} />
+                  <span>Connexion sécurisée — vos accès sont journalisés.</span>
+                </div>
+              </motion.div>
+            )}
           </div>
         </ConfigProvider>
       </div>

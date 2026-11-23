@@ -1,6 +1,19 @@
 import { z } from 'zod';
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/**
+ * Date civile `AAAA-MM-JJ` EXISTANTE. La forme seule ne suffit pas : `2026-13-45` faisait lever
+ * `toISOString()` (RangeError) dans le calcul de la période précédente, et `2026-02-30` était rejeté
+ * par PostgreSQL au cast `::date` — deux erreurs 500 pour une simple faute de saisie. On vérifie donc
+ * que la date se relit à l'identique une fois construite en UTC (JS « reporte » le 30 février au
+ * 2 mars au lieu de le refuser).
+ */
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((s) => {
+    const d = new Date(`${s}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  }, 'Date invalide (AAAA-MM-JJ attendu)');
 
 /** Filtres globaux des tableaux de bord (période + dimensions). */
 export const analyticsFilterSchema = z.object({

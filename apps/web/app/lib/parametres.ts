@@ -23,6 +23,35 @@ export type EmailTemplatePayload = Partial<
 
 const BASE = '/parametres/email-template';
 
+/**
+ * URL du site : absolue, en http(s) — MIROIR de `optionalUrl` dans `email-template.dto.ts`. La règle
+ * `type: 'url'` d'AntD acceptait `ftp://…`, `//…` ou `www.…`, que l'API refuse ensuite : la saisie
+ * passait le formulaire et échouait à l'enregistrement sans message utile.
+ */
+export const WEBSITE_URL_PATTERN = /^https?:\/\/\S+$/i;
+
+/** Formats de logo acceptés — miroir de `ACCEPTED_LOGO` dans `email-template.service.ts`. */
+export const LOGO_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp'] as const;
+
+/** Poids maximal du logo — miroir de `MAX_LOGO_BYTES` côté API (1 Mo). */
+export const LOGO_MAX_BYTES = 1024 * 1024;
+
+/**
+ * Contrôle local du logo AVANT l'envoi, avec les messages exacts de l'API. Le serveur reste
+ * l'autorité ; ce contrôle évite seulement un aller-retour dont l'erreur se lirait « HTTP 400 »
+ * (`apiUpload` ne relaie pas le message de l'API). Renvoie `null` si le fichier est acceptable.
+ */
+export function checkLogoFile(file: { name: string; size: number }): string | null {
+  if (!file.size) return 'Aucun fichier reçu';
+  if (file.size > LOGO_MAX_BYTES) return 'Logo trop volumineux (1 Mo maximum)';
+  const dot = file.name.lastIndexOf('.');
+  const ext = dot > 0 ? file.name.slice(dot).toLowerCase() : '';
+  if (!(LOGO_EXTENSIONS as readonly string[]).includes(ext)) {
+    return `Format non accepté (${ext || 'inconnu'}) — attendu : ${LOGO_EXTENSIONS.join(', ')}`;
+  }
+  return null;
+}
+
 export const getEmailTemplate = (): Promise<EmailTemplateSetting> =>
   apiJson<EmailTemplateSetting>(BASE);
 

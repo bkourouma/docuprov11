@@ -103,7 +103,13 @@ export class RolesService {
     return this.getRole(roleId);
   }
 
-  /** Supprime un rôle. Les utilisateurs liés voient leur role_id remis à NULL (FK SetNull). */
+  /**
+   * Supprime un rôle. Les utilisateurs liés voient leur role_id remis à NULL (FK SetNull), ses menus,
+   * droits par type et appartenances d'espace partent avec lui (Cascade). Seule exception : un rôle
+   * DESTINATAIRE d'un courrier (`mail.destinataire_role_id`, ON DELETE NO ACTION) ne peut pas être
+   * supprimé — la base refusait et l'API répondait 500 ; on rend un 400 lisible. Le désactiver
+   * (`isActive: false`) reste possible.
+   */
   async deleteRole(roleId: number) {
     const exists = await this.prisma.role.findUnique({
       where: { roleId },
@@ -113,7 +119,16 @@ export class RolesService {
     if (exists.isSystem) {
       throw new BadRequestException('Le rôle système par défaut ne peut pas être supprimé.');
     }
-    await this.prisma.role.delete({ where: { roleId } });
+    try {
+      await this.prisma.role.delete({ where: { roleId } });
+    } catch (e) {
+      if ((e as { code?: unknown } | null)?.code === 'P2003') {
+        throw new BadRequestException(
+          'Suppression impossible : des courriers sont adressés à ce rôle. Désactivez-le plutôt.',
+        );
+      }
+      throw e;
+    }
     return { deleted: true };
   }
 }

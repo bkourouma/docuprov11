@@ -29,9 +29,26 @@ const optionalUrl = (max: number) =>
     .transform((v) => (v && v.length > 0 ? v : null))
     .refine((v) => v === null || /^https?:\/\/\S+$/i.test(v), 'URL absolue attendue (https://…)');
 
+/**
+ * Adresse e-mail, vérifiée après normalisation. L'écran la contrôle déjà (règle `type: 'email'`),
+ * mais l'API est la seule autorité : sans ce contrôle, un appel direct enregistrait n'importe quelle
+ * chaîne, imprimée ensuite telle quelle en pied de chaque notification.
+ */
+const optionalEmail = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullish()
+    .transform((v) => (v && v.length > 0 ? v : null))
+    .refine(
+      (v) => v === null || z.string().email().safeParse(v).success,
+      'Adresse e-mail invalide',
+    );
+
 export const updateEmailTemplateSchema = z.object({
   orgName: optionalText(200).optional(),
-  contactEmail: optionalText(200).optional(),
+  contactEmail: optionalEmail(200).optional(),
   websiteUrl: optionalUrl(300).optional(),
 });
 
