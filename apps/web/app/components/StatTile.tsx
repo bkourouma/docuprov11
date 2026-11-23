@@ -9,8 +9,7 @@ import { fontSize, radii, tiles, tilesDark, type TileTone } from '../theme/token
 import { useThemeMode } from './Providers';
 
 /**
- * Tuile de synthèse colorée : dégradé plein, texte clair, une teinte par tuile
- * (palette « tuiles » de design-tokens.md §10). Réservée aux bandeaux de KPI
+ * Tuile de synthèse colorée : aplat, une teinte par tuile (palette « tuiles » des tokens). Réservée aux bandeaux de KPI
  * d'accueil (dashboards) — les tableaux et files de travail gardent `KpiCard`
  * (carte neutre bordée) pour ne pas transformer une donnée décorative en signal
  * de statut.
@@ -46,7 +45,8 @@ export function StatTile({
         // Rayon de CARTE : la tuile est une carte pleine, plate, sans ombre.
         borderRadius: radii.card,
         padding: '18px 20px',
-        background: `linear-gradient(135deg, ${style.from}, ${style.to})`,
+        // Aplat : le registre n'a pas de dégradé (`from` et `to` sont identiques).
+        background: style.from,
         color: style.fg,
         display: 'flex',
         flexDirection: 'column',
@@ -69,7 +69,7 @@ export function StatTile({
         <Skeleton.Input active size="small" style={{ width: 90 }} />
       ) : (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-          <span className="da-mono" style={{ fontSize: 28, fontWeight: 600, lineHeight: 1.1 }}>
+          <span className="da-figure" style={{ fontSize: 28, fontWeight: 600, lineHeight: 1.1 }}>
             {affichage}
           </span>
           {suffix && <span style={{ color: style.fgMuted, fontSize: fontSize.xs }}>{suffix}</span>}

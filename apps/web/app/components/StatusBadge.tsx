@@ -1,51 +1,41 @@
 'use client';
 
-import { Tag } from 'antd';
 import { icons } from '../theme/icons';
-import { colors } from '../theme/tokens';
+import { StateMark, type MarkTone } from './StateMark';
 
 export type DocStatus = 'validated' | 'pending' | 'processing' | 'failed';
 
-/**
- * Fonds des badges pleins : dérivés FORTS AA de la palette CLAIRE dans les DEUX thèmes
- * (design-tokens §3.1) — le blanc y passe (≥ 4,75:1), alors que les sémantiques vives du
- * thème sombre (#00d284, #00cff4…) échoueraient sous du texte blanc (règle d'or §4.1).
- * `menuActiveBg` porte le blanc à 6,08:1 et vaut la même chose dans les deux thèmes.
- */
-const CONFIG: Record<DocStatus, { label: string; bg: string; icon: keyof typeof icons }> = {
-  validated: { label: 'Validé', bg: colors.success, icon: 'validated' },
-  pending: { label: 'À indexer', bg: colors.warning, icon: 'pending' },
-  processing: { label: 'En cours', bg: colors.menuActiveBg, icon: 'spinner' },
-  failed: { label: 'Échec', bg: colors.danger, icon: 'alert' },
+const CONFIG: Record<DocStatus, { label: string; tone: MarkTone; icon: keyof typeof icons }> = {
+  validated: { label: 'Validé', tone: 'success', icon: 'validated' },
+  pending: { label: 'À indexer', tone: 'warning', icon: 'pending' },
+  processing: { label: 'En cours', tone: 'brand', icon: 'spinner' },
+  failed: { label: 'Échec', tone: 'danger', icon: 'alert' },
 };
 
 /**
- * Badge de statut cohérent (vocabulaire unique dans toute l'app).
- * `validated`/`pending` pour les documents ; `processing`/`failed` pour les lots.
+ * État d'un document ou d'un lot (vocabulaire unique dans toute l'app) : glyphe + libellé à
+ * l'encre de l'état. `validated`/`pending` pour les documents ; `processing`/`failed` pour
+ * les lots. Le glyphe double la couleur : l'état reste lisible sans percevoir la teinte.
  */
 export function StatusBadge({ status }: { status: DocStatus }) {
-  const { label, bg, icon } = CONFIG[status];
+  const { label, tone, icon } = CONFIG[status];
   const Glyph = icons[icon];
   return (
-    // Couleur hors preset AntD : le Tag devient plein et pose lui-même le texte blanc
-    // (`ant-tag-has-color`), dont hérite le glyphe via `currentColor`.
-    // Rayon 4 px et corps 11 px viennent du thème (Tag) ; seule la graisse reste ici.
-    <Tag
-      color={bg}
+    <StateMark
+      tone={tone}
       icon={
         <Glyph
-          size={13}
+          size={14}
           strokeWidth={2}
+          aria-hidden
           style={{
-            verticalAlign: '-2px',
-            marginInlineEnd: 4,
+            flex: 'none',
             ...(status === 'processing' ? { animation: 'da-spin 1s linear infinite' } : {}),
           }}
         />
       }
-      style={{ fontWeight: 600, paddingInline: 8 }}
     >
       {label}
-    </Tag>
+    </StateMark>
   );
 }

@@ -18,3 +18,6 @@ export * from './wf-enums';
 export * from './wf-events';
 export * from './wf-graph';
 export * from './wf-dto';
+// --- Assistant « qui agit » (lot A0) ---
+export * from './asst-enums';
+export * from './asst-dto';

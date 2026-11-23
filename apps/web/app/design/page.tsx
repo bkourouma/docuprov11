@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Galerie du design system « Plus Admin » (relook 002).
+ * Galerie du design system « Registre ».
  * Route /design — SURFACE DE VÉRIFICATION du relook (PRD relook.md §9.2) :
  * elle expose la grille de rondeur §4.2, les 6 signatures §4.5, les badges AA,
  * les deux densités de tables et l'échelle d'espacement. Chaque valeur affichée
@@ -128,7 +128,7 @@ export default function DesignPage() {
 
   return (
     <div>
-      <PageHeader title="Design system — Plus Admin" />
+      <PageHeader title="Design system Registre" />
 
       {/* 1. Palette ------------------------------------------------------- */}
       <Section
@@ -277,8 +277,8 @@ export default function DesignPage() {
         </Modal>
       </Section>
 
-      {/* 4. Signatures Plus Admin ------------------------------------------ */}
-      <Section title="Les 6 signatures Plus Admin (§4.5)">
+      {/* 4. Signatures du thème --------------------------------------------- */}
+      <Section title="Signatures du thème">
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           {/* 1 : top bar + bouton de repli (la languette rose, ex-signature n°2, a été retirée) */}
           <div
@@ -430,7 +430,7 @@ export default function DesignPage() {
       {/* 7. Tuiles ---------------------------------------------------------- */}
       <Section
         title="Tuiles de synthèse"
-        hint="StatTile (décoratives) et StatusTile (sémantiques fortes AA) — re-basées Plus Admin."
+        hint="StatTile (décoratives) et StatusTile (sémantiques fortes AA) — aplats du registre."
       >
         <Row gutter={[16, 16]}>
           <Col xs={12} lg={6}>

@@ -1,0 +1,151 @@
+// --- Assistant qui agit : fondations de données (4 tables, préfixe `asst_`) ---
+//
+// Lot 0 du chantier « Assistant » : chat -> proposition d'action -> confirmation -> exécution.
+// Tout le schéma est posé ici, en une seule migration additive
+// (`20261122120000_add_assistant_foundations`), pour que les lots suivants n'ajoutent aucun modèle.
+//
+// Conventions reprises de wf.prisma / ged.prisma :
+//  - Mono-tenant : une installation = un client. Pas de colonne TenantId.
+//  - Pas d'énumération Prisma : états en `Int @db.SmallInt` + CHECK `ck_*` (SQL brut). Miroir
+//    TypeScript : packages/types/src/asst-enums.ts.
+//  - Horodatages `TIMESTAMPTZ(0)` en UTC ; tables/colonnes en snake_case via `@map`.
+//  - Contraintes non exprimables en Prisma (CHECK, index partiels, déclencheurs SQL) : SQL brut dans
+//    la migration, copié à l'identique dans prisma/sql/asst.sql (ré-exécutable).
+//
+// Écarts assumés :
+//  - AUCUNE clé étrangère vers les tables existantes (`app_user`, `app_user_group`, `ged_ai_decision`).
+//    Prisma exige le champ inverse sur le modèle cible, ce qui obligerait à modifier security.prisma /
+//    ged.prisma (hors périmètre). Les acteurs sont des colonnes `Int` SANS FK ; `ai_decision_id` est un
+//    `BigInt` sans FK vers `ged_ai_decision.ged_ai_decision_id`. L'intégrité est garantie par
+//    l'application. Les liens entre tables `asst_*` sont, eux, de vraies FK (en `CASCADE`).
+//  - Une proposition APPLIQUÉE ou EN ÉCHEC est une trace d'exécution : elle ne se supprime pas
+//    directement (déclencheur `asst_proposal_guard_delete`) ; seule la purge de la conversation entière
+//    l'emporte, en cascade.
+//  - `args_hash` est calculé par l'application (SHA-256 du JSON canonique des actions) ; la base en
+//    vérifie la forme, pas la valeur.
+
+// ===========================================================================
+// 1. Conversations et messages
+// ===========================================================================
+
+/// Conversation entre un utilisateur et l'assistant. Seul le propriétaire (`userId`) la voit.
+///
+/// `userId` : `app_user.user_id`, compte propriétaire (SANS FK). `userGroupId` : acteur effectif
+/// (`app_user_group.user_group_id`) au moment de la création, sans FK.
+/// `pageContext` : objet `{ route, subjectType?, subjectId? }` décrivant la page ouverte (CHECK : objet).
+/// `purgeAt` : date de purge physique (défaut : création + 90 jours). La suppression par l'utilisateur
+/// est un MASQUAGE immédiat : l'application renseigne `deletedAt` ET ramène `purgeAt` à `now()` ; la
+/// purge physique est faite plus tard par un job (autre lot).
+model AsstConversation {
+  asstConversationId BigInt    @id @default(autoincrement()) @map("asst_conversation_id")
+  userId             Int       @map("user_id") // app_user.user_id, sans FK
+  userGroupId        Int       @map("user_group_id") // app_user_group.user_group_id, sans FK
+  title              String?   @db.VarChar(200)
+  pageContext        Json?     @map("page_context") @db.JsonB
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+  lastMessageAt      DateTime  @default(now()) @map("last_message_at") @db.Timestamptz(0)
+  purgeAt            DateTime  @default(dbgenerated("(now() + '90 days'::interval)")) @map("purge_at") @db.Timestamptz(0)
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz(0)
+
+  messages  AsstMessage[]
+  proposals AsstProposal[]
+
+  // Liste de l'utilisateur : index partiel (deleted_at IS NULL) `ix_asst_conversation_user_active` en SQL brut.
+  @@index([purgeAt])
+  @@map("asst_conversation")
+}
+
+/// Message d'une conversation. `role` : 0 utilisateur, 1 assistant (CHECK raw SQL).
+///
+/// `position` : ordre dans la conversation (>= 1), unique par conversation. Le contenu est append-only
+/// (déclencheur `asst_message_immutable` : `conversation_id`, `role`, `position`, `content` figés).
+/// Seul un message assistant peut porter des jetons ou un lien de décision IA (CHECK).
+/// `aiDecisionId` : `ged_ai_decision.ged_ai_decision_id`, SANS FK.
+model AsstMessage {
+  asstMessageId    BigInt   @id @default(autoincrement()) @map("asst_message_id")
+  conversationId   BigInt   @map("conversation_id")
+  role             Int      @db.SmallInt // 0=utilisateur,1=assistant (CHECK raw SQL)
+  content          String   @db.Text
+  position         Int
+  promptTokens     Int?     @map("prompt_tokens")
+  completionTokens Int?     @map("completion_tokens")
+  aiDecisionId     BigInt?  @map("ai_decision_id") // ged_ai_decision.ged_ai_decision_id, sans FK
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  conversation AsstConversation @relation(fields: [conversationId], references: [asstConversationId], onDelete: Cascade)
+  proposals    AsstProposal[]
+
+  @@unique([conversationId, position])
+  @@map("asst_message")
+}
+
+// ===========================================================================
+// 2. Propositions d'action (confirmation avant exécution)
+// ===========================================================================
+
+/// Proposition d'action(s) présentée par un message assistant, à confirmer par l'utilisateur.
+///
+/// `status` : 0 proposée, 1 confirmée (exécution en cours), 2 appliquée, 3 refusée, 4 expirée, 5 échec.
+/// Transitions légales : 0->1, 0->3, 0->4, 1->2, 1->5 ; états terminaux : 2, 3, 4, 5 (ligne figée).
+/// Garde-fous en SQL brut (déclencheurs `asst_proposal_*`) : naissance à l'état 0, champs immuables
+/// (`actions`, `args_hash`, `summary`, `expires_at`, acteurs, rattachements), pas de confirmation après
+/// expiration, pas d'expiration avant l'heure, pas de suppression directe d'une trace d'exécution.
+/// `actions` : tableau de 1 à 5 actions déjà validées par le schéma zod côté application.
+/// `argsHash` : SHA-256 hex du JSON canonique des actions, calculé par l'application.
+/// `result` : `{ effects: [...] }`, seulement si `status` = 2. `rowVersion` : verrou optimiste applicatif.
+model AsstProposal {
+  asstProposalId BigInt    @id @default(autoincrement()) @map("asst_proposal_id")
+  conversationId BigInt    @map("conversation_id")
+  messageId      BigInt    @map("message_id") // message assistant qui présente la proposition
+  userId         Int       @map("user_id") // sans FK
+  userGroupId    Int       @map("user_group_id") // sans FK
+  status         Int       @default(0) @db.SmallInt // 0=proposée,1=confirmée,2=appliquée,3=refusée,4=expirée,5=échec (CHECK raw SQL)
+  actions        Json      @db.JsonB
+  summary        String    @db.Text
+  argsHash       String    @map("args_hash") @db.VarChar(64)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(0)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(0)
+  confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz(0)
+  finishedAt     DateTime? @map("finished_at") @db.Timestamptz(0) // clôture : appliquée, refusée, expirée ou en échec
+  result         Json?     @db.JsonB
+  errorCode      String?   @map("error_code") @db.VarChar(60)
+  errorMessage   String?   @map("error_message") @db.Text
+  rowVersion     Int       @default(0) @map("row_version")
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+
+  conversation AsstConversation @relation(fields: [conversationId], references: [asstConversationId], onDelete: Cascade)
+  message      AsstMessage      @relation(fields: [messageId], references: [asstMessageId], onDelete: Cascade)
+
+  // Index partiel (status, expires_at) WHERE status IN (0,1) `ix_asst_proposal_expiry` en SQL brut.
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([conversationId])
+  @@index([messageId])
+  @@map("asst_proposal")
+}
+
+// ===========================================================================
+// 3. Budget par utilisateur et par jour
+// ===========================================================================
+
+/// Consommation et plafond d'un utilisateur pour un jour UTC (une ligne par couple user_id/day).
+///
+/// `capAmount` / `capTokens` : plafond appliqué CE JOUR-LÀ, copié de la configuration à la création de
+/// la ligne ; NULL = pas de plafond. Aucun CHECK « consommé <= plafond » : le règlement (settle) peut
+/// dépasser légèrement l'estimation de la réservation (comme `wf_budget`).
+model AsstUserBudget {
+  asstUserBudgetId Int      @id @default(autoincrement()) @map("asst_user_budget_id")
+  userId           Int      @map("user_id") // sans FK
+  day              DateTime @db.Date // jour UTC
+  consumedAmount   Decimal  @default(0) @map("consumed_amount") @db.Decimal(14, 4)
+  consumedTokens   BigInt   @default(0) @map("consumed_tokens")
+  callCount        Int      @default(0) @map("call_count")
+  capAmount        Decimal? @map("cap_amount") @db.Decimal(14, 4)
+  capTokens        BigInt?  @map("cap_tokens")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(0)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(0)
+
+  @@unique([userId, day])
+  @@index([day])
+  @@map("asst_user_budget")
+}

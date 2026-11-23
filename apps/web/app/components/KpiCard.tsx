@@ -10,7 +10,7 @@ import { InfoTooltip } from './InfoTooltip';
 
 /**
  * Tuile de chiffre clé. Le dépôt n'utilise `Statistic` d'AntD nulle part : les nombres y sont
- * composés à la main en `da-mono` (Geist Mono, chiffres tabulaires). On garde cette convention et
+ * composés à la main en `da-figure` (Archivo étroit, chiffres tabulaires). On garde cette convention et
  * on la factorise ici, plutôt que de la réécrire dans chaque zone du tableau de bord.
  *
  * `href` rend la tuile cliquable : un compteur qui signale un problème sans permettre d'agir
@@ -77,7 +77,7 @@ export function KpiCard({
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
         <span
-          className="da-mono"
+          className="da-figure"
           style={{
             fontSize: compact ? 22 : 28,
             fontWeight: 600,

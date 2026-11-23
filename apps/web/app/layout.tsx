@@ -2,21 +2,22 @@ import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import { GeistMono } from 'geist/font/mono';
-import { Open_Sans } from 'next/font/google';
+import { Archivo } from 'next/font/google';
 import { Providers } from './components/Providers';
 import { AuthShell } from './components/AuthShell';
 import './globals.css';
 import { CLIENT_BRAND } from './theme/client-brand';
 
-// Open Sans — famille unique Plus Admin (relook 002). Sous-ensemble latin
-// étendu pour les diacritiques français ; swap pour éviter le FOUT. Les
-// graisses 300/400/600/700 sont les seules du design (PRD §4.3).
+// Archivo — famille unique du design « Registre », en fonte VARIABLE : graisse et largeur.
+// L'axe de largeur (`wdth`) est ce qui fait la voix du registre : étroite pour les titres
+// d'écran et les en-têtes de colonne en capitales, normale pour le texte. Sous-ensemble latin
+// étendu pour les diacritiques français ; swap pour éviter le FOUT.
 // `--font-display` et `--font-geist-sans` sont des alias posés dans globals.css.
-const openSans = Open_Sans({
+const archivo = Archivo({
   subsets: ['latin', 'latin-ext'],
   display: 'swap',
   variable: '--font-sans',
-  weight: ['300', '400', '600', '700'],
+  axes: ['wdth'],
 });
 
 export const metadata: Metadata = {
@@ -42,7 +43,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="fr" data-theme="light" className={`${openSans.variable} ${GeistMono.variable}`}>
+    <html lang="fr" data-theme="light" className={`${archivo.variable} ${GeistMono.variable}`}>
       <body>
         {/*
           Filet de sécurité (surtout en dev) : automatise le rechargement forcé que

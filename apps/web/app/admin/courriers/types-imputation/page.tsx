@@ -27,11 +27,15 @@ export default function MailInputationTypesPage() {
   /** Ligne dont le PATCH « Suivi » est en vol : le Switch bascule sans retour visuel sinon. */
   const [savingId, setSavingId] = useState<number | null>(null);
 
+  // Échec du chargement : le référentiel ne doit pas s'annoncer vide (cf. RefLayout).
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setRows(await inputationTypesApi.list());
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     } finally {
       setLoading(false);
@@ -168,6 +172,8 @@ export default function MailInputationTypesPage() {
 
   return (
     <RefLayout
+      loadFailed={loadFailed && rows.length === 0}
+      onRetry={load}
       icon="documentType"
       title="Types d'imputation"
       tableTitle="Types d'imputation"

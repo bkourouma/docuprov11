@@ -13,6 +13,15 @@
       "port": 5000
     },
     {
+      "name": "web-5055",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set ARCHIVAGE_WEB_DEV_GUARD=1&& pnpm --filter @archivage/web exec next dev --turbopack -p 5055"
+      ],
+      "port": 5055
+    },
+    {
       "name": "api",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [

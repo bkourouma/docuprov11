@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>DocuPro · Standard de la catégorie</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--ink:#0F172A;--mut:#526077;--line:#E2E8F0;--ground:#F1F5F9;--blue:#2563EB;--bsoft:#EAF1FE;--red:#B91C1C;--rsoft:#FEE9E9;--amber:#8A5200;--asoft:#FEF3C7;--green:#0A6846;--gsoft:#DCFCE7}
+html,body{width:1440px;height:900px;overflow:hidden}
+body{font:14px/1.4 'Inter',system-ui,sans-serif;color:var(--ink);background:var(--ground);display:grid;grid-template:60px 1fr/256px 1fr;font-variant-numeric:tabular-nums}
+::selection{background:var(--blue);color:#fff}
+a{color:inherit;text-decoration:none}
+svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.side{grid-row:1/-1;background:#fff;border-right:1px solid var(--line);padding:16px 12px}
+.side img{height:28px;display:block;margin:2px 10px 20px}
+.sec{display:flex;justify-content:space-between;align-items:center;height:38px;padding:0 10px;font-weight:600;border-radius:8px}
+.sec::after{content:"";width:6px;height:6px;border-right:1.5px solid var(--mut);border-bottom:1.5px solid var(--mut);transform:rotate(-45deg)}
+.sec.open::after{transform:rotate(45deg)}
+.side a.it{display:flex;justify-content:space-between;align-items:center;height:34px;padding:0 10px 0 22px;border-radius:8px;color:#334155;font-size:13.5px}
+.side a.on{background:var(--bsoft);color:var(--blue);font-weight:600}
+.side b{font-size:11px;font-weight:600;background:var(--blue);color:#fff;border-radius:999px;padding:2px 7px}
+.top{background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;padding:0 32px;font-size:13px;color:var(--mut)}
+.top strong{color:var(--ink);font-weight:600}
+.find{margin-left:auto;width:320px;height:36px;border:1px solid #94A3B8;border-radius:8px;display:flex;align-items:center;gap:10px;padding:0 12px}
+.me{width:34px;height:34px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-weight:600;font-size:12px;margin-left:8px}
+main{padding:28px 32px 0}
+.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+h1{font:700 24px/1.2 'Inter',system-ui,sans-serif;letter-spacing:-.02em}
+.btn{height:36px;padding:0 16px;border-radius:8px;font:600 13px 'Inter',system-ui,sans-serif;display:inline-flex;align-items:center;border:1px solid #94A3B8;background:#fff}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff;margin-left:8px}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.card span{font-size:13px;color:var(--mut);font-weight:500;display:block}
+.card b{font:700 28px/1.3 'Inter',system-ui,sans-serif;letter-spacing:-.02em;display:block}
+.card em{font-style:normal;font-size:12px;color:var(--mut)}
+.tbl{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:13.5px}
+th{font:600 12px 'Inter',system-ui,sans-serif;color:var(--mut);text-align:left;padding:0 16px;height:40px;background:#F8FAFC;border-bottom:1px solid var(--line)}
+td{padding:0 16px;height:46px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+tr:last-child td{border-bottom:0}
+.no{font-weight:600;color:var(--blue)}.obj{font-weight:500}
+.st{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px}
+.wait{background:var(--asoft);color:var(--amber)}.done{background:var(--gsoft);color:var(--green)}.late2{background:var(--rsoft);color:var(--red)}.del{background:var(--ground);color:var(--mut)}
+.gone td,.gone .no{color:#526077}.gone .obj{text-decoration:line-through}
+</style></head>
+<body>
+<nav class="side">
+  <img alt="DocuPro" src="data:image/png;base64,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">
+  <a class="sec">Docu-Archives</a><a class="sec">Docu-Flow</a><a class="sec open">Docu-Courriers</a>
+  <a class="it">Tableau de bord</a><a class="it">Enregistrement</a><a class="it">Courriers arrivés<b>14</b></a><a class="it">Documents scannés<b>6</b></a><a class="it">Courriers imputés<b>9</b></a><a class="it on">Suivi des courriers<b>7</b></a><a class="it">Validation<b>5</b></a><a class="it">Recherche courrier</a><a class="it">Courrier de départ</a><a class="it">Intégration décharge<b>3</b></a>
+  <a class="sec">Paramétrage Archives</a><a class="sec">Paramétrage Courrier</a><a class="sec">Sécurité Documentaire</a><a class="sec">Administration</a>
+</nav>
+<header class="top"><span>Docu-Courriers</span>/<strong>Suivi des courriers</strong>
+  <div class="find"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg>Rechercher</div><a class="me">BO</a></header>
+<main>
+  <div class="head"><h1>Suivi des courriers</h1><div><a class="btn">Exporter</a><a class="btn pri">Enregistrer un courrier</a></div></div>
+  <section class="cards">
+    <div class="card"><span>En cours</span><b>38</b><em>dont 12 arrivés cette semaine</em></div>
+    <div class="card"><span>En retard</span><b>7</b><em>2 de plus que vendredi</em></div>
+    <div class="card"><span>Échéance cette semaine</span><b>12</b><em>4 pour la Direction technique</em></div>
+    <div class="card"><span>Urgents</span><b>3</b><em>priorité signalée</em></div>
+  </section>
+  <div class="tbl"><table>
+    <thead><tr><th style="width:150px">N° enregistrement</th><th>Objet</th><th style="width:240px">Correspondant</th><th style="width:176px">Destinataire</th><th style="width:130px">Imputation</th><th style="width:176px">Date butoir</th></tr></thead>
+    <tbody>
+    <tr><td class="no">A 2026-1836</td><td class="obj">Demande d'attestation de propriété, TF 104 552</td><td>Étude notariale de la Riviera</td><td>Service juridique</td><td><span class="st wait">En attente</span></td><td><span class="st late2">19/11, retard 3 j</span></td></tr>
+    <tr><td class="no">A 2026-1828</td><td class="obj">Devis de raccordement du lotissement d'Anyama</td><td>Société des eaux</td><td>Direction technique</td><td><span class="st wait">En attente</span></td><td><span class="st late2">20/11, retard 2 j</span></td></tr>
+    <tr><td class="no">A 2026-1843</td><td class="obj">Dépôt du dossier technique de bornage, lot 318</td><td>Cabinet de géomètres-experts du Plateau</td><td>Service du cadastre</td><td><span class="st wait">En attente</span></td><td><span class="st late2">21/11, retard 1 j</span></td></tr>
+    <tr><td class="no">A 2026-1839</td><td class="obj">Convocation à la commission d'attribution du 2 décembre</td><td>Préfecture d'Abidjan</td><td>Direction générale</td><td><span class="st done">Traitée</span></td><td>24/11, dans 2 j</td></tr>
+    <tr><td class="no">A 2026-1846</td><td class="obj">Demande de régularisation foncière, îlot 42</td><td>Mairie de Cocody</td><td>Service juridique</td><td><span class="st wait">En attente</span></td><td>25/11, dans 3 j</td></tr>
+    <tr><td class="no">A 2026-1847</td><td class="obj">Transmission du projet d'arrêté de lotissement de Songon</td><td>Ministère de la Construction</td><td>Direction technique</td><td><span class="st wait">En attente</span></td><td>27/11, dans 5 j</td></tr>
+    <tr><td class="no">D 2026-0412</td><td class="obj">Réponse à la réclamation sur la délivrance d'un ACD</td><td>Particulier, dossier 7731</td><td>Direction commerciale</td><td><span class="st done">Traitée</span></td><td>28/11, dans 6 j</td></tr>
+    <tr><td class="no">I 2026-0097</td><td class="obj">Note de service : clôture de l'exercice 2026</td><td>Direction financière</td><td>Toutes directions</td><td><span class="st done">Traitée</span></td><td>30/11, dans 8 j</td></tr>
+    <tr class="gone"><td class="no">A 2026-1815</td><td class="obj">Circulaire budgétaire 2027 (doublon)</td><td>Ministère de l'Économie</td><td>Direction financière</td><td><span class="st del">Supprimé</span></td><td>sans objet</td></tr>
+    </tbody>
+  </table></div>
+</main>
+</body></html>

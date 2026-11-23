@@ -1,0 +1,103 @@
+/* Carte de confirmation de l'assistant : uniquement des variables AntD / design system (clair et sombre).
+   À importer par le drawer (pas par les composants). Classes : asst-card*, asst-choice*. */
+.asst-card {
+  display: grid; gap: 10px; min-width: 0; max-width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-left-width: 4px;
+  border-radius: var(--ant-border-radius);
+  background: var(--ant-color-bg-container);
+  color: var(--ant-color-text);
+  overflow-wrap: anywhere;
+}
+.asst-card--proposed, .asst-card--confirming { border-left-color: var(--ant-color-primary); }
+.asst-card--applied { border-left-color: var(--ant-color-success); }
+.asst-card--refused { border-left-color: var(--ant-color-border); }
+.asst-card--expired { border-left-color: var(--ant-color-warning); }
+.asst-card--failed { border-left-color: var(--ant-color-error); }
+
+.asst-card-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.asst-card-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--ant-color-text); }
+.asst-card-pill {
+  display: inline-block; padding: 2px 10px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--ant-color-border-secondary); border-radius: var(--da-radius-pill, 999px);
+  background: var(--ant-color-fill-quaternary); color: var(--ant-color-text);
+}
+.asst-card-pill--proposed, .asst-card-pill--confirming { background: var(--ant-color-primary-bg); }
+.asst-card-pill--applied { background: var(--ant-color-success-bg); }
+.asst-card-pill--expired { background: var(--ant-color-warning-bg); }
+.asst-card-pill--failed { background: var(--ant-color-error-bg); }
+
+/* Zone live : annoncée aux lecteurs d'écran, invisible à l'écran (le texte d'état est déjà affiché). */
+.asst-card-live {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.asst-card p, .asst-card ul, .asst-card ol, .asst-card dl { margin: 0; }
+.asst-card-info {
+  padding: 8px 10px; font-size: 13px; color: var(--ant-color-text);
+  background: var(--ant-color-primary-bg); border-radius: var(--ant-border-radius);
+}
+.asst-card-summary { font-size: 14px; color: var(--ant-color-text); }
+.asst-card-actions { list-style: decimal; padding-left: 20px; display: grid; gap: 10px; }
+.asst-card-action { padding-left: 4px; }
+.asst-card-action-title, .asst-card-recipient-title, .asst-card-effect-title { font-weight: 600; margin-bottom: 4px; }
+.asst-card-action-note { margin-top: 4px; font-size: 13px; color: var(--ant-color-text-secondary); }
+.asst-card-rows { display: grid; gap: 4px; }
+.asst-card-row { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr); gap: 8px; font-size: 13px; }
+.asst-card-row dt { color: var(--ant-color-text-secondary); }
+.asst-card-row dd { margin: 0; color: var(--ant-color-text); white-space: pre-wrap; }
+.asst-card-recipients, .asst-card-effects { list-style: none; padding: 0; margin-top: 6px !important; display: grid; gap: 8px; }
+.asst-card-recipient, .asst-card-effect {
+  padding: 8px 10px; background: var(--ant-color-fill-quaternary); border-radius: var(--ant-border-radius);
+}
+
+.asst-card-warnings {
+  padding: 8px 10px; font-size: 13px; color: var(--ant-color-text);
+  background: var(--ant-color-warning-bg); border: 1px solid var(--ant-color-warning-border, var(--ant-color-warning));
+  border-radius: var(--ant-border-radius);
+}
+.asst-card-warnings ul { padding-left: 18px; display: grid; gap: 2px; }
+.asst-card-deadline { font-size: 13px; color: var(--ant-color-text-secondary); }
+.asst-card-countdown { font-weight: 700; color: var(--ant-color-text); font-variant-numeric: tabular-nums; }
+.asst-card-state { font-size: 14px; color: var(--ant-color-text); }
+.asst-card-state-title { font-weight: 700; }
+.asst-card--failed .asst-card-state-title { color: var(--ant-color-error-text, var(--ant-color-text)); }
+
+.asst-card-notice {
+  display: grid; gap: 8px; padding: 8px 10px; font-size: 13px; color: var(--ant-color-text);
+  border: 1px solid var(--ant-color-border-secondary); border-radius: var(--ant-border-radius);
+  background: var(--ant-color-fill-quaternary);
+}
+.asst-card-notice--error { background: var(--ant-color-error-bg); border-color: var(--ant-color-error); }
+.asst-card-notice--conflict, .asst-card-notice--reload-needed {
+  background: var(--ant-color-warning-bg); border-color: var(--ant-color-warning);
+}
+.asst-card-notice--info { background: var(--ant-color-primary-bg); }
+
+.asst-card-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.asst-card .asst-card-btn.ant-btn { min-height: 44px; min-width: 44px; padding-inline: 16px; }
+.asst-card .ant-btn:focus-visible,
+.asst-choice:focus-visible { outline: 2px solid var(--ant-color-primary); outline-offset: 2px; }
+
+/* Questions de précision */
+.asst-choices { display: grid; gap: 8px; min-width: 0; max-width: 100%; }
+.asst-choices-question { margin: 0; color: var(--ant-color-text); overflow-wrap: anywhere; }
+.asst-choices-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.asst-choice {
+  min-height: 44px; max-width: 100%; padding: 8px 14px; font: inherit; text-align: left; cursor: pointer;
+  color: var(--ant-color-text); background: var(--ant-color-bg-container);
+  border: 1px solid var(--ant-color-border-secondary); border-radius: var(--ant-border-radius);
+  overflow-wrap: anywhere;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.asst-choice:hover:not(:disabled) { border-color: var(--ant-color-primary); background: var(--ant-color-primary-bg); }
+.asst-choice:disabled { cursor: not-allowed; color: var(--ant-color-text-disabled); background: var(--ant-color-fill-quaternary); }
+
+@media (max-width: 480px) {
+  .asst-card-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .asst-choice { transition: none; }
+}

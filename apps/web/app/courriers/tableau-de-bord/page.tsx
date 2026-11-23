@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Alert, App, Button, Skeleton, Space, Tooltip } from 'antd';
 import { PageHeader } from '../../components/PageHeader';
-import { HeroBanner, heroGhostStyle } from '../../components/HeroBanner';
+import { HeroBanner } from '../../components/HeroBanner';
+import { DashboardSkeleton } from '../../components/skeletons';
 import { icons, iconDefaults } from '../../theme/icons';
 import {
   PeriodFilter,
@@ -324,25 +325,17 @@ export default function TableauDeBordCourriersPage() {
               actions={
                 <>
                   <Link href="/courriers/enregistrement">
-                    <Button icon={<icons.add {...iconDefaults} size={16} />}>
+                    <Button type="primary" icon={<icons.add {...iconDefaults} size={16} />}>
                       Enregistrer un courrier
                     </Button>
                   </Link>
                   <Link href="/courriers/controle">
-                    <Button
-                      ghost
-                      style={heroGhostStyle}
-                      icon={<icons.mail {...iconDefaults} size={16} />}
-                    >
+                    <Button icon={<icons.mail {...iconDefaults} size={16} />}>
                       Courriers arrivés
                     </Button>
                   </Link>
                   <Link href="/courriers/recherche">
-                    <Button
-                      ghost
-                      style={heroGhostStyle}
-                      icon={<icons.search {...iconDefaults} size={16} />}
-                    >
+                    <Button icon={<icons.search {...iconDefaults} size={16} />}>
                       Rechercher un courrier
                     </Button>
                   </Link>
@@ -373,7 +366,7 @@ export default function TableauDeBordCourriersPage() {
           </div>
 
           {premierChargement.current && !agencement ? (
-            <Skeleton active paragraph={{ rows: 10 }} />
+            <DashboardSkeleton />
           ) : (
             <GrilleWidgets
               widgets={widgetsAffiches}

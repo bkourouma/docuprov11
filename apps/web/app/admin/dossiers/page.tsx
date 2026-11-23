@@ -67,12 +67,16 @@ export default function DossiersPage() {
   const [busy, setBusy] = useState(false);
   const [highlightId, setHighlightId] = useState<number | null>(null);
 
+  // Échec du chargement : le référentiel ne doit pas s'annoncer vide (cf. RefLayout).
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     try {
       const d = await apiJson<Dossier[]>('/referentials/dossiers');
       setRows(d);
       setExpandedKeys(d.map((r) => r.dossierId)); // org-chart view: fully expanded
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     }
   }, [message]);
@@ -188,6 +192,8 @@ export default function DossiersPage() {
 
   return (
     <RefLayout
+      loadFailed={loadFailed && rows.length === 0}
+      onRetry={load}
       icon="dossier"
       title="Gestion des dossiers"
       exportPath="/referentials/dossiers/export"

@@ -419,6 +419,146 @@ export const NAV: NavSection[] = [
 /** Tous les items à plat (palette de commandes, résolution de titre/fil d'Ariane). */
 export const NAV_FLAT: NavItem[] = NAV.flatMap((s) => s.items);
 
+/**
+ * Modules du rail de navigation (design « Registre »).
+ *
+ * Le rail ne porte que quatre modules ; le panneau liste les écrans du module courant,
+ * regroupés par GESTE (Traiter, Suivre, Expédier…) plutôt qu'à plat. `NAV` reste la source
+ * unique des écrans — libellé, icône, mots-clés, permissions : un module ne fait que RANGER
+ * des écrans existants, il n'en déclare aucun, et ne touche ni aux routes ni aux droits.
+ * `nav.test.ts` vérifie que chaque écran de `NAV` est rangé une fois et une seule.
+ */
+export interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+export interface NavModule {
+  id: string;
+  /** Libellé court, sous l'icône du rail. */
+  short: string;
+  /** Libellé complet : fil d'Ariane, info-bulle, lecteurs d'écran. */
+  label: string;
+  icon: IconName;
+  groups: NavGroup[];
+}
+
+const ITEM_BY_KEY = new Map(NAV_FLAT.map((i) => [i.key, i]));
+
+/** Écrans de `NAV` désignés par leur route, dans l'ordre voulu pour le groupe. */
+function pick(keys: string[]): NavItem[] {
+  return keys.map((k) => {
+    const item = ITEM_BY_KEY.get(k);
+    if (!item) throw new Error(`nav : écran inconnu « ${k} »`);
+    return item;
+  });
+}
+
+/** Groupe reprenant TELLE QUELLE une section de `NAV` (réglages : le titre de section suffit). */
+function sectionGroup(label: string): NavGroup {
+  const section = NAV.find((s) => s.label === label);
+  if (!section) throw new Error(`nav : section inconnue « ${label} »`);
+  return { label, items: section.items };
+}
+
+export const MODULES: NavModule[] = [
+  {
+    id: 'archives',
+    short: 'Archives',
+    label: 'Docu-Archives',
+    icon: 'archive',
+    groups: [
+      { label: 'Consulter', items: pick(['/dashboards', '/search', '/recherche-ia', '/espaces']) },
+      { label: 'Verser', items: pick(['/acquisition']) },
+      {
+        label: 'Contrôler',
+        items: pick([
+          '/gouvernance',
+          '/archives/integrite',
+          '/archives/dua-expirees',
+          '/archives/documents-epures',
+        ]),
+      },
+      {
+        label: 'Communiquer',
+        items: pick([
+          '/archives/communiquer',
+          '/archives/documents-communiques',
+          '/archives/mes-documents-communiques',
+          '/archives/historique-communications',
+        ]),
+      },
+    ],
+  },
+  {
+    id: 'flow',
+    short: 'Flow',
+    label: 'Docu-Flow',
+    icon: 'organigramme',
+    groups: [
+      { label: 'Traiter', items: pick(['/workflows/boite', '/workflows/lancer']) },
+      { label: 'Suivre', items: pick(['/workflows/instances']) },
+      { label: 'Concevoir', items: pick(['/workflows/conception']) },
+      {
+        label: 'Administrer',
+        items: pick(['/workflows/administration', '/workflows/administration/plafonds']),
+      },
+    ],
+  },
+  {
+    id: 'courriers',
+    short: 'Courriers',
+    label: 'Docu-Courriers',
+    icon: 'mail',
+    groups: [
+      {
+        label: 'Traiter',
+        items: pick([
+          '/courriers/enregistrement',
+          '/courriers/controle',
+          '/courriers/documents-scannes',
+          '/courriers/parapheur',
+          '/courriers/validation',
+        ]),
+      },
+      {
+        label: 'Suivre',
+        items: pick(['/courriers/suivi', '/courriers/tableau-de-bord', '/courriers/recherche']),
+      },
+      { label: 'Expédier', items: pick(['/courriers/depart', '/courriers/integration-decharge']) },
+    ],
+  },
+  {
+    id: 'reglages',
+    short: 'Réglages',
+    label: 'Réglages',
+    icon: 'settings',
+    groups: [
+      sectionGroup('Paramétrage Archives'),
+      sectionGroup('Paramétrage Courrier'),
+      sectionGroup('Sécurité Documentaire'),
+      sectionGroup('Administration'),
+    ],
+  },
+];
+
+export interface NavPlace {
+  module: NavModule;
+  group: NavGroup;
+  item: NavItem;
+}
+
+/** Emplacement (module, geste) d'un écran de `NAV`, désigné par sa route. */
+export function placeOf(key: string): NavPlace | undefined {
+  for (const module of MODULES) {
+    for (const group of module.groups) {
+      const item = group.items.find((i) => i.key === key);
+      if (item) return { module, group, item };
+    }
+  }
+  return undefined;
+}
+
 /** Item actif pour un chemin donné (exact pour la racine, sinon préfixe). */
 export function isActive(pathname: string, key: string): boolean {
   return key === '/' ? pathname === '/' : pathname.startsWith(key);
@@ -439,4 +579,10 @@ export function activeItem(pathname: string): NavItem | undefined {
   return [...NAV_FLAT]
     .sort((a, b) => b.key.length - a.key.length)
     .find((i) => isActive(pathname, i.key));
+}
+
+/** Emplacement (module, geste, écran) du chemin courant ; `undefined` hors menu (« Mon profil »). */
+export function placeOfPath(pathname: string): NavPlace | undefined {
+  const item = activeItem(pathname);
+  return item ? placeOf(item.key) : undefined;
 }

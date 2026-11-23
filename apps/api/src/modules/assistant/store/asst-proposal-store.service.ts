@@ -1,0 +1,418 @@
+import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+import {
+  ASST_PROPOSAL_TRANSITIONS,
+  ASST_PROPOSAL_TTL_MINUTES,
+  ASST_RETENTION_DAYS,
+  ASST_SUMMARY_MAX_CHARS,
+  AsstMessageRole,
+  AsstProposalStatus,
+  asstProposedActionsSchema,
+  type AsstConversationDto,
+  type AsstMessageDto,
+  type AsstPageContext,
+  AsstErrorCode,
+  type AsstProposalDto,
+} from '@archivage/types';
+import { PrismaService } from '../../prisma/prisma.service';
+import {
+  AsstError,
+  type AsstNewMessage,
+  type AsstNewProposal,
+  type AsstProposalStore,
+  type AsstProposalTransition,
+} from '../assistant.contracts';
+import { asstArgsHash } from './asst-proposal-hash';
+import {
+  parseAsstId,
+  toConversationDto,
+  toMessageDto,
+  toProposalDto,
+} from './asst-store.mappers';
+
+const DAY_MS = 86_400_000;
+/** Marge de tolérance sur l'échéance maximale d'une proposition (écart d'horloge entre l'appelant et `now`). */
+const EXPIRY_MARGIN_MS = 1_000;
+/** Plafond de `ck_asst_message_content`. */
+const MESSAGE_CONTENT_MAX = 20_000;
+const DIGITS = /^\d{1,18}$/;
+
+/** Délai maximal d'attente du verrou de ligne par `deleteConversation` (`lock_timeout` local à la transaction). */
+export const ASST_DELETE_LOCK_TIMEOUT_MS = 2_000;
+/** SQLSTATE `lock_not_available` : levé par PostgreSQL quand `lock_timeout` est dépassé. */
+const SQLSTATE_LOCK_NOT_AVAILABLE = '55P03';
+
+/**
+ * Vrai si l'erreur (ou l'une de ses causes, y compris l'enveloppe Prisma `P2010` / `meta`) est un dépassement de
+ * `lock_timeout` (SQLSTATE 55P03). Détection volontairement étroite : toute autre erreur reste inchangée.
+ */
+export function isLockNotAvailable(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  const visit = (e: unknown, depth: number): boolean => {
+    if (typeof e !== 'object' || e === null || seen.has(e) || depth > 5) return false;
+    seen.add(e);
+    const o = e as { code?: unknown; message?: unknown; meta?: unknown; cause?: unknown };
+    if (o.code === SQLSTATE_LOCK_NOT_AVAILABLE) return true;
+    if (typeof o.message === 'string' && o.message.includes(SQLSTATE_LOCK_NOT_AVAILABLE)) return true;
+    if (typeof o.meta === 'object' && o.meta !== null) {
+      const m = o.meta as { code?: unknown; message?: unknown };
+      if (m.code === SQLSTATE_LOCK_NOT_AVAILABLE) return true;
+      if (typeof m.message === 'string' && m.message.includes(SQLSTATE_LOCK_NOT_AVAILABLE)) return true;
+    }
+    return visit(o.cause, depth + 1);
+  };
+  return visit(error, 0);
+}
+
+/**
+ * Magasin Prisma de l'assistant (conversations, messages, propositions). Mêmes sémantiques que l'implémentation en
+ * mémoire (`testing/in-memory-proposal-store.ts`) : propriété par `userId` partout (objet d'un autre ou identifiant
+ * mal formé -> `null`/`false`, jamais d'exception), échange masqué introuvable, compare-and-set sur la transition.
+ * Les violations de CHECK ou de déclencheur PostgreSQL remontent TELLES QUELLES (contrat attendu par l'exécuteur).
+ */
+@Injectable()
+export class AsstProposalStoreService implements AsstProposalStore {
+  /**
+   * Délai d'attente du verrou de `deleteConversation` (ms). Surchargeable par les tests d'intégration pour ne pas
+   * ralentir la suite ; la production garde la constante.
+   */
+  deleteLockTimeoutMs = ASST_DELETE_LOCK_TIMEOUT_MS;
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  // ---------------------------------------------------------------------------
+  // Conversations
+  // ---------------------------------------------------------------------------
+
+  async createConversation(input: {
+    userId: number;
+    userGroupId: number;
+    title?: string | null;
+    pageContext?: AsstPageContext | null;
+    now: Date;
+  }): Promise<AsstConversationDto> {
+    const row = await this.prisma.asstConversation.create({
+      data: {
+        userId: input.userId,
+        userGroupId: input.userGroupId,
+        title: input.title ?? null,
+        ...(input.pageContext ? { pageContext: input.pageContext as unknown as Prisma.InputJsonValue } : {}),
+        createdAt: input.now,
+        updatedAt: input.now,
+        lastMessageAt: input.now,
+        purgeAt: new Date(input.now.getTime() + ASST_RETENTION_DAYS * DAY_MS),
+      },
+    });
+    return toConversationDto(row, 0);
+  }
+
+  async listConversations(
+    userId: number,
+    opts: { limit: number; offset: number },
+  ): Promise<{ items: AsstConversationDto[]; total: number }> {
+    const where = { userId, deletedAt: null };
+    const [rows, total] = await Promise.all([
+      this.prisma.asstConversation.findMany({
+        where,
+        orderBy: [{ updatedAt: 'desc' }, { asstConversationId: 'desc' }],
+        skip: Math.max(0, opts.offset),
+        take: Math.max(0, opts.limit),
+        include: { _count: { select: { messages: true } } },
+      }),
+      this.prisma.asstConversation.count({ where }),
+    ]);
+    return { items: rows.map((r) => toConversationDto(r, r._count.messages)), total };
+  }
+
+  async getConversation(
+    userId: number,
+    conversationId: string,
+  ): Promise<{ conversation: AsstConversationDto; messages: AsstMessageDto[] } | null> {
+    const id = parseAsstId(conversationId);
+    if (id === null) return null;
+    const row = await this.prisma.asstConversation.findFirst({
+      where: { asstConversationId: id, userId, deletedAt: null },
+      include: {
+        messages: {
+          orderBy: { position: 'asc' },
+          include: { proposals: { orderBy: { asstProposalId: 'asc' } } },
+        },
+      },
+    });
+    if (!row) return null;
+    return {
+      conversation: toConversationDto(row, row.messages.length),
+      messages: row.messages.map((m) => toMessageDto(m, m.proposals)),
+    };
+  }
+
+  async deleteConversation(userId: number, conversationId: string, now: Date): Promise<boolean> {
+    const id = parseAsstId(conversationId);
+    if (id === null) return false;
+    // Transaction en deux instructions. (1) Verrou de ligne sur l'échange : il se met en file derrière une confirmation
+    // en cours (qui détient un verrou partagé sur l'échange, voir `confirmProposal`) et la valide avant de continuer.
+    // (2) UPDATE conditionnel lancé APRÈS le verrou, donc avec un instantané qui voit le statut confirmé (1) :
+    // `purge_at` ne passe à `now` que si l'échange ne porte AUCUNE trace d'exécution : proposition appliquée (2) ou en
+    // échec (5), ou confirmée (1), qui deviendra l'une des deux. Dans ce cas la trace est conservée jusqu'à l'échéance.
+    // `lock_timeout` local (annulé en fin de transaction) : si la ligne reste verrouillée plus de 2 s (confirmation ou
+    // ajout de message anormalement long), la transaction est annulée SANS EFFET et l'appelant reçoit un conflit 409
+    // réessayable, au lieu d'une attente indéfinie.
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('lock_timeout', ${`${this.deleteLockTimeoutMs}ms`}, true)`;
+        const locked = await tx.$queryRaw<{ id: bigint }[]>`
+          SELECT "asst_conversation_id" AS id FROM "asst_conversation"
+          WHERE "asst_conversation_id" = ${id} AND "user_id" = ${userId} AND "deleted_at" IS NULL
+          FOR UPDATE`;
+        if (locked.length === 0) return false;
+        const count = await tx.$executeRaw`
+          UPDATE "asst_conversation" AS c
+          SET "deleted_at" = ${now},
+              "updated_at" = ${now},
+              "purge_at" = CASE
+                WHEN EXISTS (SELECT 1 FROM "asst_proposal" p
+                             WHERE p."conversation_id" = c."asst_conversation_id" AND p."status" IN (1, 2, 5))
+                THEN c."purge_at"
+                ELSE ${now}
+              END
+          WHERE c."asst_conversation_id" = ${id} AND c."user_id" = ${userId} AND c."deleted_at" IS NULL`;
+        return count > 0;
+      });
+    } catch (error) {
+      if (isLockNotAvailable(error)) {
+        throw new AsstError(AsstErrorCode.Conflict, 'L’échange est en cours de traitement : réessayez dans un instant.');
+      }
+      throw error;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Messages
+  // ---------------------------------------------------------------------------
+
+  async appendMessage(userId: number, input: AsstNewMessage, now: Date): Promise<AsstMessageDto | null> {
+    if (input.role !== AsstMessageRole.User && input.role !== AsstMessageRole.Assistant) {
+      throw new Error('asst_message : rôle invalide');
+    }
+    if (input.content.trim() === '' || input.content.length > MESSAGE_CONTENT_MAX) {
+      throw new Error('asst_message : contenu vide ou supérieur à 20 000 caractères');
+    }
+    const isAssistant = input.role === AsstMessageRole.Assistant;
+    const promptTokens = isAssistant ? (input.promptTokens ?? null) : null;
+    const completionTokens = isAssistant ? (input.completionTokens ?? null) : null;
+    const aiDecision = isAssistant ? (input.aiDecisionId ?? null) : null;
+    if (
+      (promptTokens !== null && (!Number.isInteger(promptTokens) || promptTokens < 0)) ||
+      (completionTokens !== null && (!Number.isInteger(completionTokens) || completionTokens < 0))
+    ) {
+      throw new Error('asst_message : jetons invalides (entiers positifs ou nuls attendus)');
+    }
+    if (aiDecision !== null && !DIGITS.test(aiDecision)) {
+      throw new Error('asst_message : identifiant de décision IA invalide');
+    }
+    const conversationId = parseAsstId(input.conversationId);
+    if (conversationId === null) return null;
+
+    return this.prisma.$transaction(async (tx) => {
+      // Verrou de ligne : sérialise les ajouts concurrents sur le même échange (positions consécutives).
+      const locked = await tx.$queryRaw<{ id: bigint }[]>`
+        SELECT "asst_conversation_id" AS id FROM "asst_conversation"
+        WHERE "asst_conversation_id" = ${conversationId} AND "user_id" = ${userId} AND "deleted_at" IS NULL
+        FOR UPDATE`;
+      if (locked.length === 0) return null;
+      const last = await tx.asstMessage.aggregate({ where: { conversationId }, _max: { position: true } });
+      const row = await tx.asstMessage.create({
+        data: {
+          conversationId,
+          role: input.role,
+          content: input.content,
+          position: (last._max.position ?? 0) + 1,
+          promptTokens,
+          completionTokens,
+          aiDecisionId: aiDecision === null ? null : BigInt(aiDecision),
+          createdAt: now,
+        },
+      });
+      await tx.asstConversation.update({
+        where: { asstConversationId: conversationId },
+        data: { lastMessageAt: now, updatedAt: now },
+      });
+      return toMessageDto(row);
+    });
+  }
+
+  /**
+   * Supprime un message de l'utilisateur uniquement s'il appartient à un échange non masqué ET ne porte aucune
+   * proposition (quel que soit son statut : la cascade emporterait une trace d'exécution). Un seul DELETE conditionnel.
+   */
+  async deleteMessage(userId: number, conversationId: string, messageId: string): Promise<boolean> {
+    const convId = parseAsstId(conversationId);
+    const msgId = parseAsstId(messageId);
+    if (convId === null || msgId === null) return false;
+    const count = await this.prisma.$executeRaw`
+      DELETE FROM "asst_message" m
+      USING "asst_conversation" c
+      WHERE m."asst_message_id" = ${msgId}
+        AND m."conversation_id" = ${convId}
+        AND c."asst_conversation_id" = m."conversation_id"
+        AND c."user_id" = ${userId}
+        AND c."deleted_at" IS NULL
+        AND NOT EXISTS (SELECT 1 FROM "asst_proposal" p WHERE p."message_id" = m."asst_message_id")`;
+    return count > 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Propositions
+  // ---------------------------------------------------------------------------
+
+  async createProposal(input: AsstNewProposal, now: Date): Promise<AsstProposalDto> {
+    const parsed = asstProposedActionsSchema.safeParse(input.actions);
+    if (!parsed.success) {
+      throw new Error(`asst_proposal : actions invalides (${parsed.error.issues.map((i) => i.message).join('; ')})`);
+    }
+    if (input.argsHash !== asstArgsHash(parsed.data)) {
+      throw new Error('asst_proposal : argsHash différent du hash des actions');
+    }
+    if (input.summary.trim() === '' || input.summary.length > ASST_SUMMARY_MAX_CHARS) {
+      throw new Error('asst_proposal : résumé vide ou trop long');
+    }
+    const maxExpiry = now.getTime() + ASST_PROPOSAL_TTL_MINUTES * 60_000 + EXPIRY_MARGIN_MS;
+    if (input.expiresAt.getTime() <= now.getTime() || input.expiresAt.getTime() > maxExpiry) {
+      throw new Error("asst_proposal : échéance hors de la fenêtre autorisée (postérieure à la création, durée de vie maximale respectée)");
+    }
+    const conversationId = parseAsstId(input.conversationId);
+    const messageId = parseAsstId(input.messageId);
+    if (conversationId === null || messageId === null) throw new Error('asst_proposal : identifiant invalide');
+
+    const row = await this.prisma.asstProposal.create({
+      data: {
+        conversationId,
+        messageId,
+        userId: input.userId,
+        userGroupId: input.userGroupId,
+        status: AsstProposalStatus.Proposed,
+        rowVersion: 0,
+        actions: parsed.data as unknown as Prisma.InputJsonValue,
+        summary: input.summary,
+        argsHash: input.argsHash,
+        expiresAt: input.expiresAt,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    return toProposalDto(row);
+  }
+
+  async getProposal(userId: number, proposalId: string): Promise<AsstProposalDto | null> {
+    const row = await this.ownedProposal(userId, proposalId);
+    return row ? toProposalDto(row) : null;
+  }
+
+  async getProposalActor(userId: number, proposalId: string): Promise<{ userId: number; userGroupId: number } | null> {
+    const row = await this.ownedProposal(userId, proposalId);
+    return row ? { userId: row.userId, userGroupId: row.userGroupId } : null;
+  }
+
+  /**
+   * Compare-and-set : `updateMany` conditionnel sur le statut ET `row_version` attendus. Écrit dans `t.db`
+   * (transaction de l'exécuteur) s'il est fourni. `null` si la condition ne correspond plus. Une violation de CHECK
+   * ou de déclencheur LÈVE l'erreur PostgreSQL telle quelle.
+   * Seul le CAS vers « confirmée » (0 -> 1) exige en plus que l'échange ne soit pas masqué (fermeture de la course
+   * avec la suppression) ; les autres transitions n'en dépendent pas (une exécution en cours doit pouvoir se terminer,
+   * les propositions d'un échange masqué peuvent expirer). Échange masqué = CAS perdu : `null`.
+   */
+  async transitionProposal(t: AsstProposalTransition): Promise<AsstProposalDto | null> {
+    const allowed = ASST_PROPOSAL_TRANSITIONS[t.expectedStatus];
+    if (!allowed || !allowed.includes(t.to)) {
+      throw new Error(`asst_proposal : transition de statut illégale (${String(t.expectedStatus)} -> ${String(t.to)})`);
+    }
+    const id = parseAsstId(t.proposalId);
+    if (id === null) return null;
+    const db: Prisma.TransactionClient = (t.db as Prisma.TransactionClient | undefined) ?? this.prisma;
+
+    const data: Prisma.AsstProposalUpdateManyMutationInput = {
+      status: t.to,
+      rowVersion: { increment: 1 },
+      updatedAt: t.now,
+    };
+    if (t.to === AsstProposalStatus.Confirmed) data.confirmedAt = t.now;
+    else data.finishedAt = t.now;
+    if (t.to === AsstProposalStatus.Applied && t.result !== undefined) {
+      data.result = t.result as unknown as Prisma.InputJsonValue;
+    }
+    if (t.to === AsstProposalStatus.Failed) {
+      data.errorCode = t.errorCode ?? null;
+      data.errorMessage = t.errorMessage ?? null;
+    }
+    let count: number;
+    if (t.to === AsstProposalStatus.Confirmed) {
+      count = await this.confirmProposal(db, id, t);
+    } else {
+      ({ count } = await db.asstProposal.updateMany({
+        where: { asstProposalId: id, status: t.expectedStatus, rowVersion: t.expectedRowVersion },
+        data,
+      }));
+    }
+    if (count === 0) return null;
+    const row = await db.asstProposal.findUnique({ where: { asstProposalId: id } });
+    return row ? toProposalDto(row) : null;
+  }
+
+  /**
+   * CAS 0 -> 1 en UNE instruction : la CTE prend un verrou partagé sur la ligne de l'échange NON masqué et la mise à
+   * jour n'a lieu que si ce verrou est obtenu. Une suppression concurrente (verrou exclusif) attend la validation de
+   * la confirmation puis voit le statut 1 (purge_at conservée) ; une suppression déjà validée exclut l'échange du
+   * verrou après réévaluation (aucune ligne touchée). Jamais « masqué ET confirmé avec purge_at abaissée ».
+   * Pas de `lock_timeout` ici : le `FOR SHARE` ne peut attendre que derrière un `FOR UPDATE` bref (masquage ou
+   * ajout de message), et `SET LOCAL` dans `t.db` s'étendrait à toute la transaction de l'exécuteur (effets métier
+   * compris). L’attente se limite à la durée de ces verrous exclusifs.
+   */
+  private async confirmProposal(db: Prisma.TransactionClient, id: bigint, t: AsstProposalTransition): Promise<number> {
+    return db.$executeRaw`
+      WITH conv AS (
+        SELECT c."asst_conversation_id" AS id
+        FROM "asst_conversation" c
+        JOIN "asst_proposal" p ON p."conversation_id" = c."asst_conversation_id"
+        WHERE p."asst_proposal_id" = ${id} AND c."deleted_at" IS NULL
+        FOR SHARE OF c
+      )
+      UPDATE "asst_proposal"
+      SET "status" = ${t.to}, "row_version" = "row_version" + 1, "updated_at" = ${t.now}, "confirmed_at" = ${t.now}
+      WHERE "asst_proposal_id" = ${id}
+        AND "status" = ${t.expectedStatus}
+        AND "row_version" = ${t.expectedRowVersion}
+        AND "conversation_id" IN (SELECT id FROM conv)`;
+  }
+
+  async listExpirableProposals(now: Date, limit: number): Promise<AsstProposalDto[]> {
+    // Sans filtre de visibilité : le job clôture aussi les propositions d'un échange masqué.
+    const rows = await this.prisma.asstProposal.findMany({
+      where: { status: AsstProposalStatus.Proposed, expiresAt: { lte: now } },
+      orderBy: [{ expiresAt: 'asc' }, { asstProposalId: 'asc' }],
+      take: Math.max(0, limit),
+    });
+    return rows.map(toProposalDto);
+  }
+
+  async listStaleConfirmedProposals(before: Date, limit: number): Promise<AsstProposalDto[]> {
+    const rows = await this.prisma.asstProposal.findMany({
+      where: { status: AsstProposalStatus.Confirmed, confirmedAt: { lt: before } },
+      orderBy: [{ confirmedAt: 'asc' }, { asstProposalId: 'asc' }],
+      take: Math.max(0, limit),
+    });
+    return rows.map(toProposalDto);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internes
+  // ---------------------------------------------------------------------------
+
+  /** Proposition de l'utilisateur dont l'échange n'est pas masqué ; sinon `null`. */
+  private async ownedProposal(userId: number, proposalId: string) {
+    const id = parseAsstId(proposalId);
+    if (id === null) return null;
+    return this.prisma.asstProposal.findFirst({
+      where: { asstProposalId: id, userId, conversation: { deletedAt: null } },
+    });
+  }
+}

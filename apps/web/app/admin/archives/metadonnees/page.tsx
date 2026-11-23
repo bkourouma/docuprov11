@@ -43,10 +43,14 @@ export default function MetaDatasPage() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
 
+  // Échec du chargement : le référentiel ne doit pas s'annoncer vide (cf. RefLayout).
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     try {
       setRows(await metaDatasApi.list());
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     }
   }, [message]);
@@ -164,6 +168,8 @@ export default function MetaDatasPage() {
 
   return (
     <RefLayout
+      loadFailed={loadFailed && rows.length === 0}
+      onRetry={load}
       icon="document"
       title="Gestion des métadonnées"
       tableTitle="Métadonnées"

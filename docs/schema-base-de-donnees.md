@@ -1328,5 +1328,173 @@ Source : `packages/db/prisma/sql/wf.sql` (copie identique dans la migration).
 | `wf_eval_run_finished_immutable` | déclencheur | `wf_eval_run`, BEFORE UPDATE OR DELETE, par ligne | run terminé figé : ni modification ni suppression |
 | Ligne budgétaire globale | INSERT | `wf_budget` | `period_kind` = 0, `definition_id` NULL, pas de plafond (`cap_amount` NULL), arrêt d'urgence inactif, devise `XOF` ; `ON CONFLICT DO NOTHING` |
 
+## 11. Assistant (préfixe `asst_`) — fondations de données
+
+L'assistant qui agit (chat, proposition d'action, confirmation, exécution) ajoute **4 tables** préfixées `asst_`,
+livrées en une seule migration additive (`20261122120000_add_assistant_foundations`). Modèles :
+`packages/db/prisma/models/asst.prisma` ; contraintes en SQL brut : `packages/db/prisma/sql/asst.sql`, copié à
+l'identique dans la migration (section « SQL brut »), ré-exécutable ; vérification rejouable :
+`packages/db/prisma/sql/asst.checks.sql`. Guide développeur : `docs/assistant-donnees.md`. **Aucune table existante
+n'est modifiée** et aucune clé étrangère ne pointe vers une table existante.
+
+Principes :
+
+- **États en `SMALLINT` + `CHECK`** (pas d'énumération Prisma). Miroir TypeScript : `packages/types/src/asst-enums.ts`.
+- **Acteurs** (`user_id`, `user_group_id`) et `ai_decision_id` : colonnes **sans clé étrangère** vers `app_user`,
+  `app_user_group` et `ged_ai_decision`. Les liens entre tables `asst_*` sont de vraies clés étrangères en `CASCADE`.
+- **Visibilité** : l'auteur seul (règle applicative, filtre sur `user_id`).
+- **Conservation** : 90 jours (`purge_at`) ; la suppression par l'utilisateur est un masquage, la purge physique
+  est faite par un job (autre lot).
+
+### Diagramme
+
+```mermaid
+erDiagram
+  asst_conversation ||--o{ asst_message  : "messages"
+  asst_conversation ||--o{ asst_proposal : "propositions"
+  asst_message      ||--o{ asst_proposal : "présentée par"
+  asst_user_budget {
+    int user_id
+    date day
+  }
+```
+
+### `asst_conversation` — échange d'un utilisateur avec l'assistant
+
+| Colonne | Type | Contraintes | Notes |
+| --- | --- | --- | --- |
+| `asst_conversation_id` | `BIGSERIAL` | **PK** | exposé en chaîne côté API |
+| `user_id` | `INTEGER` | NOT NULL | `app_user.user_id`, sans FK ; seul propriétaire ; immuable |
+| `user_group_id` | `INTEGER` | NOT NULL | acteur effectif à la création, sans FK ; immuable |
+| `title` | `VARCHAR(200)` | **CHECK `ck_asst_conversation_title`** (NULL ou non vide) | |
+| `page_context` | `JSONB` | **CHECK `ck_asst_conversation_page_context`** (NULL ou objet) | `{ route, subjectType?, subjectId? }` |
+| `created_at` | `TIMESTAMPTZ(0)` | NOT NULL, def. `now()` | |
+| `updated_at` | `TIMESTAMPTZ(0)` | NOT NULL, def. `now()` | `@updatedAt` (Prisma) |
+| `last_message_at` | `TIMESTAMPTZ(0)` | NOT NULL, def. `now()` | |
+| `purge_at` | `TIMESTAMPTZ(0)` | NOT NULL, def. `now() + 90 jours`, **CHECK `ck_asst_conversation_purge`** (≥ `created_at`) | l'application la ramène à `now()` lors d'une suppression par l'utilisateur |
+| `deleted_at` | `TIMESTAMPTZ(0)` | | masquage immédiat |
+
+Index : `ix_asst_conversation_user_active` (`user_id`, `updated_at` DESC) **partiel** `WHERE deleted_at IS NULL` ;
+`asst_conversation_purge_at_idx` (`purge_at`). Déclencheurs : `asst_conversation_guard_delete` (suppression refusée tant
+qu'une proposition est confirmée, et tant que `purge_at` > `now()` si une proposition est appliquée ou en échec) ;
+`asst_conversation_immutable` (`user_id`, `user_group_id`, `created_at` figés) ; `asst_conversation_no_truncate`.
+
+### `asst_message` — message d'une conversation
+
+| Colonne | Type | Contraintes | Notes |
+| --- | --- | --- | --- |
+| `asst_message_id` | `BIGSERIAL` | **PK** | |
+| `conversation_id` | `BIGINT` | NOT NULL, FK → `asst_conversation` (**CASCADE**) | |
+| `role` | `SMALLINT` | NOT NULL, **CHECK `ck_asst_message_role`** ∈ (0,1) | 0 utilisateur, 1 assistant |
+| `content` | `TEXT` | NOT NULL, **CHECK `ck_asst_message_content`** (non vide, ≤ 20000 caractères) | append-only |
+| `position` | `INTEGER` | NOT NULL, **CHECK `ck_asst_message_position`** (≥ 1), **UNIQUE** (`conversation_id`, `position`) | ordre dans la conversation |
+| `prompt_tokens` | `INTEGER` | **CHECK `ck_asst_message_tokens`** (NULL ou ≥ 0) | |
+| `completion_tokens` | `INTEGER` | **CHECK `ck_asst_message_tokens`** (NULL ou ≥ 0) | |
+| `ai_decision_id` | `BIGINT` | | `ged_ai_decision.ged_ai_decision_id`, sans FK |
+| `created_at` | `TIMESTAMPTZ(0)` | NOT NULL, def. `now()` | |
+
+`ck_asst_message_assistant_only` : jetons et `ai_decision_id` réservés à `role` = 1. Déclencheur
+`asst_message_immutable` : `conversation_id`, `role`, `position`, `content` ne changent jamais. `asst_message_no_truncate` : TRUNCATE interdit.
+
+### `asst_proposal` — proposition d'actions à confirmer
+
+| Colonne | Type | Contraintes | Notes |
+| --- | --- | --- | --- |
+| `asst_proposal_id` | `BIGSERIAL` | **PK** | |
+| `conversation_id` | `BIGINT` | NOT NULL, FK → `asst_conversation` (**CASCADE**), index | immuable |
+| `message_id` | `BIGINT` | NOT NULL, FK → `asst_message` (**CASCADE**), index | message assistant qui présente la proposition ; immuable |
+| `user_id` | `INTEGER` | NOT NULL | sans FK ; immuable ; index (`user_id`, `created_at` DESC) |
+| `user_group_id` | `INTEGER` | NOT NULL | sans FK ; immuable |
+| `status` | `SMALLINT` | NOT NULL, def. 0, **CHECK `ck_asst_proposal_status`** ∈ [0,5] | 0 proposée, 1 confirmée, 2 appliquée, 3 refusée, 4 expirée, 5 échec |
+| `actions` | `JSONB` | NOT NULL, **CHECK `ck_asst_proposal_actions`** (tableau de 1 à 5 éléments) | validé par zod côté application ; immuable |
+| `summary` | `TEXT` | NOT NULL, **CHECK `ck_asst_proposal_summary`** (non vide, ≤ 2000 caractères) | immuable |
+| `args_hash` | `VARCHAR(64)` | NOT NULL, **CHECK `ck_asst_proposal_args_hash`** (`^[0-9a-f]{64}$`) | SHA-256 des actions (JSON canonique), calculé par l'application ; immuable |
+| `expires_at` | `TIMESTAMPTZ(0)` | NOT NULL, **CHECK `ck_asst_proposal_expiry`** (> `created_at`) | immuable |
+| `created_at` | `TIMESTAMPTZ(0)` | NOT NULL, def. `now()` | immuable |
+| `confirmed_at` | `TIMESTAMPTZ(0)` | **CHECK `ck_asst_proposal_confirmed`** (renseignée ⇔ statut 1, 2 ou 5) | |
+| `finished_at` | `TIMESTAMPTZ(0)` | **CHECK `ck_asst_proposal_finished`** (renseignée ⇔ statut 2, 3, 4 ou 5) | clôture |
+| `result` | `JSONB` | **CHECK `ck_asst_proposal_result`** (NULL, ou objet et statut 2) | `{ effects: [...] }` |
+| `error_code` | `VARCHAR(60)` | **CHECK `ck_asst_proposal_error`** (renseigné ⇔ statut 5 ; `^[a-z0-9_.]+$`) | |
+| `error_message` | `TEXT` | **CHECK `ck_asst_proposal_error`** (seulement si statut 5) | |
+| `row_version` | `INTEGER` | NOT NULL, def. 0, **CHECK `ck_asst_proposal_row_version`** (≥ 0) | verrou optimiste géré par l'application ; jamais décroissant (déclencheur) |
+| `updated_at` | `TIMESTAMPTZ(0)` | NOT NULL, def. `now()` | `@updatedAt` (Prisma) |
+
+Index : `ix_asst_proposal_expiry` (`status`, `expires_at`) **partiel** `WHERE status IN (0, 1)` (job d'expiration) ;
+`asst_proposal_user_id_created_at_idx` ; `asst_proposal_conversation_id_idx` ; `asst_proposal_message_id_idx`.
+
+Transitions légales : 0 vers 1, 0 vers 3, 0 vers 4, 1 vers 2, 1 vers 5 ; états terminaux 2, 3, 4, 5 (ligne figée).
+Déclencheurs : `asst_proposal_guard_insert` (naissance à l'état proposée ; message, utilisateur et groupe cohérents avec la conversation), `asst_proposal_no_truncate`, `asst_proposal_guard` (UPDATE : figé si
+terminal, champs immuables, transitions, pas de confirmation après expiration, pas d'expiration avant l'heure),
+`asst_proposal_guard_delete` (refus pour confirmée ; refus pour appliquée ou en échec tant que la conversation
+existe). Détail : `docs/assistant-donnees.md` §3 et §4.
+
+### `asst_user_budget` — consommation et plafond par utilisateur et par jour
+
+| Colonne | Type | Contraintes | Notes |
+| --- | --- | --- | --- |
+| `asst_user_budget_id` | `SERIAL` | **PK** | |
+| `user_id` | `INTEGER` | NOT NULL, **UNIQUE** (`user_id`, `day`) | sans FK |
+| `day` | `DATE` | NOT NULL, index | jour UTC |
+| `consumed_amount` | `DECIMAL(14,4)` | NOT NULL, def. 0, **CHECK `ck_asst_user_budget_consumed`** (≥ 0) | |
+| `consumed_tokens` | `BIGINT` | NOT NULL, def. 0, **CHECK `ck_asst_user_budget_consumed`** (≥ 0) | |
+| `call_count` | `INTEGER` | NOT NULL, def. 0, **CHECK `ck_asst_user_budget_consumed`** (≥ 0) | |
+| `cap_amount` | `DECIMAL(14,4)` | **CHECK `ck_asst_user_budget_caps`** (NULL ou ≥ 0) | plafond de CE jour, copié de la configuration ; NULL = pas de plafond |
+| `cap_tokens` | `BIGINT` | **CHECK `ck_asst_user_budget_caps`** (NULL ou ≥ 0) | idem |
+| `updated_at` | `TIMESTAMPTZ(0)` | NOT NULL, def. `now()` | `@updatedAt` (Prisma) |
+| `created_at` | `TIMESTAMPTZ(0)` | NOT NULL, def. `now()` | |
+
+Aucun CHECK « consommé ≤ plafond » : le règlement (settle) peut dépasser légèrement l'estimation de la
+réservation, comme `wf_budget`. Le plafond est contrôlé par l'application.
+
+### Écarts assumés
+
+- **Aucune clé étrangère vers les tables existantes** (`app_user`, `app_user_group`, `ged_ai_decision`) : Prisma
+  exigerait le champ inverse sur les modèles cibles, hors périmètre. L'intégrité de ces colonnes est applicative.
+- **`args_hash` calculé par l'application** : la base en contrôle la forme, pas la valeur.
+- **Suppression d'un échange applicable à la purge seulement** : une proposition appliquée ou en échec ne se
+  supprime pas directement ; seule la suppression de la conversation (purge en cascade) l'emporte, ce qui est
+  testé en réel dans `asst.checks.sql`.
+- **Limite : le propriétaire de la base peut retirer les déclencheurs** (y compris ceux qui interdisent TRUNCATE ; barrière applicative forte, pas une
+  preuve cryptographique).
+- **Limite du garde-fou de suppression** : il protège contre la suppression directe d'une conversation portant une trace d'exécution avant `purge_at`, pas contre un acteur qui abaisse `purge_at` (puis `deleted_at`) avant de supprimer ; même niveau que la limite « propriétaire de la base ».
+
+### Contraintes SQL brut de l'assistant
+
+Source : `packages/db/prisma/sql/asst.sql` (copie identique dans la migration).
+
+| Objet | Type | Cible | Règle |
+| --- | --- | --- | --- |
+| `ck_asst_conversation_title` | CHECK | `asst_conversation.title` | NULL ou non vide après `btrim` |
+| `ck_asst_conversation_page_context` | CHECK | `asst_conversation.page_context` | NULL ou objet JSON |
+| `ck_asst_conversation_purge` | CHECK | `asst_conversation(purge_at, created_at)` | `purge_at` ≥ `created_at` |
+| `ix_asst_conversation_user_active` | index partiel | `asst_conversation(user_id, updated_at DESC)` | `WHERE deleted_at IS NULL` |
+| `ck_asst_message_role` | CHECK | `asst_message.role` | ∈ (0,1) |
+| `ck_asst_message_content` | CHECK | `asst_message.content` | non vide ; ≤ 20000 caractères |
+| `ck_asst_message_position` | CHECK | `asst_message.position` | ≥ 1 |
+| `ck_asst_message_tokens` | CHECK | `asst_message(prompt_tokens, completion_tokens)` | NULL ou ≥ 0 |
+| `ck_asst_message_assistant_only` | CHECK | `asst_message(role, prompt_tokens, completion_tokens, ai_decision_id)` | jetons et décision IA seulement si `role` = 1 |
+| `asst_message_no_truncate` | déclencheur | `asst_message`, BEFORE TRUNCATE, par instruction | TRUNCATE interdit |
+| `asst_message_immutable` | déclencheur | `asst_message`, BEFORE UPDATE, par ligne | `conversation_id`, `role`, `position`, `content` immuables |
+| `ck_asst_proposal_status` | CHECK | `asst_proposal.status` | ∈ [0,5] |
+| `ck_asst_proposal_actions` | CHECK | `asst_proposal.actions` | tableau JSON de 1 à 5 éléments |
+| `ck_asst_proposal_args_hash` | CHECK | `asst_proposal.args_hash` | `^[0-9a-f]{64}$` |
+| `ck_asst_proposal_summary` | CHECK | `asst_proposal.summary` | non vide ; ≤ 2000 caractères |
+| `ck_asst_proposal_expiry` | CHECK | `asst_proposal(expires_at, created_at)` | `expires_at` > `created_at` |
+| `ck_asst_proposal_result` | CHECK | `asst_proposal(result, status)` | NULL, ou objet JSON et statut 2 |
+| `ck_asst_proposal_confirmed` | CHECK | `asst_proposal(confirmed_at, status)` | date ⇔ statut 1, 2 ou 5 |
+| `ck_asst_proposal_finished` | CHECK | `asst_proposal(finished_at, status)` | date ⇔ statut 2, 3, 4 ou 5 |
+| `ck_asst_proposal_error` | CHECK | `asst_proposal(error_code, error_message, status)` | code ⇔ statut 5 (forme `^[a-z0-9_.]+$`) ; message seulement si statut 5 |
+| `ck_asst_proposal_row_version` | CHECK | `asst_proposal.row_version` | ≥ 0 |
+| `ix_asst_proposal_expiry` | index partiel | `asst_proposal(status, expires_at)` | `WHERE status IN (0, 1)` |
+| `asst_proposal_guard_insert` | déclencheur | `asst_proposal`, BEFORE INSERT, par ligne | naissance à l'état proposée, sans date, résultat ni erreur ; message de la conversation, `user_id` et `user_group_id` identiques à ceux de la conversation |
+| `asst_proposal_no_truncate` | déclencheur | `asst_proposal`, BEFORE TRUNCATE, par instruction | TRUNCATE interdit |
+| `asst_proposal_guard` | déclencheur | `asst_proposal`, BEFORE UPDATE, par ligne | terminal figé ; champs immuables ; transitions 0→1, 0→3, 0→4, 1→2, 1→5 ; pas de confirmation après expiration ; pas d'expiration avant l'heure ; `row_version` non décroissant |
+| `asst_proposal_guard_delete` | déclencheur | `asst_proposal`, BEFORE DELETE, par ligne | refus si confirmée ; refus si appliquée ou en échec et conversation existante |
+| `asst_conversation_guard_delete` | déclencheur | `asst_conversation`, BEFORE DELETE, par ligne | refus tant qu'une proposition est confirmée ; refus si proposition appliquée ou en échec et `purge_at` > `now()` |
+| `asst_conversation_immutable` | déclencheur | `asst_conversation`, BEFORE UPDATE, par ligne | `user_id`, `user_group_id`, `created_at` immuables |
+| `asst_conversation_no_truncate` | déclencheur | `asst_conversation`, BEFORE TRUNCATE, par instruction | TRUNCATE interdit |
+| `ck_asst_user_budget_consumed` | CHECK | `asst_user_budget(consumed_amount, consumed_tokens, call_count)` | ≥ 0 |
+| `ck_asst_user_budget_caps` | CHECK | `asst_user_budget(cap_amount, cap_tokens)` | NULL ou ≥ 0 |
+
 ---
 *Fin du document.*

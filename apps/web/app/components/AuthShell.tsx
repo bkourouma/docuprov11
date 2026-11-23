@@ -1,18 +1,28 @@
 'use client';
 
 import '@ant-design/v5-patch-for-react-19';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Badge, Drawer, Grid, Layout, Menu, Spin, type MenuProps } from 'antd';
+import { Drawer, Grid, Layout, Menu, Spin, type MenuProps } from 'antd';
 import { getBadges, type BadgeCounts } from '../lib/courriers';
 import { getMe, type Me } from '../lib/auth';
 import { icons } from '../theme/icons';
-import { NAV, activeItem } from './nav';
+import { MODULES, activeItem, placeOfPath, type NavItem, type NavModule } from './nav';
 import { Logo, LogoIcon } from './BrandMark';
 import { TopBar } from './TopBar';
+import { UserMenu } from './UserMenu';
 import { CommandPalette } from './CommandPalette';
+import dynamic from 'next/dynamic';
+import { hasAssistantMenu } from './assistant/_lib/access';
+import { pageContextFromPath } from './assistant/_lib/page-context';
+import { useAssistantShortcut } from './assistant/useAssistantShortcut';
 
-const { Sider, Content } = Layout;
+// Panneau de l'assistant : chargé à la demande, côté client seulement (jamais pour qui n'a pas le menu).
+const AssistantDrawer = dynamic(() => import('./assistant/AssistantDrawer').then((m) => m.AssistantDrawer), {
+  ssr: false,
+});
+
+const { Content } = Layout;
 
 const COLLAPSE_KEY = 'da-sider-collapsed';
 
@@ -29,95 +39,68 @@ const BADGE_KEY_BY_MENU: Record<string, keyof BadgeCounts> = {
   '/courriers/documents-scannes': 'scans',
 };
 
-/** Clé d'accordéon d'une section (préfixée : ne doit jamais collisionner avec une route). */
-const sectionKey = (label: string) => `section:${label}`;
-
-/** Section de NAV contenant une route donnée — sert à ouvrir la bonne au chargement. */
-function sectionOf(pathname: string): string | null {
-  const item = activeItem(pathname);
-  if (!item) return null;
-  return NAV.find((s) => s.items.some((i) => i.key === item.key))?.label ?? null;
+/** Compteur d'un écran (0 = rien à afficher). */
+function countOf(item: NavItem, badges: BadgeCounts | null): number {
+  const badgeKey = BADGE_KEY_BY_MENU[item.key];
+  return badgeKey && badges ? badges[badgeKey] : 0;
 }
 
 /**
- * Items de menu AntD construits depuis la config de navigation centrale,
- * filtrés selon les menus autorisés (`allowed`). `null` = aucun filtrage.
- * Le tableau de bord (« /dashboards ») reste toujours visible ; les sections vides sont masquées.
- *
- * Chaque section est un accordéon (sous-menu repliable) et non plus un groupe plat.
- * Les entrées de §04.7 portent leur compteur ; un compteur nul n'affiche rien. Le compteur est
- * aussi **cumulé sur le titre de la section quand elle est fermée** : sans cela, replier
- * « Docu-Courriers » masquerait l'alerte, ce qui viderait les badges de leur raison d'être.
- * L'affichage du cumul est piloté par `openKeys` (état React) et non en CSS : AntD v5 empile ses
- * règles dans des `@layer`, où un `opacity` maison se fait écraser sans qu'on voie lequel gagne.
+ * Modules visibles pour l'utilisateur : chaque groupe ne garde que les écrans autorisés
+ * (`allowed`, `null` = aucun filtrage), les groupes puis les modules vides disparaissent.
+ * Le tableau de bord (« /dashboards ») reste toujours visible. Même règle qu'avant le passage
+ * en modules : une permission de périmètre restreint (`altKeys`) ouvre le même écran.
  */
-function useMenuItems(
-  allowed: Set<string> | null,
-  badges: BadgeCounts | null,
-  openKeys: string[],
-  collapsed: boolean,
-): MenuProps['items'] {
+function useVisibleModules(allowed: Set<string> | null): NavModule[] {
   return useMemo(
     () =>
-      NAV.map((section) => {
-        const visible = section.items.filter(
-          (item) =>
-            !allowed ||
-            item.key === '/dashboards' ||
-            allowed.has(item.key) ||
-            item.altKeys?.some((k) => allowed.has(k)),
-        );
-        if (visible.length === 0) return null;
+      MODULES.map((module) => ({
+        ...module,
+        groups: module.groups
+          .map((group) => ({
+            ...group,
+            items: group.items.filter(
+              (item) =>
+                !allowed ||
+                item.key === '/dashboards' ||
+                allowed.has(item.key) ||
+                item.altKeys?.some((k) => allowed.has(k)),
+            ),
+          }))
+          .filter((group) => group.items.length > 0),
+      })).filter((module) => module.groups.length > 0),
+    [allowed],
+  );
+}
 
-        const children = visible.map((item) => {
-          const Glyph = icons[item.icon];
-          const badgeKey = BADGE_KEY_BY_MENU[item.key];
-          const count = badgeKey && badges ? badges[badgeKey] : 0;
+/**
+ * Items du panneau : les écrans du module courant, regroupés par geste (Traiter, Suivre…).
+ *
+ * Le libellé reste une CHAÎNE, compteur ou pas ; le compteur passe par `extra`, le mécanisme
+ * prévu par AntD pour l'aligner à droite. Un compteur nul n'affiche rien.
+ */
+function usePanelItems(module: NavModule | undefined, badges: BadgeCounts | null): MenuProps['items'] {
+  return useMemo(
+    () =>
+      (module?.groups ?? []).map((group) => ({
+        type: 'group' as const,
+        key: `groupe:${module?.id}:${group.label}`,
+        label: group.label,
+        children: group.items.map((item) => {
+          const count = countOf(item, badges);
           return {
             key: item.key,
-            icon: <Glyph size={18} strokeWidth={1.75} />,
-            // Le libellé reste une CHAÎNE, compteur ou pas : un élément React à la place faisait
-            // disparaître le texte dans le popup de la barre repliée (seule l'icône restait), et
-            // seules les entrées à compteur non nul étaient touchées. Le compteur passe par `extra`,
-            // le mécanisme prévu par AntD pour l'aligner à droite dans tous les modes.
             label: item.label,
             extra:
               count > 0 ? (
-                <Badge count={count} overflowCount={99} color="var(--ant-color-primary, #0033c4)" />
+                <span className="da-count" aria-label={`${count} à traiter`}>
+                  {count > 99 ? '99+' : count}
+                </span>
               ) : undefined,
           };
-        });
-
-        const total = visible.reduce((sum, item) => {
-          const badgeKey = BADGE_KEY_BY_MENU[item.key];
-          return sum + (badgeKey && badges ? badges[badgeKey] : 0);
-        }, 0);
-
-        const key = sectionKey(section.label);
-        const SectionGlyph = icons[section.icon];
-        return {
-          key,
-          // L'icône est ce qui reste visible barre repliée : AntD masque le libellé UNIQUEMENT
-          // s'il suit une icône (`.ant-menu-item-icon + span`). Sans elle, les titres de section
-          // débordaient du rail de 76 px, tronqués en « Docu-A », « Paramé »…
-          // Le libellé masqué emporte le cumul des compteurs : repliée, il repasse en pastille
-          // sur l'icône, sans quoi replier la barre masquerait l'alerte.
-          icon:
-            collapsed && total > 0 ? (
-              <Badge dot offset={[1, 1]} color="var(--ant-color-primary, #0033c4)">
-                <SectionGlyph size={18} strokeWidth={1.75} />
-              </Badge>
-            ) : (
-              <SectionGlyph size={18} strokeWidth={1.75} />
-            ),
-          // Cumul affiché seulement section fermée : ouverte, les compteurs des entrées suffisent.
-          label: (
-            <MenuSectionLabel label={section.label} total={openKeys.includes(key) ? 0 : total} />
-          ),
-          children,
-        };
-      }).filter((s): s is NonNullable<typeof s> => s !== null),
-    [allowed, badges, openKeys, collapsed],
+        }),
+      })),
+    [module, badges],
   );
 }
 
@@ -143,54 +126,54 @@ function gotoAuth(router: ReturnType<typeof useRouter>, href: string) {
 }
 
 /**
- * Bandeau du logo, en tête de la barre latérale et du drawer.
- *
- * `flex: none` : il est hors du conteneur qui défile (cf. `SIDER_SCROLL`), donc il ne bouge
- * pas ET la barre de défilement ne le traverse pas — elle commence sous lui.
+ * Rail des modules : la toile verte. Un bouton par module, son icône et son libellé court ;
+ * le cumul des compteurs du module s'affiche sur le bouton, sans quoi quitter le module
+ * (ou replier le panneau) masquerait l'alerte.
  */
-function SiderBrand({ collapsed, onHome }: { collapsed?: boolean; onHome: () => void }) {
+function ModuleRail({
+  modules,
+  currentId,
+  badges,
+  onPick,
+  footer,
+}: {
+  modules: NavModule[];
+  currentId: string | undefined;
+  badges: BadgeCounts | null;
+  onPick: (id: string) => void;
+  footer?: ReactNode;
+}) {
   return (
-    <div
-      style={{
-        flex: 'none',
-        height: 60,
-        display: 'flex',
-        alignItems: 'center',
-        padding: collapsed ? 0 : '0 20px',
-        justifyContent: collapsed ? 'center' : 'flex-start',
-        background: 'var(--ant-color-bg-container, #fff)',
-      }}
-    >
-      <a onClick={onHome} aria-label="Accueil" style={{ display: 'inline-flex' }}>
-        {collapsed ? <LogoIcon size={32} /> : <Logo height={26} />}
-      </a>
-    </div>
-  );
-}
-
-/**
- * Conteneur défilant du menu : SEULE partie de la barre latérale qui défile, pour que
- * l'ascenseur ne remonte pas dans le bandeau du logo. `minHeight: 0` est indispensable — sans
- * lui, un enfant flex refuse de rétrécir sous sa hauteur de contenu et rien ne défile.
- */
-const SIDER_SCROLL = {
-  flex: '1 1 auto',
-  minHeight: 0,
-  overflowY: 'auto',
-  paddingBlock: 8,
-} as const;
-
-/** Titre de section + cumul des compteurs de ses entrées (0 = rien affiché). */
-function MenuSectionLabel({ label, total }: { label: string; total: number }) {
-  return (
-    <span
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
-    >
-      {label}
-      {total > 0 && (
-        <Badge count={total} overflowCount={99} color="var(--ant-color-primary, #0033c4)" />
-      )}
-    </span>
+    <nav className="da-rail" aria-label="Modules">
+      {modules.map((module) => {
+        const Glyph = icons[module.icon];
+        const total = module.groups.reduce(
+          (sum, group) => sum + group.items.reduce((s, item) => s + countOf(item, badges), 0),
+          0,
+        );
+        const current = module.id === currentId;
+        return (
+          <button
+            key={module.id}
+            type="button"
+            className="da-rail-btn"
+            aria-current={current ? 'true' : undefined}
+            aria-label={total > 0 ? `${module.label}, ${total} à traiter` : module.label}
+            title={module.label}
+            onClick={() => onPick(module.id)}
+          >
+            <Glyph size={20} strokeWidth={1.75} aria-hidden />
+            {module.short}
+            {total > 0 && (
+              <span className="da-rail-count" aria-hidden>
+                {total > 99 ? '99+' : total}
+              </span>
+            )}
+          </button>
+        );
+      })}
+      {footer}
+    </nav>
   );
 }
 
@@ -206,43 +189,44 @@ export function AuthShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const isLogin = pathname === '/login';
 
   // Ensemble des menus autorisés (null tant que /auth/me n'a pas répondu ou si le
   // backend ne renvoie pas encore menuKeys => on n'applique aucun filtre).
   const allowed = useMemo(() => (me?.menuKeys ? new Set(me.menuKeys) : null), [me]);
   const [badges, setBadges] = useState<BadgeCounts | null>(null);
+  const modules = useVisibleModules(allowed);
 
-  // Accordéon : une seule section ouverte à la fois. Initialisée sur la section de la route
-  // courante — sinon on arriverait sur un menu entièrement replié, sans voir où l'on est.
-  const [openKeys, setOpenKeys] = useState<string[]>(() => {
-    const s = sectionOf(pathname);
-    return s ? [sectionKey(s)] : [];
-  });
+  // Module affiché dans le panneau. Initialisé sur celui de la route courante — sinon on
+  // arriverait sur un panneau qui ne montre pas où l'on est. Cliquer un autre module du rail
+  // FEUILLETTE ses écrans sans naviguer : on ne quitte l'écran courant qu'en choisissant le
+  // suivant.
+  const routeModuleId = placeOfPath(pathname)?.module.id;
+  const [browsedId, setBrowsedId] = useState<string | undefined>(routeModuleId);
 
-  // Repliée, la barre n'affiche aucun libellé : le cumul doit rester visible, donc on considère
-  // toutes les sections comme fermées.
-  const menuItems = useMenuItems(allowed, badges, collapsed ? [] : openKeys, collapsed);
-
-  // Navigation vers une autre section (lien direct, palette de commandes…) : on l'ouvre.
+  // Navigation vers un autre module (lien direct, palette de commandes…) : le panneau suit.
   useEffect(() => {
-    const s = sectionOf(pathname);
-    if (s) setOpenKeys([sectionKey(s)]);
-  }, [pathname]);
+    if (routeModuleId) setBrowsedId(routeModuleId);
+  }, [routeModuleId, pathname]);
 
-  // Ne garde que la dernière section ouverte : c'est ce qui fait l'accordéon. La ref évite de
-  // recréer le callback (et de re-rendre le menu) à chaque ouverture.
-  const openKeysRef = useRef<string[]>(openKeys);
-  openKeysRef.current = openKeys;
-  const onOpenChange = useCallback((keys: string[]) => {
-    const opened = keys.find((k) => !openKeysRef.current.includes(k));
-    setOpenKeys(opened ? [opened] : []);
-  }, []);
+  // Module effectivement affiché : celui qu'on feuillette s'il est visible pour l'utilisateur,
+  // sinon le premier auquel il a droit (écran hors menu, droits réduits).
+  const panelModule = modules.find((m) => m.id === browsedId) ?? modules[0];
+  const panelItems = usePanelItems(panelModule, badges);
   const selectedKey = activeItem(pathname)?.key ?? pathname;
 
-  // Restaure l'état replié de la barre latérale (desktop).
+  // Restaure l'état replié du panneau (desktop). Sans préférence enregistrée, un écran
+  // étroit (< 1300 px) démarre panneau replié : les listes y tiennent alors sans défilement
+  // horizontal. Ce choix par défaut n'est pas persisté — seul un clic de l'utilisateur l'est.
   useEffect(() => {
-    setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === '1');
+    const stored = window.localStorage.getItem(COLLAPSE_KEY);
+    setCollapsed(stored === null ? window.innerWidth < 1300 : stored === '1');
+  }, []);
+
+  const setCollapsedPersisted = useCallback((next: boolean) => {
+    window.localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+    setCollapsed(next);
   }, []);
 
   const toggleCollapsed = useCallback(() => {
@@ -251,6 +235,16 @@ export function AuthShell({ children }: { children: ReactNode }) {
       return !c;
     });
   }, []);
+
+  // Choix d'un module dans le rail. Panneau replié : le rail est la seule navigation visible,
+  // le clic rouvre donc le panneau sur ce module au lieu de ne rien montrer.
+  const pickModule = useCallback(
+    (id: string) => {
+      setBrowsedId(id);
+      if (collapsed) setCollapsedPersisted(false);
+    },
+    [collapsed, setCollapsedPersisted],
+  );
 
   // Auth guard (comportement conservé à l'identique).
   useEffect(() => {
@@ -301,6 +295,15 @@ export function AuthShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Assistant : bouton, raccourci et panneau n'existent que si le menu `/assistant` est détenu (refus par défaut).
+  const assistantEnabled = hasAssistantMenu(me?.menuKeys);
+  const assistantContext = useMemo(() => pageContextFromPath(pathname), [pathname]);
+  useEffect(() => {
+    if (!assistantEnabled) setAssistantOpen(false);
+  }, [assistantEnabled]);
+  const toggleAssistant = useCallback(() => setAssistantOpen((o) => !o), []);
+  useAssistantShortcut(assistantEnabled && !isLogin, toggleAssistant);
+
   const navigate = useCallback(
     (key: string) => {
       router.push(key);
@@ -311,12 +314,15 @@ export function AuthShell({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     window.localStorage.removeItem('token');
+    // L'assistant ne survit pas à la déconnexion : panneau fermé, état du chat (propre à l'utilisateur) détruit.
+    setAssistantOpen(false);
+    setMe(null);
     router.replace('/login');
   }, [router]);
 
   if (isLogin) return <>{children}</>;
   if (!ready) {
-    // Écran d'attente : première surface vue à chaque session (PRD relook §4.4).
+    // Écran d'attente : première surface vue à chaque session.
     return (
       <div
         style={{
@@ -324,7 +330,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           placeItems: 'center',
           minHeight: '100vh',
           gap: 16,
-          background: 'var(--ant-color-bg-layout, #f8f9fb)',
+          background: 'var(--ant-color-bg-layout, #eff4f0)',
         }}
       >
         <LogoIcon size={46} />
@@ -333,53 +339,43 @@ export function AuthShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const menu = (
-    <Menu
-      mode="inline"
-      // Indentation des sous-menus : le défaut (24px, doublé au niveau 2) pousse les entrées
-      // trop à droite et fait déborder libellés et compteurs hors de la barre (264px).
-      inlineIndent={12}
-      selectedKeys={[selectedKey]}
-      // Repliée, la barre affiche les sections en popup : `openKeys` ne s'y applique pas et AntD
-      // gère l'ouverture au survol. On ne le pilote donc qu'en mode déplié.
-      {...(collapsed ? {} : { openKeys, onOpenChange })}
-      items={menuItems}
-      onClick={({ key }) => navigate(key)}
-      // Aucun paddingInline : l'item actif « rempli » court d'un bord à l'autre
-      // de la barre (signature n°3 Plus Admin, Menu.itemMarginInline: 0).
-      style={{ borderInlineEnd: 0, background: 'transparent' }}
-    />
+  // Panneau des écrans du module feuilleté. Le bandeau du logo est hors du conteneur qui
+  // défile : il ne bouge pas, et l'ascenseur commence sous lui.
+  const panel = (
+    <div className="da-panel">
+      <div className="da-panel-brand">
+        <a onClick={() => navigate('/dashboards')} aria-label="Accueil" style={{ display: 'inline-flex' }}>
+          <Logo height={26} />
+        </a>
+      </div>
+      <nav className="da-panel-scroll" aria-label={panelModule?.label ?? 'Écrans'}>
+        <Menu
+          mode="inline"
+          selectedKeys={[selectedKey]}
+          items={panelItems}
+          onClick={({ key }) => navigate(key)}
+        />
+      </nav>
+    </div>
   );
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh' }} hasSider={!isMobile}>
       {!isMobile && (
-        <Sider
-          theme="light"
-          // `da-sider` : passe `.ant-layout-sider-children` en colonne flex (globals.css), sans
-          // quoi le bandeau et le menu ne peuvent pas se partager la hauteur.
-          className="da-sider"
-          // 260 px : largeur Plus Admin (PRD relook §4.4). Le repli se pilote
-          // depuis la languette de la top bar (signature n°2), plus de bouton ici.
-          width={260}
-          collapsedWidth={76}
-          collapsed={collapsed}
-          style={{
-            position: 'sticky',
-            top: 0,
-            height: '100vh',
-            // Le défilement appartient au conteneur du menu, pas à la barre.
-            overflow: 'hidden',
-            borderInlineEnd: '1px solid var(--ant-color-border, #e4e9f0)',
-            background: 'var(--ant-color-bg-container, #fff)',
-          }}
-        >
-          <SiderBrand collapsed={collapsed} onHome={() => navigate('/dashboards')} />
-          <div style={SIDER_SCROLL}>{menu}</div>
-        </Sider>
+        <aside className="da-nav">
+          <ModuleRail
+            modules={modules}
+            // Panneau replié : aucun module n'est « ouvert », le rail désigne celui de l'écran courant.
+            currentId={collapsed ? routeModuleId : panelModule?.id}
+            badges={badges}
+            onPick={pickModule}
+            footer={<UserMenu me={me} onLogout={logout} variant="rail" />}
+          />
+          {!collapsed && panel}
+        </aside>
       )}
 
-      <Layout style={{ background: 'var(--ant-color-bg-layout, #f8f9fb)' }}>
+      <Layout style={{ background: 'var(--ant-color-bg-layout, #eff4f0)', minWidth: 0 }}>
         <TopBar
           me={me}
           collapsed={collapsed}
@@ -387,6 +383,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           onOpenMenu={() => setDrawerOpen(true)}
           onOpenPalette={() => setPaletteOpen(true)}
           onLogout={logout}
+          onOpenAssistant={assistantEnabled ? () => setAssistantOpen(true) : undefined}
         />
         <Content>
           <div className="da-page">{children}</div>
@@ -397,14 +394,22 @@ export function AuthShell({ children }: { children: ReactNode }) {
         placement="left"
         open={isMobile && drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={260}
+        // Rail (80) + panneau (216) : la même navigation qu'au bureau, rangée dans le tiroir.
+        width={296}
         styles={{
-          body: { padding: 0, display: 'flex', flexDirection: 'column' },
+          body: { padding: 0, display: 'flex' },
           header: { display: 'none' },
         }}
       >
-        <SiderBrand onHome={() => navigate('/dashboards')} />
-        <div style={SIDER_SCROLL}>{menu}</div>
+        <div className="da-nav da-nav-drawer">
+          <ModuleRail
+            modules={modules}
+            currentId={panelModule?.id}
+            badges={badges}
+            onPick={setBrowsedId}
+          />
+          {panel}
+        </div>
       </Drawer>
 
       <CommandPalette
@@ -412,6 +417,15 @@ export function AuthShell({ children }: { children: ReactNode }) {
         onClose={() => setPaletteOpen(false)}
         allowedKeys={me?.menuKeys ?? null}
       />
+
+      {assistantEnabled && (
+        <AssistantDrawer
+          key={me?.username}
+          open={assistantOpen}
+          onClose={() => setAssistantOpen(false)}
+          pageContext={assistantContext}
+        />
+      )}
     </Layout>
   );
 }

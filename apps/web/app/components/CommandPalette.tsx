@@ -146,7 +146,7 @@ export function CommandPalette({
       <div
         style={{
           padding: 12,
-          borderBottom: '1px solid var(--ant-color-border-secondary, #eef1f6)',
+          borderBottom: '1px solid var(--ant-color-border-secondary, #d9e2ea)',
         }}
       >
         <Input
@@ -195,10 +195,10 @@ export function CommandPalette({
                 borderRadius: radii.field,
                 cursor: 'pointer',
                 textAlign: 'left',
-                background: isActive ? 'var(--ant-color-primary-bg, #e8eefc)' : 'transparent',
+                background: isActive ? 'var(--ant-color-primary-bg, #e3efe7)' : 'transparent',
                 color: isActive
-                  ? 'var(--ant-color-primary, #0033c4)'
-                  : 'var(--ant-color-text, #030303)',
+                  ? 'var(--ant-color-primary, #0e3b2e)'
+                  : 'var(--ant-color-text, #12201b)',
               }}
             >
               <Glyph size={18} strokeWidth={1.75} />
@@ -213,7 +213,7 @@ export function CommandPalette({
       <div
         style={{
           padding: '8px 14px',
-          borderTop: '1px solid var(--ant-color-border-secondary, #eef1f6)',
+          borderTop: '1px solid var(--ant-color-border-secondary, #d9e2ea)',
           display: 'flex',
           gap: 16,
           fontSize: 12,

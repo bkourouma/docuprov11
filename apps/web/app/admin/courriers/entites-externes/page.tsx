@@ -36,13 +36,17 @@ export default function ExternalEntitiesPage() {
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const [newTypeOpen, setNewTypeOpen] = useState(false);
 
+  // Échec du chargement : le référentiel ne doit pas s'annoncer vide (cf. RefLayout).
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [e, t] = await Promise.all([externalEntitiesApi.list(), externalEntityTypesApi.list()]);
       setRows(e);
       setTypes(t);
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     } finally {
       setLoading(false);
@@ -218,6 +222,8 @@ export default function ExternalEntitiesPage() {
         onCreated={onTypeCreated}
       />
       <RefLayout
+        loadFailed={loadFailed && rows.length === 0}
+        onRetry={load}
         icon="users"
         title="Entités externes"
         tableTitle="Entités externes"

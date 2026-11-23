@@ -61,11 +61,15 @@ export function MailRefPage<T extends { label: string }>({
   const [firstLoad, setFirstLoad] = useState(true);
   const [highlightId, setHighlightId] = useState<number | null>(null);
 
+  // Échec du chargement : le référentiel ne doit pas s'annoncer vide (cf. RefLayout).
+  const [loadFailed, setLoadFailed] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setRows(await api.list());
+      setLoadFailed(false);
     } catch (e) {
+      setLoadFailed(true);
       message.error(e instanceof Error ? e.message : 'Erreur de chargement');
     } finally {
       setLoading(false);
@@ -169,6 +173,8 @@ export function MailRefPage<T extends { label: string }>({
 
   return (
     <RefLayout
+      loadFailed={loadFailed && rows.length === 0}
+      onRetry={load}
       icon={icon}
       title={title}
       tableTitle={title}

@@ -8,7 +8,7 @@ import { radii } from '../theme/tokens';
  * Évite le layout shift au chargement.
  *
  * Toutes les teintes viennent des variables AntD (cssVar) : filets de lignes sur
- * `border-secondary` comme les tables, contour de carte sur `border` (#e4e9f0).
+ * `border-secondary` comme les tables, contour de carte sur `border`.
  */
 
 /**
@@ -95,6 +95,41 @@ export function CardsSkeleton({ count = 4 }: { count?: number }) {
           <Skeleton active paragraph={{ rows: 2 }} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Squelette de tableau de bord : épouse les zones qu'il remplace — une rangée de chiffres
+ * clés, deux graphiques, une liste — au lieu d'une pile de barres identiques. Chaque zone
+ * est une feuille de papier bordée, comme les widgets qui la remplaceront.
+ */
+export function DashboardSkeleton() {
+  const zone = {
+    background: 'var(--ant-color-bg-container)',
+    border: '1px solid var(--ant-color-border)',
+    borderRadius: radii.card,
+    padding: 16,
+  } as const;
+  return (
+    <div aria-busy="true" aria-label="Chargement…" style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} style={zone}>
+            <Skeleton active title={{ width: '50%' }} paragraph={{ rows: 1, width: '35%' }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} style={{ ...zone, minHeight: 260 }}>
+            <Skeleton active title={{ width: '40%' }} paragraph={{ rows: 5 }} />
+          </div>
+        ))}
+      </div>
+      <div style={zone}>
+        <Skeleton active title={{ width: '30%' }} paragraph={{ rows: 4 }} />
+      </div>
     </div>
   );
 }

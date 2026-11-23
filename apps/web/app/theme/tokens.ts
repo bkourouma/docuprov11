@@ -1,178 +1,188 @@
 /**
- * Tokens du design system « Plus Admin » (relook 002 — specs/002-relook/design-tokens.md).
+ * Tokens du design system « Registre » (apps/web/.impeccable/surfaces — contrat de direction).
  *
  * Source de vérité unique : couleurs (clair + sombre), rayons, échelle
  * typographique et durées de mouvement. Le thème Ant Design (antdTheme.ts)
  * et les feuilles CSS sur-mesure se construisent à partir d'ici.
  *
- * Règles d'or (PRD relook.md §4.1/§4.2) :
- * - les sémantiques VIVES (`*Vivid`) ne portent JAMAIS de texte : pastilles,
- *   icônes, remplissages, bordures uniquement. Tout texte d'état et tout fond
- *   de badge à texte blanc passe par les dérivés AA (`success`, `warning`,
- *   `danger`, `info`, `secondaryStrong`) — ratios calculés dans design-tokens.md §3 ;
- * - petits rayons nets (2-5 px) partout, pilules et cercles en contraste ;
- * - le bleu roi `#0033c4` de la top bar est CONSTANT entre les deux thèmes.
+ * Le monde : le registre du courrier à colonnes. Toile vert bouteille pour le rail et les
+ * actions, papier blanc sur fond teinté de vert, réglure bleu-gris, et un rouge de marge.
+ *
+ * Règles d'or :
+ * - le ROUGE DE MARGE (`marginRule`, `danger`) ne sert qu'à deux choses : le double filet qui
+ *   borde la marge numérotée des listes, et ce qui est en retard ou en erreur. Jamais décoratif ;
+ * - les sémantiques VIVES (`*Vivid`) ne portent JAMAIS de texte : pastilles, icônes,
+ *   remplissages, bordures uniquement. Tout texte d'état passe par les dérivés AA (`success`,
+ *   `warning`, `danger`, `info`, `secondaryStrong`) ;
+ * - coins nets (4 à 6 px), aucune ombre de carte : c'est le filet qui structure.
  */
 
 /** Palette mode clair. */
 export const colors = {
-  // Primaire « Bleu roi » Plus Admin : actions, liens, top bar, états actifs.
-  primary: '#0033c4', // 9,25:1 sur blanc
-  primaryHover: '#1a55e3',
-  primaryActive: '#00279a', // état pressé
-  primarySoft: '#e8eefc', // remplissage discret (survol nav, sélection)
+  // Primaire « toile vert bouteille » : actions, liens, rail des modules, états actifs.
+  primary: '#0E3B2E', // 12,5:1 sur blanc
+  primaryHover: '#17513F',
+  primaryActive: '#0A2C22', // état pressé
+  primarySoft: '#E3EFE7', // remplissage discret (survol, sélection de ligne)
 
-  // Fond de l'item de menu actif (sidebar) et de la catégorie active (intercalaires).
-  // NE PAS confondre avec `menuSelectedBg` : `menuActiveBg` a débordé de son nom et
-  // remplit désormais les badges de comptage, les étiquettes d'état et de document
-  // (cf. CountBadge, StatusBadge, tags). Il reste bleu, et porte toujours du blanc.
-  menuActiveBg: '#1a55e3', // blanc dessus : 6,08:1
+  // Fond des badges de comptage et des étiquettes pleines (CountBadge, StatusBadge, tags).
+  // Porte toujours du blanc.
+  menuActiveBg: '#17513F', // blanc dessus : 9,2:1
 
-  // Item de menu sélectionné — teinte pâle + libellé dans l'accent, et non plus un
-  // aplat plein à texte blanc : c'est le LIBELLÉ coloré qui signale l'écran courant.
-  // L'accent est le bleu de marque : le vert AGEF ne sort pas de l'écran de
-  // connexion, le chrome de l'application reste blanc et bleu.
-  menuSelectedBg: '#e8eefc', // = primarySoft, le remplissage discret de la palette
-  menuSelectedColor: '#0033c4', // 7,96:1 sur le remplissage, 9,25:1 sur le blanc du rail
+  // Écran courant dans le panneau de navigation : aplat vert plein, libellé blanc.
+  menuSelectedBg: '#0E3B2E',
+  menuSelectedColor: '#FFFFFF', // 12,5:1
 
-  bgLayout: '#f8f9fb',
-  bgContainer: '#ffffff',
-  bgElevated: '#ffffff',
-  bgSpotlight: '#313131',
+  bgLayout: '#EFF4F0', // fond de page : papier teinté de vert
+  bgContainer: '#FFFFFF', // le papier du registre
+  bgElevated: '#FFFFFF',
+  bgSpotlight: '#12201B',
 
-  border: '#e4e9f0', // cartes (décoratif)
-  borderSecondary: '#eef1f6',
-  borderControl: '#8d95a5', // champs de saisie — 3,01:1 sur blanc (WCAG 1.4.11)
+  border: '#C6D3DF', // réglure bleu-gris (cartes, tableaux)
+  borderSecondary: '#D9E2EA', // réglure légère (séparateurs internes)
+  borderControl: '#7C9086', // champs de saisie et boutons — 3,4:1 sur blanc (WCAG 1.4.11)
 
-  text: '#030303',
-  textStrong: '#313131', // titres de carte
-  textSecondary: '#687480', // 4,53:1 sur #f8f9fb
-  textTertiary: '#8f99a5',
-  textQuaternary: '#b6bdc6',
-  sidebarLabel: '#141212', // libellés de menu niveau 1
+  text: '#12201B', // encre
+  textStrong: '#12201B',
+  textSecondary: '#4D5E56', // 6,2:1 sur le fond de page
+  textTertiary: '#66766E', // 4,8:1 sur blanc
+  textQuaternary: '#A9B5AE',
+  sidebarLabel: '#22332C', // libellés du panneau de navigation
 
   // Sémantiques FORTES (AA) : texte d'état + fonds de badge à texte blanc.
-  success: '#008453', // 4,75:1 sur blanc
-  successSoft: '#e0f7ec',
-  warning: '#dd2a00', // 4,77:1
-  warningSoft: '#ffeae4',
-  danger: '#e50047', // 4,75:1
-  dangerSoft: '#ffe4ec',
-  info: '#007e95', // cyan Plus Admin assombri — 4,75:1
-  infoSoft: '#dff5fa',
-  secondary: '#a0a0a0',
-  secondaryStrong: '#737373', // 4,74:1
+  success: '#0C6641', // 7,0:1 sur blanc
+  successSoft: '#DDF0E4',
+  warning: '#8A5200', // 6,4:1
+  warningSoft: '#FCEFD3',
+  danger: '#B3261E', // 6,5:1 — même rouge que le filet de marge
+  dangerSoft: '#FBE6E3',
+  info: '#2B5F7C', // encre bleu-gris — 6,9:1
+  infoSoft: '#E2EDF3',
+  secondary: '#93A69C',
+  secondaryStrong: '#5B6B63', // 5,6:1
 
-  // Sémantiques VIVES Plus Admin — surfaces sans texte uniquement.
-  successVivid: '#00d284',
-  infoVivid: '#00cff4',
-  warningVivid: '#ff5730',
-  dangerVivid: '#ff0854',
+  // Sémantiques VIVES — surfaces sans texte uniquement.
+  successVivid: '#2FA36B',
+  infoVivid: '#4A90B8',
+  warningVivid: '#D9902B',
+  dangerVivid: '#D8473C',
 
-  // En-têtes de table (fond du thead).
-  theadBg: '#f8f9fb',
+  // En-têtes de table : papier blanc, c'est le filet d'encre sous l'en-tête qui le distingue.
+  theadBg: '#FFFFFF',
 
-  // Panneau de marque (login, bandeaux héros) — dégradé signature cyan → bleu roi.
-  // Le texte se pose toujours sur la moitié bleue (le cyan seul est trop clair).
-  brandBgFrom: '#00cff4',
-  brandBgTo: '#0033c4',
-  onBrand: '#ffffff',
-  onBrandMuted: '#c9d7ff',
+  // Panneau de marque : aplat de toile, sans dégradé (les deux bornes sont identiques).
+  brandBgFrom: '#0E3B2E',
+  brandBgTo: '#0E3B2E',
+  onBrand: '#FFFFFF',
+  onBrandMuted: '#BDD3C9', // 7,9:1 sur la toile
 
-  // Îlot top bar — constant entre les thèmes (marqueur n°1 Plus Admin).
-  // Barre du haut BLANCHE : le chrome ne porte plus de couleur, l'accent ne sert
-  // qu'à désigner l'écran courant (cf. `menuSelected*`).
-  topbarBg: '#ffffff',
-  onTopbar: '#030303', // 19,8:1
-  onTopbarMuted: '#313131', // 12,4:1
-  /** Pastille de l'avatar : seule touche de couleur de la barre — blanc dessus à 9,25:1. */
-  topbarAvatarBg: '#0033c4',
+  // Barre supérieure : posée sur le fond de page, séparée par un filet.
+  topbarBg: '#EFF4F0',
+  onTopbar: '#12201B',
+  onTopbarMuted: '#4D5E56',
+  topbarAvatarBg: '#0E3B2E',
+
+  // Chrome : rail des modules (toile) et panneau des écrans (papier).
+  railBg: '#0E3B2E',
+  onRail: '#BDD3C9', // 7,9:1 sur la toile
+  railActiveBg: '#FFFFFF',
+  railActiveColor: '#0E3B2E',
+  panelBg: '#F9FBF9',
+  chromeEdge: '#D2DED6', // filet entre panneau, barre et page
+
+  // Signature : la marge numérotée des listes.
+  marginRule: '#B3261E', // double filet rouge
+  ink: '#12201B', // filet d'encre sous les en-têtes et au-dessus des totaux
 } as const;
 
-/** Palette mode sombre (overrides ; le darkAlgorithm d'AntD fait le reste). */
+/**
+ * Palette mode sombre (overrides ; le darkAlgorithm d'AntD fait le reste).
+ *
+ * Le mode sombre est désactivé dans l'application (cf. `Providers`) : ces valeurs gardent la
+ * forme du thème cohérente mais n'ont PAS été vérifiées à l'écran.
+ */
 export const colorsDark = {
-  primary: '#5a85ff', // 4,53:1 sur #252529 — le #0033c4 est réservé à la top bar
-  primaryHover: '#7a9cff',
-  primaryActive: '#4a6fe0',
-  primarySoft: '#2c3247',
+  primary: '#7CC7A6', // toile éclaircie — le #0E3B2E est illisible sur fond sombre
+  primaryHover: '#98D6BA',
+  primaryActive: '#5FAF8D',
+  primarySoft: '#1C3229',
 
-  menuActiveBg: '#1a55e3', // conservé — texte blanc 6,08:1
+  menuActiveBg: '#17513F',
 
-  menuSelectedBg: '#2c3247', // = primarySoft du thème sombre
-  menuSelectedColor: '#5a85ff',
+  menuSelectedBg: '#1F5745',
+  menuSelectedColor: '#FFFFFF',
 
-  bgLayout: '#111115',
-  bgContainer: '#252529',
-  bgElevated: '#33333a', // popups — l'ombre est invisible en sombre, la surface se distingue
-  bgSpotlight: '#eaeef6',
+  bgLayout: '#0D1512',
+  bgContainer: '#16211C',
+  bgElevated: '#1F2C26',
+  bgSpotlight: '#E6EEE9',
 
-  border: '#111115', // « carte fondue » Plus Admin
-  borderSecondary: '#2f2f36',
-  borderControl: '#70708a', // 3,18:1 sur #252529
+  border: '#2B3A34',
+  borderSecondary: '#22302A',
+  borderControl: '#6E8279',
 
-  text: '#dee2e6',
-  textStrong: '#dee2e6',
-  textSecondary: '#8e94a9', // 5,06:1 sur #252529
-  textTertiary: '#757a8c',
-  textQuaternary: '#52566a',
-  sidebarLabel: '#8e94a9', // le #6a6b83 du template échoue (2,94:1)
+  text: '#E3EAE6',
+  textStrong: '#E3EAE6',
+  textSecondary: '#9FB0A7',
+  textTertiary: '#7D8F86',
+  textQuaternary: '#56665E',
+  sidebarLabel: '#C4D2CA',
 
-  success: '#00d284', // les vifs passent l'AA en sombre (7,67:1)
-  successSoft: '#0c2a1e',
-  warning: '#ff5730', // 4,84:1
-  warningSoft: '#2f1a13',
-  danger: '#ff3d78', // dérivé — le #ff0854 échoue sur carte sombre
-  dangerSoft: '#2f141c',
-  info: '#00cff4', // 8,17:1
-  infoSoft: '#0c2a30',
-  secondary: '#a0a0a0',
-  secondaryStrong: '#a0a0a0', // 5,4:1 sur #252529 — le vif suffit en sombre
+  success: '#5CC896',
+  successSoft: '#143325',
+  warning: '#E0A44A',
+  warningSoft: '#33260F',
+  danger: '#F0776C',
+  dangerSoft: '#3A1917',
+  info: '#7FB7D6',
+  infoSoft: '#15303E',
+  secondary: '#93A69C',
+  secondaryStrong: '#A9B5AE',
 
-  successVivid: '#00d284',
-  infoVivid: '#00cff4',
-  warningVivid: '#ff5730',
-  dangerVivid: '#ff0854',
+  successVivid: '#2FA36B',
+  infoVivid: '#4A90B8',
+  warningVivid: '#D9902B',
+  dangerVivid: '#D8473C',
 
-  theadBg: '#1e1e20',
+  theadBg: '#16211C',
 
-  brandBgFrom: '#00829a',
-  brandBgTo: '#00279a',
-  onBrand: '#ffffff',
-  onBrandMuted: '#c9d7ff',
+  brandBgFrom: '#0E3B2E',
+  brandBgTo: '#0E3B2E',
+  onBrand: '#FFFFFF',
+  onBrandMuted: '#BDD3C9',
 
-  // Inchangé : le mode sombre est désactivé dans l'application (cf. Providers), on
-  // n'y livre pas un habillage qu'on ne peut pas vérifier à l'écran.
-  topbarBg: '#0033c4',
-  onTopbar: '#ffffff',
-  onTopbarMuted: '#b9c0d4', // 5,09:1 sur #0033c4
-  topbarAvatarBg: '#ffffff',
+  topbarBg: '#0D1512',
+  onTopbar: '#E3EAE6',
+  onTopbarMuted: '#9FB0A7',
+  topbarAvatarBg: '#7CC7A6',
+
+  railBg: '#0A2C22',
+  onRail: '#BDD3C9',
+  railActiveBg: '#E3EFE7',
+  railActiveColor: '#0E3B2E',
+  panelBg: '#111B17',
+  chromeEdge: '#22302A',
+
+  marginRule: '#F0776C',
+  ink: '#E3EAE6',
 } as const;
 
 export type ColorScheme = Record<keyof typeof colors, string>;
 
 /**
- * Rayons (px) — grille Plus Admin (PRD §4.2, exhaustive) :
- * champs 2 · cartes 3 · boutons/badges 4 · modales/dropdowns/tooltips 5 · pilule.
- * Aucun composant ne s'en écarte hors dérogations §4.6.
+ * Rayons (px) — coins nets. Deux valeurs portent l'interface : 4 pour ce qui étiquette
+ * (badges, tags), 6 pour ce qu'on manipule ou qui encadre (champs, boutons, cartes, tableaux,
+ * surfaces flottantes). Pilules et cercles restent en contraste.
  */
 export const radii = {
-  xs: 2, // champs de saisie (toutes tailles)
-  sm: 3, // cartes
-  base: 4, // boutons, badges, base globale
-  lg: 5, // modales, dropdowns, popovers, tooltips
-  /**
-   * Rayons adoucis, décidés le 2026-09-08 par le propriétaire du produit : les 2 px de la
-   * grille §4.2 paraissaient trop secs sur des champs de 46 px, et les 3 px des cartes trop
-   * durs autour d'eux. `card` reste au-dessus de `field` pour que le conteneur enveloppe
-   * visuellement ses champs ; les boutons suivent `field` (un bouton à 4 px collé à un champ
-   * à 8 px se voit), et les bandeaux `Alert` suivent `card` (ce sont des blocs de page).
-   *
-   * Appliqués **globalement** dans `antdTheme.ts` — toute l'application, pas une page.
-   * Les autres rayons de la grille §4.2 (badges 4, modales/popups 5, pilules, cercles) sont
-   * inchangés.
-   */
-  field: 8,
-  card: 12,
+  xs: 2,
+  sm: 3,
+  base: 4, // badges, tags, base globale
+  lg: 6, // modales, dropdowns, popovers, tooltips
+  /** Champs de saisie et boutons — appliqué globalement dans `antdTheme.ts`. */
+  field: 6,
+  /** Cartes, tableaux, bandeaux : le papier a des coins nets. */
+  card: 6,
   pill: 999,
 } as const;
 
@@ -187,32 +197,34 @@ export const space = {
   xxxl: 48,
 } as const;
 
-/** Échelle typographique (px). Dominante Plus Admin : 14. */
+/** Échelle typographique (px). Dominante : 14. */
 export const fontSize = {
-  xs: 12, // boutons (graisse 600)
-  sm: 13, // champs de saisie
+  xs: 12,
+  sm: 13, // boutons, champs de saisie, textes d'appoint
   base: 14, // corps, tables, labels
-  md: 16, // titre de carte (graisse 700)
+  md: 16, // titre de carte
   lg: 20,
   xl: 24,
-  xxl: 32,
+  xxl: 30, // titre d'écran
 } as const;
 
 /**
- * Familles typographiques. Open Sans partout (300/400/600/700) — la variable
- * `--font-sans` est posée par next/font dans layout.tsx ; `--font-display` est
- * conservée comme ALIAS d'Open Sans (globals.css) pour ne toucher aucun
- * consommateur `.da-display`. Geist Mono seule survivante (cotes, n° pièce).
+ * Familles typographiques. Archivo partout (famille variable, axes graisse ET largeur) : la
+ * variable `--font-sans` est posée par next/font dans layout.tsx. La largeur fait la voix :
+ * normale pour le texte, étroite pour les titres d'écran et les en-têtes de colonne en
+ * capitales (`.da-display`, en-têtes de table dans globals.css). `--font-display` reste un
+ * ALIAS de `--font-sans`. Geist Mono pour ce qui se recopie caractère par caractère
+ * (empreintes, identifiants QR, cotes).
  */
 export const fonts = {
-  sans: "var(--font-sans), 'Open Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-  display: "var(--font-display), var(--font-sans), 'Open Sans', system-ui, sans-serif",
+  sans: "var(--font-sans), 'Archivo', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  display: "var(--font-display), var(--font-sans), 'Archivo', system-ui, sans-serif",
   mono: "var(--font-geist-mono), 'SFMono-Regular', ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace",
 } as const;
 
 /**
- * Mouvement — durées (s) et courbes. « Moins, mais juste. » (conservé tel quel,
- * PRD §6.8). Respecte prefers-reduced-motion via <MotionConfig reducedMotion="user">.
+ * Mouvement — durées (s) et courbes. « Moins, mais juste. »
+ * Respecte prefers-reduced-motion via <MotionConfig reducedMotion="user">.
  */
 export const motion = {
   duration: {
@@ -229,20 +241,21 @@ export const motion = {
 } as const;
 
 /**
- * Ombres — Plus Admin est un design PLAT : les cartes n'ont AUCUNE ombre
- * (bordure 1px), seules les surfaces flottantes en portent une.
+ * Ombres — le registre est PLAT : les cartes n'ont AUCUNE ombre (le filet structure),
+ * seules les surfaces flottantes en portent une, décalée et douce.
  */
 export const shadows = {
   card: 'none',
-  raised: '0 1px 15px 1px rgba(230, 234, 236, 0.35)', // douce, rares éléments flottants clairs
-  popover: '0 3px 21px rgba(0, 0, 0, 0.2)',
-  modal: '0 3px 21px rgba(0, 0, 0, 0.25)',
+  raised: '0 1px 2px rgba(18, 32, 27, 0.08)',
+  popover: '0 8px 24px rgba(18, 32, 27, 0.16)',
+  modal: '0 16px 40px rgba(18, 32, 27, 0.22)',
 } as const;
 
 /**
- * Palette « tuiles » (StatTile) — re-basée Plus Admin (design-tokens.md §10).
- * Réservée aux tuiles de synthèse ; ne remplace jamais les couleurs sémantiques.
- * Aucune teinte ne réutilise le danger `#ff0854` pour éviter la confusion.
+ * Palette « tuiles » (StatTile). Aplats, sans dégradé : `from` et `to` sont identiques, la
+ * paire n'est conservée que pour ne pas changer la forme consommée par les tuiles.
+ * Réservée aux tuiles de synthèse ; ne remplace jamais les couleurs sémantiques, et aucune
+ * teinte ne réutilise le rouge de marge.
  */
 export type TileTone = 'ink' | 'sky' | 'violet' | 'coral';
 export interface TileStyle {
@@ -253,21 +266,21 @@ export interface TileStyle {
 }
 
 export const tiles: Record<TileTone, TileStyle> = {
-  // Bleu roi profond (marque) — tuile "hero".
-  ink: { from: '#0033c4', to: '#001f77', fg: '#FFFFFF', fgMuted: '#c9d7ff' },
-  // Bleu pâle — fond clair, texte foncé (tuile "douce").
-  sky: { from: '#e8eefc', to: '#d4e0fa', fg: '#0033c4', fgMuted: '#3d5aa8' },
-  // Violet Plus Admin — distinct du primaire.
-  violet: { from: '#6a008a', to: '#4a0061', fg: '#FFFFFF', fgMuted: '#e6c3f2' },
-  // Orange chaud — distinct du danger #ff0854, purement décoratif.
-  coral: { from: '#ff5730', to: '#c93a1a', fg: '#FFFFFF', fgMuted: '#ffd9cd' },
+  // Toile vert bouteille — tuile principale.
+  ink: { from: '#0E3B2E', to: '#0E3B2E', fg: '#FFFFFF', fgMuted: '#BDD3C9' },
+  // Vert pâle — fond clair, texte foncé (tuile douce).
+  sky: { from: '#E3EFE7', to: '#E3EFE7', fg: '#0E3B2E', fgMuted: '#3F5A4E' },
+  // Encre bleu-gris — distincte du primaire.
+  violet: { from: '#2B5F7C', to: '#2B5F7C', fg: '#FFFFFF', fgMuted: '#C9DDE8' },
+  // Ambre brun — distinct du rouge de marge, purement décoratif.
+  coral: { from: '#8A5200', to: '#8A5200', fg: '#FFFFFF', fgMuted: '#F3DDB5' },
 };
 
 export const tilesDark: Record<TileTone, TileStyle> = {
-  ink: { from: '#1a55e3', to: '#001f77', fg: '#eaf1fb', fgMuted: '#9fb7e8' },
-  sky: { from: '#2c3247', to: '#1e2333', fg: '#c9d7ff', fgMuted: '#8fa3d9' },
-  violet: { from: '#4a0061', to: '#2e003d', fg: '#f0d9fa', fgMuted: '#c98fe0' },
-  coral: { from: '#b3401f', to: '#7a2a12', fg: '#ffe4da', fgMuted: '#f0a98c' },
+  ink: { from: '#17513F', to: '#17513F', fg: '#E3EFE7', fgMuted: '#9FC4B3' },
+  sky: { from: '#1C3229', to: '#1C3229', fg: '#BDD3C9', fgMuted: '#8AA79A' },
+  violet: { from: '#1F4760', to: '#1F4760', fg: '#DDEAF2', fgMuted: '#9BBBCD' },
+  coral: { from: '#6B4000', to: '#6B4000', fg: '#F7E7C8', fgMuted: '#D9B877' },
 };
 
 /**
@@ -276,15 +289,15 @@ export const tilesDark: Record<TileTone, TileStyle> = {
 export type StatusTone = 'success' | 'warning' | 'danger' | 'info';
 
 export const statusTiles: Record<StatusTone, TileStyle> = {
-  success: { from: '#008453', to: '#00522f', fg: '#FFFFFF', fgMuted: '#bfe9d4' },
-  warning: { from: '#dd2a00', to: '#8f1b00', fg: '#FFFFFF', fgMuted: '#ffd0c2' },
-  danger: { from: '#e50047', to: '#8f002c', fg: '#FFFFFF', fgMuted: '#ffc4d6' },
-  info: { from: '#0033c4', to: '#001f77', fg: '#FFFFFF', fgMuted: '#c9d7ff' },
+  success: { from: '#0C6641', to: '#0C6641', fg: '#FFFFFF', fgMuted: '#C5E6D5' },
+  warning: { from: '#8A5200', to: '#8A5200', fg: '#FFFFFF', fgMuted: '#F3DDB5' },
+  danger: { from: '#B3261E', to: '#B3261E', fg: '#FFFFFF', fgMuted: '#F6CFCB' },
+  info: { from: '#2B5F7C', to: '#2B5F7C', fg: '#FFFFFF', fgMuted: '#C9DDE8' },
 };
 
 export const statusTilesDark: Record<StatusTone, TileStyle> = {
-  success: { from: '#00663f', to: '#003d26', fg: '#dff3e9', fgMuted: '#66cfa4' },
-  warning: { from: '#a82000', to: '#5e1200', fg: '#ffe4dc', fgMuted: '#ff9c7d' },
-  danger: { from: '#ad0036', to: '#5e001d', fg: '#ffdae6', fgMuted: '#ff7da6' },
-  info: { from: '#1a55e3', to: '#001f77', fg: '#eaf1fb', fgMuted: '#9fb7e8' },
+  success: { from: '#0A4F33', to: '#0A4F33', fg: '#DDF0E4', fgMuted: '#8FCDB0' },
+  warning: { from: '#6B4000', to: '#6B4000', fg: '#F7E7C8', fgMuted: '#D9B877' },
+  danger: { from: '#8A1D17', to: '#8A1D17', fg: '#FBE6E3', fgMuted: '#F0A69F' },
+  info: { from: '#1F4760', to: '#1F4760', fg: '#DDEAF2', fgMuted: '#9BBBCD' },
 };

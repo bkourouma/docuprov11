@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { App, Button, Skeleton, Space, Tooltip, Typography } from 'antd';
 import { PageHeader } from '../components/PageHeader';
-import { HeroBanner, heroGhostStyle } from '../components/HeroBanner';
+import { HeroBanner } from '../components/HeroBanner';
+import { DashboardSkeleton } from '../components/skeletons';
 import { ModaleAjoutWidget } from '../components/dashboard/ModaleAjoutWidget';
 import { icons, iconDefaults } from '../theme/icons';
 import { PeriodFilter, presetToPeriod, type PeriodState } from './components/PeriodFilter';
@@ -231,16 +232,12 @@ export default function DashboardsPage() {
           actions={
             <>
               <Link href="/acquisition">
-                <Button icon={<icons.acquisition {...iconDefaults} size={16} />}>
+                <Button type="primary" icon={<icons.acquisition {...iconDefaults} size={16} />}>
                   Démarrer une acquisition
                 </Button>
               </Link>
               <Link href="/search">
-                <Button
-                  ghost
-                  style={heroGhostStyle}
-                  icon={<icons.search {...iconDefaults} size={16} />}
-                >
+                <Button icon={<icons.search {...iconDefaults} size={16} />}>
                   Rechercher un document
                 </Button>
               </Link>
@@ -257,7 +254,7 @@ export default function DashboardsPage() {
       )}
 
       {agencement === null ? (
-        <Skeleton active paragraph={{ rows: 10 }} />
+        <DashboardSkeleton />
       ) : (
         <GrilleWidgets
           widgets={widgetsAffiches}

@@ -233,7 +233,7 @@ export default function DocumentsScannesPage() {
             flex: 'none',
             padding: '16px 24px',
             marginBottom: 0,
-            borderBottom: '1px solid var(--ant-color-border-secondary, #eef1f6)',
+            borderBottom: '1px solid var(--ant-color-border-secondary, #d9e2ea)',
           },
           body: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
         }}
