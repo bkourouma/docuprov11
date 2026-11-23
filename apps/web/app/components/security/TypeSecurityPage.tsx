@@ -64,6 +64,9 @@ interface ActorRow {
   label: string;
 }
 
+/** Largeur des sélections multiples de la barre d'octroi (voir le commentaire au rendu). */
+const GRANT_MULTI_WIDTH = 260;
+
 const fmt = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY') : '—');
 
 /** Un groupe = un bénéficiaire (acteur ou rôle) et les droits qui lui sont accordés. */
@@ -302,7 +305,14 @@ export function TypeSecurityPage({
           cancelText="Annuler"
           onConfirm={() => void revoke([r.documentTypePermissionId])}
         >
-          <Button type="text" danger size="small" icon={<icons.delete size={16} />} />
+          {/* Bouton-icône : sans nom accessible, le lecteur d'écran n'annonçait que « bouton ». */}
+          <Button
+            type="text"
+            danger
+            size="small"
+            aria-label={`Retirer le droit sur ${r.documentTypeLabel}`}
+            icon={<icons.delete size={16} />}
+          />
         </Popconfirm>
       ),
     },
@@ -316,11 +326,16 @@ export function TypeSecurityPage({
           {/* Les libellés alignent leurs contrôles par le BAS (`align="end"`) : le bouton, qui
               n'en porte pas, reste sur la même ligne de base que les champs. */}
           <Space wrap align="end" size={[space.lg, space.md]} style={{ width: '100%' }}>
+            {/* Largeur FIXE (et non `minWidth`) des deux sélections multiples : `maxTagCount=
+                "responsive"` replie les étiquettes selon la largeur disponible. Une largeur qui
+                dépend elle-même des étiquettes affichées, dans un `Space wrap`, faisait osciller la
+                barre sans fin entre deux mises en page (champ et bouton « Accorder » insaisissables
+                dès qu'un libellé long était choisi). */}
             <GrantField htmlFor="grant-actors" label={`${actorLabel}s`}>
               <Select
                 id="grant-actors"
                 mode="multiple"
-                style={{ minWidth: 260 }}
+                style={{ width: GRANT_MULTI_WIDTH }}
                 value={actorIds}
                 onChange={(v) => setActorIds(v as number[])}
                 options={actors.map((a) => ({ value: a.value, label: a.label }))}
@@ -334,7 +349,7 @@ export function TypeSecurityPage({
               <Select
                 id="grant-types"
                 mode="multiple"
-                style={{ minWidth: 260 }}
+                style={{ width: GRANT_MULTI_WIDTH }}
                 value={typeIds}
                 onChange={(v) => setTypeIds(v as number[])}
                 options={types.map((t) => ({ value: t.documentTypeId, label: t.label }))}

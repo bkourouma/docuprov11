@@ -22,11 +22,9 @@ import { StateTag } from '../components/documents/shared';
 import { icons } from '../theme/icons';
 import { fontSize, space } from '../theme/tokens';
 import { changeMyPassword, getMyProfile, type MyProfile } from '../lib/auth';
+import { newPasswordError } from '../login/password-policy';
 
 const { Text } = Typography;
-
-/** Longueur minimale imposée par le serveur (`MIN_PASSWORD_LENGTH`, `login.dto.ts`). */
-const MIN_PASSWORD = 6;
 
 /** Largeur maximale de la colonne du formulaire — au-delà, la ligne devient trop longue. */
 const FORM_MAX = 460;
@@ -244,9 +242,13 @@ export default function ProfilPage() {
                   label="Nouveau mot de passe"
                   rules={[
                     { required: true, message: 'Le nouveau mot de passe est obligatoire' },
+                    // Longueur minimale ET refus des espaces de début/fin : l'écran de connexion
+                    // les retire à la saisie, un tel mot de passe verrouillerait le compte.
                     {
-                      min: MIN_PASSWORD,
-                      message: `Le mot de passe doit faire au moins ${MIN_PASSWORD} caractères`,
+                      validator: (_, value: string | undefined) => {
+                        const problem = newPasswordError(value);
+                        return problem ? Promise.reject(new Error(problem)) : Promise.resolve();
+                      },
                     },
                   ]}
                 >

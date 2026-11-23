@@ -39,10 +39,10 @@ export class AnalyticsController {
   // ---------------------------------------------------------------------------
   // Agencement personnalisable (widgets placés par l'utilisateur)
   //
-  // Le garde est posé MÉTHODE par MÉTHODE, et non sur la classe : `overview`, `targets` et
-  // `export` sont consommés au-delà de l'écran « Tableaux de bord » (page d'accueil comprise), et
-  // les soumettre d'un coup à `@RequireMenu` retirerait l'accès à des utilisateurs qui l'ont
-  // aujourd'hui. Seul l'agencement, propre à cet écran, exige d'y avoir accès.
+  // Toutes les routes exigent le menu « Tableaux de bord » : l'agencement depuis toujours, et les
+  // statistiques (`overview`, `targets`, `export`) depuis la décision de l'utilisateur du
+  // 2026-11-22 (elles exposaient les volumes et les noms de dossiers, plans et types de tout le
+  // fonds à n'importe quel compte). Leur seul consommateur est l'écran `/dashboards`.
   // ---------------------------------------------------------------------------
 
   /**
@@ -77,6 +77,8 @@ export class AnalyticsController {
 
   /** Agrégat « Vue d'ensemble ». Lecture seule, ACL-filtré (admin = vue complète). */
   @Post('overview')
+  @UseGuards(MenuPermissionGuard)
+  @RequireMenu(MENU_DASHBOARD_ARCHIVES)
   @HttpCode(200)
   overview(
     @Body(new ZodValidationPipe(analyticsFilterSchema)) body: AnalyticsFilterDto,
@@ -87,6 +89,8 @@ export class AnalyticsController {
 
   /** Cibles « objectif vs réalisé » d'une période (lecture seule, ACL-filtré). */
   @Post('targets')
+  @UseGuards(MenuPermissionGuard)
+  @RequireMenu(MENU_DASHBOARD_ARCHIVES)
   @HttpCode(200)
   targets(
     @Body(new ZodValidationPipe(analyticsTargetsSchema)) body: AnalyticsTargetsDto,
@@ -97,6 +101,8 @@ export class AnalyticsController {
 
   /** Export de la synthèse, cohérent avec les filtres courants. */
   @Post('export')
+  @UseGuards(MenuPermissionGuard)
+  @RequireMenu(MENU_DASHBOARD_ARCHIVES)
   @HttpCode(200)
   async export(
     @Body(new ZodValidationPipe(analyticsExportSchema)) body: AnalyticsExportDto,

@@ -11,6 +11,9 @@ import { PageHeader } from '../../../components/PageHeader';
 import { useFeedback } from '../../../components/feedback';
 import { colors, fontSize, radii } from '../../../theme/tokens';
 import {
+  LOGO_EXTENSIONS,
+  WEBSITE_URL_PATTERN,
+  checkLogoFile,
   deleteEmailLogo,
   emailLogoPreviewUrl,
   getEmailTemplate,
@@ -26,7 +29,7 @@ import {
  */
 type FormValues = Record<keyof EmailTemplatePayload, string | undefined>;
 
-const ACCEPTED = '.png,.jpg,.jpeg,.gif,.webp';
+const ACCEPTED = LOGO_EXTENSIONS.join(',');
 
 /** Vide ⟹ `null`, pour dire explicitement « efface ce champ » plutôt que « ne le touche pas ». */
 const norm = (v: string | undefined): string | null => {
@@ -143,6 +146,13 @@ export default function ParametrageEmailPage() {
     showUploadList: false,
     maxCount: 1,
     beforeUpload: (file) => {
+      // `accept` ne filtre que le sélecteur de fichiers (un glisser-déposer le contourne) : on
+      // contrôle ici avec les règles et les messages de l'API, qui reste l'autorité.
+      const refus = checkLogoFile(file);
+      if (refus) {
+        message.error(refus);
+        return false;
+      }
       void (async () => {
         try {
           apply(await uploadEmailLogo(file as File));
@@ -257,7 +267,11 @@ export default function ParametrageEmailPage() {
                   <Form.Item
                     name="websiteUrl"
                     label="Site web"
-                    rules={[{ type: 'url', message: 'URL absolue attendue (https://…)' }]}
+                    // Même règle que l'API (http/https absolu) : `type: 'url'` acceptait
+                    // `ftp://…` ou `www.…`, refusés ensuite à l'enregistrement.
+                    rules={[
+                      { pattern: WEBSITE_URL_PATTERN, message: 'URL absolue attendue (https://…)' },
+                    ]}
                   >
                     <Input placeholder="https://exemple.ci" maxLength={300} />
                   </Form.Item>

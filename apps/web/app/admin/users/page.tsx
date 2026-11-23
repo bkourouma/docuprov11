@@ -169,10 +169,14 @@ export default function UsersAdminPage() {
     setFormOpen(true);
   };
 
+  // L'écran de connexion rogne la saisie : un mot de passe bordé d'espaces serait inutilisable
+  // (l'API le refuse aussi, `users.dto.ts`).
+  const passwordEdgeSpaces = password !== password.trim();
   // En création le mot de passe est obligatoire ; en modification, vide signifie « ne change pas ».
   const canSubmit =
     !!(username.trim() && firstName.trim() && lastName.trim()) &&
     isValidEmail(email) &&
+    !passwordEdgeSpaces &&
     (editing
       ? password === '' || password.length >= PASSWORD_MIN
       : password.length >= PASSWORD_MIN);
@@ -469,7 +473,18 @@ export default function UsersAdminPage() {
               onChange={(e) => setPassword(e.target.value)}
               onPressEnter={() => void submit()}
               placeholder="••••••••"
+              status={passwordEdgeSpaces ? 'error' : undefined}
+              aria-describedby={passwordEdgeSpaces ? 'user-password-error' : undefined}
             />
+            {passwordEdgeSpaces && (
+              <Typography.Text
+                id="user-password-error"
+                type="danger"
+                style={{ fontSize: fontSize.xs }}
+              >
+                Le mot de passe ne doit ni commencer ni finir par une espace.
+              </Typography.Text>
+            )}
           </div>
           <div>
             <FieldLabel htmlFor="user-role">Rôle</FieldLabel>
@@ -532,7 +547,7 @@ export default function UsersAdminPage() {
                   </Typography.Text>
                 </div>
               </div>
-              <Switch checked={disabled} onChange={setDisabled} />
+              <Switch checked={disabled} onChange={setDisabled} aria-label="Compte désactivé" />
             </div>
           )}
         </div>

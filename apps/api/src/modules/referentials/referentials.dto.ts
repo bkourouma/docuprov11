@@ -1,7 +1,26 @@
 import { z } from 'zod';
 
+/**
+ * Jour calendaire au format AAAA-MM-JJ, ET réel : `new Date('2026-02-31')` ne lève pas, il rend
+ * silencieusement le 3 mars ; et `new Date('2026-13-01')` rend une date invalide que Prisma refuse
+ * ensuite en 500. Le contrôle aller-retour écarte les deux avant d'atteindre la base.
+ */
+export const isoDaySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ')
+  .refine((s) => {
+    const d = new Date(`${s}T00:00:00.000Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  }, 'Date inexistante');
+
+/** Fin de période antérieure au début : le droit ne serait jamais en vigueur. */
+export function periodInOrder(d: { startDate?: string; endDate?: string }): boolean {
+  return !d.startDate || !d.endDate || d.startDate <= d.endDate;
+}
+
 export const createDocumentTypeSchema = z.object({
-  label: z.string().min(1),
+  // `trim()` comme à l'édition : un libellé fait d'espaces passait la création.
+  label: z.string().trim().min(1),
   code: z.string().optional(),
 });
 
@@ -17,7 +36,7 @@ export const createFileTypeSchema = z.object({
 });
 
 export const createTreeNodeSchema = z.object({
-  label: z.string().min(1),
+  label: z.string().trim().min(1),
   code: z.string().optional(),
   parentId: z.number().int().positive().optional(),
 });
@@ -100,12 +119,15 @@ export const grantTypePermissionSchema = z
     permissionLevelId: z.number().int().positive(),
     roleId: z.number().int().positive().optional(),
     userGroupId: z.number().int().positive().optional(),
-    startDate: z.string().optional(),
-    endDate: z.string().optional(),
+    // Format AAAA-MM-JJ (seul format envoyé par l'écran) : une chaîne quelconque devenait une
+    // date invalide, refusée par Prisma en 500.
+    startDate: isoDaySchema.optional(),
+    endDate: isoDaySchema.optional(),
   })
   .refine((d) => (d.roleId == null) !== (d.userGroupId == null), {
     message: 'Fournir exactement un bénéficiaire : roleId OU userGroupId',
-  });
+  })
+  .refine(periodInOrder, { message: 'La date de fin précède la date de début', path: ['endDate'] });
 
 /** Confidentialités : libellé seul, comme les autres référentiels « libellé seul » de l'app. */
 export const createConfidentialiteSchema = z.object({
